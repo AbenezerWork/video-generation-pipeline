@@ -169,6 +169,22 @@ class _Planner:
 
     # --------------------------------------------------------------------------------- one shot
 
+    def checked(self, shot: ShotInput) -> ShotInput:
+        """The shot, with any narration that has no length given the shortest clip length."""
+        silent = [lang for lang, n in shot.narration.items() if n.duration_s <= 0]
+        if not silent:
+            return shot
+        self.problems.append(f"shot {shot.shot_id}: {', '.join(silent)} narration has no duration")
+        return ShotInput(
+            shot.shot_id,
+            {
+                lang: NarrationInput(n.text, self.limits.min_clip_s, n.estimated)
+                if lang in silent
+                else n
+                for lang, n in shot.narration.items()
+            },
+        )
+
     def shot(
         self,
         shot: ShotInput,
@@ -247,6 +263,7 @@ def plan_fit(
 ) -> FitPlan:
     """Plan every shot; ``problems`` on the result says why it cannot be used, if it cannot."""
     planner = _Planner(limits)
+    shots = [planner.checked(shot) for shot in shots]
     planned = [
         planner.shot(shot, _visual_sets(shot, languages, primary_language, visuals))
         for shot in shots

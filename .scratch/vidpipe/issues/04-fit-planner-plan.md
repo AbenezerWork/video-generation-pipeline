@@ -8,7 +8,7 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] With fake durations, plan output lists segments, speed factors and continuation clips per shot
-- [ ] No segment cuts mid-phrase when a natural boundary fits the range
-- [ ] Both language renders fit within 90 s under shared visuals
-- [ ] Dry-run makes no provider generation calls
+- [x] With fake durations, plan output lists segments, speed factors and continuation clips per shot
+- [x] No segment cuts mid-phrase when a natural boundary fits the range
+- [x] Both language renders fit within 90 s under shared visuals
+- [x] Dry-run makes no provider generation calls

@@ -244,3 +244,19 @@ def test_plan_reports_a_language_that_cannot_fit_primary_only_clips(
     report = plan_json(capsys, project, code=1)
 
     assert any("am narration is 6.00s" in p for p in report["problems"])
+
+
+def test_plan_explains_a_storyboard_that_no_longer_matches_the_script(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = storyboarded(make_project)
+    script_path = project / "build" / "script.json"
+    script = read_json(script_path)
+    script["lines"] = script["lines"][:2]  # shot 3 narrates line 3, which is gone
+    script_path.write_text(json.dumps(script), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["plan", str(project), "--until", "music"]) == 1
+
+    err = capsys.readouterr().err
+    assert "line 3" in err and "storyboard" in err

@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import MakeProject
+from tests.conftest import MakeProject, ffprobe
 from tests.recording import Recorder, RecordingRegistry
 from vidpipe import pipeline
 from vidpipe.cli import main
@@ -342,3 +342,21 @@ def test_a_render_over_90_seconds_is_an_error_naming_the_language(
     assert "am render would last 91.2s, over the 90s limit" in err
     assert "en render" not in err
     assert not (project / "build" / "fit_plan.json").exists()
+
+
+@pytest.mark.needs_ffmpeg
+def test_renders_last_as_long_as_the_narration_when_it_outruns_the_clip_cap(
+    make_project: MakeProject,
+) -> None:
+    project = project_with_script(make_project)  # 5.68 s, 5.2 s and 5.28 s of English narration
+
+    assert main(["run", str(project)]) == 0
+
+    plan = read_json(project / "build" / "fit_plan.json")
+    for lang in ("en", "am"):
+        probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
+        assert sorted(s["codec_type"] for s in probe["streams"]) == ["audio", "video"]
+        assert float(probe["format"]["duration"]) == pytest.approx(
+            plan["render_seconds"][lang], abs=0.25
+        )
+    assert plan["render_seconds"]["en"] == pytest.approx(5.68 + 5.2 + 5.28)  # not 3 x 5 s clips

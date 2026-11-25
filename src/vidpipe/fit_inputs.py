@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from vidpipe.fit import NarrationInput, ShotInput
 from vidpipe.models import Script, Storyboard
-from vidpipe.project import Project
+from vidpipe.project import Project, ProjectError
 
 #: (language, shot id, text) -> the narration to plan with (real or estimated duration).
 Narrate = Callable[[str, int, str], NarrationInput]
@@ -36,13 +36,21 @@ def collect_shots(project: Project, storyboard: Storyboard, narrate: Narrate) ->
     for language in project.config.languages:
         script = script_for(project, language) or primary
         texts[language] = {line.id: line.text for line in script.lines}
-    return [
-        ShotInput(
-            shot_id=shot.id,
-            narration={
-                language: narrate(language, shot.id, texts[language][shot.line_id])
-                for language in project.config.languages
-            },
+    shots: list[ShotInput] = []
+    for shot in storyboard.shots:
+        missing = [lang for lang in project.config.languages if shot.line_id not in texts[lang]]
+        if missing:
+            raise ProjectError(
+                f"the storyboard's shot {shot.id} narrates script line {shot.line_id}, which "
+                f"{', '.join(missing)} no longer has: rerun the storyboard after editing the script"
+            )
+        shots.append(
+            ShotInput(
+                shot_id=shot.id,
+                narration={
+                    language: narrate(language, shot.id, texts[language][shot.line_id])
+                    for language in project.config.languages
+                },
+            )
         )
-        for shot in storyboard.shots
-    ]
+    return shots
