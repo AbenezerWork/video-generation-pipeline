@@ -30,8 +30,18 @@ from vidpipe.assembly import (
     ShotSegment,
     SubtitleTrack,
 )
+from vidpipe.bible import (
+    Bible,
+    BibleError,
+    KeyframeBrief,
+    keyframe_brief,
+    load_bible,
+    reference_problems,
+)
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import (
+    GenerationError,
+    GenerationRecord,
     ImageToVideoProvider,
     ImageToVideoRequest,
     KeyframeRequest,
@@ -44,6 +54,7 @@ from vidpipe.contracts import (
     TranslationProvider,
     TTSProvider,
     TTSRequest,
+    UnsupportedRequest,
 )
 from vidpipe.fit import FIT_VERSION, NarrationInput, limits_for, plan_fit
 from vidpipe.fit_inputs import collect_shots, translation_files
@@ -149,6 +160,26 @@ class Stage(ABC):
     @abstractmethod
     def run(self, ctx: StageContext) -> list[str]:
         """Generate this stage's artifacts; return their paths relative to ``build/``."""
+
+
+def _generate[R](what: str, call: Callable[[], R]) -> R:
+    """Call a media provider; a failure (after its own retries) fails the stage, naming ``what``.
+    Artifacts already made are kept, so the next run resumes after them."""
+    try:
+        return call()
+    except (GenerationError, UnsupportedRequest) as exc:
+        raise StageError(f"{what}: {exc}") from exc
+
+
+def _recorded(path: Path, record: GenerationRecord, *, seed: int, **data: Any) -> Made:
+    """The artifact a provider made, with what it did (``record``) kept in the ledger: the seed
+    that was used, retries and step-downs (``fallback``), GPU time and the provider's details."""
+    return Made(
+        [path],
+        data={**record.details, **data, "seed": seed if record.seed is None else record.seed},
+        gpu_seconds=record.gpu_seconds,
+        fallback=record.fallback,
+    )
 
 
 def _rels(ctx: StageContext, produced: Produced) -> list[str]:
@@ -335,6 +366,10 @@ class TranslationStage(Stage):
 class StoryboardStage(Stage):
     name = "storyboard"
 
+    def problems(self, ctx: StageContext) -> list[str]:
+        _bible(ctx)  # a broken bible fails the plan before anything is generated
+        return []
+
     def run(self, ctx: StageContext) -> list[str]:
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("storyboard", TextProvider)
@@ -352,6 +387,9 @@ class StoryboardStage(Stage):
             f"Script:\n{lines}"
         )
         valid_ids = {line.id for line in script.lines}
+        bible = _bible(ctx)
+        if casting := bible.casting_instructions():
+            prompt += f"\n\nThe cast. For each shot also give:\n{casting}"
 
         def check(draft: StoryboardDraft) -> None:
             used = {s.line_id for s in draft.shots}
@@ -359,13 +397,26 @@ class StoryboardStage(Stage):
                 raise ValueError(f"shots refer to script lines that do not exist: {unknown}")
             if missing := sorted(valid_ids - used):
                 raise ValueError(f"script lines with no shot: {missing}")
+            if casting:
+                for shot in draft.shots:
+                    try:
+                        bible.cast(shot.character, shot.location)
+                    except BibleError as exc:
+                        raise ValueError(str(exc)) from exc
 
         def make() -> Made:
             since = failure_count(provider)
             draft = _ask(provider, prompt, StoryboardDraft, check)
             storyboard = Storyboard(
                 shots=[
-                    Shot(id=i, line_id=s.line_id, visual=s.visual, motion_type=s.motion_type)
+                    Shot(
+                        id=i,
+                        line_id=s.line_id,
+                        visual=s.visual,
+                        motion_type=s.motion_type,
+                        character=s.character if casting else None,
+                        location=s.location if casting else None,
+                    )
                     for i, s in enumerate(draft.shots, start=1)
                 ]
             )
@@ -485,33 +536,91 @@ class FitPlanningStage(Stage):
         return _rels(ctx, made)
 
 
+def _bible(ctx: StageContext) -> Bible:
+    try:
+        return load_bible(ctx.project.root)
+    except BibleError as exc:
+        raise StageError(str(exc)) from exc
+
+
 class KeyframesStage(Stage):
+    """One still per shot, drawn with the bible's reference pictures (see :mod:`vidpipe.bible`)."""
+
     name = "keyframes"
+
+    def problems(self, ctx: StageContext) -> list[str]:
+        config = ctx.project.config
+        capabilities = ctx.provider("keyframes", KeyframerProvider).capabilities
+        return [
+            *capabilities.size_problems(config.width, config.height),
+            *reference_problems(_bible(ctx), ctx.project.root),
+        ]
+
+    def _briefs(self, ctx: StageContext, max_references: int) -> list[tuple[Shot, KeyframeBrief]]:
+        """What to draw for every shot. Casting mistakes fail here, before any drawing."""
+        bible = _bible(ctx)
+        briefs: list[tuple[Shot, KeyframeBrief]] = []
+        for shot in ctx.project.read_model("storyboard.json", Storyboard).shots:
+            try:
+                brief = keyframe_brief(
+                    bible,
+                    ctx.project.root,
+                    shot.visual,
+                    character=shot.character,
+                    location=shot.location,
+                    max_references=max_references,
+                )
+            except BibleError as exc:
+                raise StageError(f"shot {shot.id}: {exc}") from exc
+            briefs.append((shot, brief))
+        return briefs
 
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("keyframes", KeyframerProvider)
         config = ctx.project.config
         items: list[MediaItem] = []
-        for shot in ctx.project.read_model("storyboard.json", Storyboard).shots:
+        for shot, brief in self._briefs(ctx, provider.capabilities.max_reference_images):
             key = f"keyframes/shot_{shot.id:02d}"
+            seed = ctx.shot_seed(shot.id)
+            references = [
+                {"id": r.id, "path": r.name, "sha256": ctx.store.hash_path(r.path)}
+                for r in brief.references
+            ]
 
-            def make(shot: Shot = shot, key: str = key) -> Made:
-                result = provider.generate(
-                    KeyframeRequest(
-                        prompt=shot.visual,
-                        width=config.width,
-                        height=config.height,
-                        seed=ctx.shot_seed(shot.id),
-                        output_path=ctx.project.artifact_path(f"{key}.png"),
-                    )
+            def make(
+                shot: Shot = shot,
+                key: str = key,
+                seed: int = seed,
+                brief: KeyframeBrief = brief,
+                references: list[dict[str, str]] = references,
+            ) -> Made:
+                request = KeyframeRequest(
+                    prompt=brief.prompt,
+                    width=config.width,
+                    height=config.height,
+                    seed=seed,
+                    reference_images=[r.path for r in brief.references],
+                    output_path=ctx.project.artifact_path(f"{key}.png"),
                 )
-                return Made([result.path])
+                result = _generate(
+                    f"keyframe for shot {shot.id}", lambda: provider.generate(request)
+                )
+                return _recorded(
+                    result.path,
+                    result.record,
+                    seed=seed,
+                    prompt=brief.prompt,
+                    references=references,
+                )
 
+            values: dict[str, Any] = {"prompt": brief.prompt}
+            if references:
+                values["references"] = [[r["id"], r["sha256"]] for r in references]
             made = ctx.produce(
                 key,
-                inputs=Inputs(values={"prompt": shot.visual}),
+                inputs=Inputs(values=values),
                 parameters={"width": config.width, "height": config.height},
-                seed=ctx.shot_seed(shot.id),
+                seed=seed,
                 make=make,
             )
             items.append(_item(ctx, shot.id, made.paths[0]))

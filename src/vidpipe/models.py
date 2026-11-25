@@ -43,6 +43,10 @@ class ShotDraft(BaseModel):
     line_id: int
     visual: str
     motion_type: MotionType
+    #: Ids from the project bible (see ``vidpipe.bible``): no ``character`` means the
+    #: protagonist, ``"none"`` means nobody appears.
+    character: str | None = None
+    location: str | None = None
 
 
 class StoryboardDraft(BaseModel):
@@ -56,6 +60,8 @@ class Shot(BaseModel):
     line_id: int
     visual: str
     motion_type: MotionType
+    character: str | None = None
+    location: str | None = None
 
 
 class Storyboard(BaseModel):
