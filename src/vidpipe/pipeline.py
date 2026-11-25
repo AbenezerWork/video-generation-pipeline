@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
+from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
-from vidpipe.config import STAGE_KINDS
+from vidpipe.chain import build_provider, describe
+from vidpipe.config import STAGE_KINDS, ProviderSelection
 from vidpipe.contracts import Provider
 from vidpipe.estimate import PlanReport, build_report
-from vidpipe.models import Manifest, StageRecord
+from vidpipe.gates import Approver, GateError, GateKeeper
+from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.stages import STAGE_NAMES, STAGES, StageContext, StageError
@@ -38,6 +40,8 @@ class Plan:
     problems: list[str] = field(default_factory=list[str])
     #: Fit plan and cost estimates (only when asked for: ``plan(..., estimate=True)``).
     report: PlanReport | None = None
+    #: Stages the run will pause after for approval (`gates:` in the config).
+    gates: list[str] = field(default_factory=list[str])
 
     @property
     def ok(self) -> bool:
@@ -48,6 +52,13 @@ class Plan:
 class RunResult:
     plan: Plan
     manifest: Manifest
+    #: The gate the run stopped at, waiting for approval; `None` when it ran to the end.
+    paused_at: str | None = None
+
+
+def _label(stage: str, selection: ProviderSelection | None) -> str | None:
+    kind = STAGE_KINDS.get(stage)
+    return describe(kind, selection) if kind is not None and selection is not None else None
 
 
 def _selected_stages(until: str | None) -> list[str]:
@@ -67,10 +78,10 @@ def _build_context(
         if kind is None:
             continue  # e.g. `song`: configurable, but not part of the stage graph yet
         try:
-            providers[stage] = registry.create(kind, selection.name, **selection.options)
+            providers[stage] = build_provider(registry, kind, selection)
         except UnknownProvider as exc:
             problems.append(f"{stage}: {exc}")
-        except (TypeError, ValidationError) as exc:
+        except (TypeError, ValueError) as exc:  # ValueError includes pydantic.ValidationError
             problems.append(f"{stage}: cannot configure provider {selection.name!r}: {exc}")
     return StageContext(project=project, providers=providers, assembler=assembler)
 
@@ -102,7 +113,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, selection.name if selection else None))
+        planned.append(PlannedStage(stage.name, _label(stage.name, selection)))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -111,12 +122,17 @@ def plan(
             problems += [f"{stage.name}: {p}" for p in stage.problems(ctx)]
         except StageError as exc:
             problems.append(f"{stage.name}: {exc}")
+    problems += [
+        f"gates: unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})"
+        for gate in project.config.gates
+        if gate not in STAGE_NAMES
+    ]
     report = None
     if estimate:
         report = build_report(project, ctx.providers, [p.name for p in planned])
         if report.fit is not None:
             problems += [f"fit-planning: {p}" for p in report.fit.problems]
-    return Plan(stages=planned, problems=problems, report=report)
+    return Plan(stages=planned, problems=problems, gates=list(project.config.gates), report=report)
 
 
 def run(
@@ -125,33 +141,102 @@ def run(
     until: str | None = None,
     registry: Registry | None = None,
     assembler: Assembler | None = None,
+    auto: bool = False,
+    approve: Sequence[str] = (),
+    approver: Approver | None = None,
 ) -> RunResult:
-    """Run the stage graph (up to ``until``). Capability problems abort before any generation."""
+    """Run the stage graph (up to ``until``). Capability problems abort before any generation.
+
+    After a stage named in the config's ``gates`` the run stops (``RunResult.paused_at``) unless
+    that gate is approved (``vidpipe.gates``): ``approve`` approves gates in advance, ``approver``
+    is asked about the others, and ``auto`` skips every gate. A gate after the last stage the run
+    was asked for holds nothing back, so it does not pause.
+    """
     the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
-    if not the_plan.ok:
-        raise PlanError(the_plan.problems)
+    problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
+    if not the_plan.ok or problems:
+        raise PlanError([*the_plan.problems, *problems])
 
     project = Project(project_dir)
-    problems: list[str] = []
     ctx = _build_context(
-        project, registry or default_registry(), assembler or FfmpegAssembler(), problems
+        project, registry or default_registry(), assembler or FfmpegAssembler(), []
     )
+    keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
+    paused_at: str | None = None
     wanted = set(_selected_stages(until))
-    for stage in STAGES:
-        if stage.name not in wanted:
-            continue
-        ctx.begin(stage.name)
-        outputs = stage.run(ctx)
-        selection = project.config.providers.get(stage.name)
+    selected = [s for s in STAGES if s.name in wanted]
+    for index, stage_obj in enumerate(selected):
+        stage = stage_obj.name
+        ctx.begin(stage)
+        outputs = stage_obj.run(ctx)
+        selection = project.config.providers.get(stage)
         manifest.stages.append(
             StageRecord(
-                stage=stage.name,
-                provider=selection.name if selection else None,
+                stage=stage,
+                provider=_label(stage, selection),
                 outputs=outputs,
                 generated=ctx.generated,
                 reused=ctx.reused,
             )
         )
         project.write_model("manifest.json", manifest)
-    return RunResult(plan=the_plan, manifest=manifest)
+        if auto or stage not in project.config.gates or index == len(selected) - 1:
+            continue
+        if stage in approve:
+            keeper.approve(stage)
+        if not keeper.passes(stage, approver):
+            paused_at = stage
+            break
+    return RunResult(plan=the_plan, manifest=manifest, paused_at=paused_at)
+
+
+def approve(project_dir: Path, gates: Sequence[str]) -> None:
+    """Approve what each gated stage has produced so far (``vidpipe approve``)."""
+    project = Project(project_dir)
+    keeper = GateKeeper(project, ArtifactStore(project))
+    for gate in gates:
+        if gate not in STAGE_NAMES:
+            raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
+        keeper.approve(gate)
+
+
+def redo(
+    project_dir: Path,
+    *,
+    shot: int,
+    until: str | None = None,
+    registry: Registry | None = None,
+    assembler: Assembler | None = None,
+    auto: bool = False,
+    approve: Sequence[str] = (),
+    approver: Approver | None = None,
+) -> RunResult:
+    """Re-roll one shot (``vidpipe redo shot N``): new seed, then a normal run.
+
+    The shot's re-roll count goes up in the ledger, which changes the seed (and so the input hash)
+    of its keyframe and video, and the new video file changes what the assemblies read. A normal
+    run then regenerates exactly those; every other shot's artifacts keep their records. Gates
+    still apply: the new keyframe is shown at the keyframes gate again before it is animated.
+    """
+    project = Project(project_dir)
+    if not (project.build / "storyboard.json").is_file():
+        raise PlanError(["nothing to redo: run the storyboard stage first"])
+    storyboard = project.read_model("storyboard.json", Storyboard)
+    if shot not in {s.id for s in storyboard.shots}:
+        known = ", ".join(str(s.id) for s in storyboard.shots)
+        raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
+    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+    if not the_plan.ok:
+        raise PlanError(the_plan.problems)
+
+    ArtifactStore(project).reroll_shot(shot)
+    return run(
+        project_dir,
+        until=until,
+        registry=registry,
+        assembler=assembler,
+        auto=auto,
+        approve=approve,
+        approver=approver,
+    )

@@ -31,6 +31,26 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## Gates, --auto and redo
+
+The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
+`vidpipe.yaml` (`gates: [storyboard]`, or `gates: []` for none; any stage name is valid).
+
+- A pause is a normal outcome, not an error: `vidpipe run` prints the stages that ran and how to
+  continue, and exits with code **3** (`0` = finished, `1` = error). In the library,
+  `pipeline.run(...).paused_at` is the gate name.
+- Approve with `vidpipe approve <project> <gate>` (no input needed: scripts and tests use this) and run
+  again; or `vidpipe run --approve <gate>` (repeatable) to approve in advance; or answer the y/N
+  question that appears when stdin and stdout are a terminal. `--auto` skips every gate.
+- An approval (`build/approvals.json`) is bound to the *content* of the gated stage's output files. A
+  hand edit, a regenerated stage or a `redo` that changes them asks again. A gate after the last stage
+  of a `--until` run holds nothing back, so it does not pause.
+- `vidpipe redo shot N [project]` re-rolls one shot: its keyframe and video get a new seed (the
+  per-shot re-roll count is `rerolls` in `build/ledger.json`, the seed is recorded in each artifact),
+  and the assemblies that use it are redone. Other shots, narration and music are untouched. Gates
+  apply, so the new keyframe is shown at the keyframes gate before it is animated; `--auto` and
+  `--approve` work as for `run`.
+
 ## Fit planning and `vidpipe plan`
 
 Narration comes first, so its real length decides how much video is generated. For each shot the
@@ -110,3 +130,69 @@ Each narration clip's real length is `duration_s` in `build/narration.json`, rea
 4. Select it per stage in `vidpipe.yaml` (`providers: {narration: my-tts}`, or
    `{name: my-tts, options: {...}}` to pass constructor options).
 5. It is picked up by `tests/conformance/test_providers.py` automatically and must pass the shared suite.
+
+### Text providers (script, storyboard)
+
+`script` and `storyboard` use CLI text providers: `gemini-cli`, `claude-cli`, `codex-cli` (each also
+takes `options: {model:, timeout_s:, command:}`). Each CLI runs non-interactively in an empty
+temporary directory with agent tools disabled; its reply is checked against the stage's Pydantic
+model and re-prompted with the error up to twice. Check each vendor's current terms for automated
+CLI use, and log in to each CLI yourself beforehand (vidpipe never handles credentials).
+
+A stage can list a fallback chain; the next provider is tried on failure, rate limit or exhausted
+re-prompts (default for `script` and `storyboard`: Gemini, then Claude):
+
+```yaml
+providers:
+  script: [gemini-cli, claude-cli]          # or [{name: gemini-cli, options: {model: ...}}, codex-cli]
+  storyboard: claude-cli
+```
+
+Tests drive the adapters through fake `gemini`/`claude`/`codex` executables on PATH
+(`tests/fake_cli.py`, fixture `fake_clis`); `fake-text` keeps the offline pipeline fast. To run the
+real CLIs through the conformance suite: `uv run pytest -m integration -k text`. When a chain falls back,
+the artifact record in `build/ledger.json` says which provider failed and which answered.
+
+### Translation (English to Amharic) and the back-translation check
+
+`translation` is done by text providers through the same chain as `script` (default: Gemini CLI, then
+Claude CLI), or by a registered translation provider such as `fake-translation`:
+
+```yaml
+languages: [en, am]          # the first language is the script's; the others are translated
+providers:
+  translation: [gemini-cli, claude-cli]    # default; `translation: claude-cli` also works
+```
+
+The script goes out as numbered lines and comes back as the same lines (ids preserved, so narration
+and storyboard shots still line up). A reply that loses, invents or renumbers a line, or leaves a
+line without Ge'ez script, is re-prompted. Output: `build/translation/<lang>.json`.
+
+**Back-translation check.** After translating, a model translates the Amharic back to English
+*without seeing the source*, then compares that with the source line by line. The result is
+`build/translation/<lang>.review.json` (a `TranslationReview`) and the ledger artifact
+`translation/<lang>/review`:
+
+```json
+{"language": "am", "source_language": "en", "translator": "gemini-cli", "checker": "claude-cli",
+ "same_model": false,
+ "lines": [{"id": 2, "status": "drift", "source": "...", "translation": "...",
+            "back_translation": "...", "reason": "one-sentence reason"}]}
+```
+
+- The checker is never the translator when the chain has another provider: it is built from the other
+  members only, and the check fails (the translation is kept; the next run resumes at the check) if
+  they all fail. A chain with nobody else runs the check with the translator and records
+  `"same_model": true`. Members are "the same model" when name and options are equal.
+- Drifted lines are flagged `"status": "drift"` with a `reason`. They do not stop the run: `vidpipe run`
+  prints each one (with the English, Amharic and back-translation) to stderr (also when the run pauses at a gate, and at the interactive prompt of any gate after `translation`), and the ledger record's
+  `data.drifted` lists their ids. `vidpipe.translate.drift_flags(project)` returns them as `DriftFlag`s
+  for a gate or report to show.
+- The check re-runs if the translated file is hand-edited, so fixing a flagged line clears its flag.
+  Translation providers that are not text chains (`fake-translation`) are not back-checked.
+
+**Unicode.** Every file vidpipe writes is UTF-8 (raw Ge'ez, not `\u12xx` escapes) and the CLI text
+adapters pipe UTF-8 both ways. A Windows console prints Ge'ez natively (needs a font with Ethiopic
+glyphs, e.g. Nirmala UI); *redirected* output used to fall back to cp1252 and crash, so `vidpipe`
+now switches stdout/stderr to UTF-8 when they are not already. Windows PowerShell 5.1 decodes piped
+native output with `[Console]::OutputEncoding`: set it to UTF-8 if you pipe vidpipe's output there.

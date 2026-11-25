@@ -22,6 +22,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from vidpipe.artifacts import ArtifactStore, digest
+from vidpipe.chain import describe
+from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import ImageToVideoProvider, Provider, TTSProvider
 from vidpipe.fit import NarrationInput, ShotInput, limits_for, plan_fit
 from vidpipe.fit_inputs import Narrate, collect_shots, script_for
@@ -145,7 +147,9 @@ def _estimate(
     config = project.config
     selection = config.providers.get(stage)
     provider = providers.get(stage)
-    estimate = StageEstimate(stage=stage, provider=selection.name if selection else None)
+    kind = STAGE_KINDS.get(stage)
+    label = describe(kind, selection) if kind is not None and selection is not None else None
+    estimate = StageEstimate(stage=stage, provider=label)
     if selection is None:  # brief, fit-planning, assembly: no provider, no GPU
         return estimate.model_copy(update={"gpu_minutes": 0.0, "dollars": 0.0})
     if provider is None:

@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from vidpipe.contracts import ProviderKind
 
 CONFIG_FILENAME = "vidpipe.yaml"
+
+
+#: Where the run pauses unless `gates:` says otherwise.
+DEFAULT_GATES = ("script", "storyboard", "keyframes")
 
 
 class Visuals(StrEnum):
@@ -25,14 +29,31 @@ class ProviderSelection(BaseModel):
 
     name: str
     options: dict[str, Any] = Field(default_factory=dict)
-    #: Providers to fall back to, in order. Declared and validated only: nothing acts on it yet
-    #: (e.g. ``narration: {name: edge-tts, fallback: [mms-tts]}``).
-    fallback: list[str] = Field(default_factory=list[str])
+    #: Providers to fall back to, in order, after this one fails or is rate limited. Acted on for
+    #: text stages (e.g. ``script: [gemini-cli, claude-cli]``); for other stages it is declared and
+    #: validated only (``narration: {name: edge-tts, fallback: [mms-tts]}``).
+    fallback: tuple[ProviderSelection, ...] = ()
 
     @model_validator(mode="before")
     @classmethod
-    def _from_string(cls, value: Any) -> Any:
-        return {"name": value} if isinstance(value, str) else value
+    def _from_string_or_chain(cls, value: Any) -> Any:
+        """YAML forms: ``name``, ``{name:, options:}``, or a list (primary, then fallbacks)."""
+        if isinstance(value, str):
+            return {"name": value}
+        if isinstance(value, list) and value:
+            first, *rest = cast(list[Any], value)
+            primary: dict[str, Any] = {"name": first} if isinstance(first, str) else dict(first)
+            return {**primary, "fallback": rest}
+        return cast(Any, value)
+
+    @property
+    def label(self) -> str:
+        """``gemini-cli`` or, for a chain, ``gemini-cli > claude-cli``."""
+        return " > ".join([self.name, *(f.name for f in self.fallback)])
+
+
+#: What ``script``, ``storyboard`` and ``translation`` use when ``vidpipe.yaml`` names no provider.
+DEFAULT_TEXT_CHAIN = ["gemini-cli", "claude-cli"]
 
 
 #: Stage name -> the contract kind that implements it.
@@ -57,7 +78,19 @@ class ProjectConfig(BaseModel):
     width: int = 160
     height: int = 90
     fps: int = 8
+    #: Stages after which the run pauses for approval (see `vidpipe.gates`); `[]` for none.
+    gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
+    #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
+    #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
+
+    @field_validator("providers", mode="before")
+    @classmethod
+    def _default_text_chains(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        defaults = {stage: DEFAULT_TEXT_CHAIN for stage in ("script", "storyboard", "translation")}
+        return {**defaults, **cast(dict[str, Any], value)}
 
     @field_validator("providers")
     @classmethod

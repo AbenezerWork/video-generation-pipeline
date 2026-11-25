@@ -14,6 +14,7 @@ Providers raise :class:`UnsupportedRequest` when a request falls outside their c
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
@@ -103,6 +104,9 @@ class TextCapabilities(Capabilities):
 class TextRequest(Request):
     prompt: str
     json_schema: dict[str, Any]
+    #: Optional check of each candidate answer; raises ``ValueError`` to reject it. Providers
+    #: that can re-prompt (the CLI adapters) feed the error message back to the model.
+    validator: Callable[[dict[str, Any]], None] | None = Field(default=None, exclude=True)
 
 
 class TextResponse(BaseModel):

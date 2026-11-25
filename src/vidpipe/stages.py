@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 
+from pydantic import BaseModel
+
 from vidpipe.artifacts import ArtifactStore, Inputs, Made, Produced
 from vidpipe.assembly import Assembler, AssemblyJob, LanguageRender, ShotSegment
 from vidpipe.config import STAGE_KINDS
@@ -26,13 +28,12 @@ from vidpipe.contracts import (
     ImageToVideoRequest,
     KeyframeRequest,
     KeyframerProvider,
+    MotionType,
     MusicProvider,
     MusicRequest,
     Provider,
     TextProvider,
-    TextRequest,
     TranslationProvider,
-    TranslationRequest,
     TTSProvider,
     TTSRequest,
 )
@@ -53,6 +54,8 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
+from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
+from vidpipe.translate import TextTranslator, TranslationError, review_path, translate_script
 
 P = TypeVar("P", bound=Provider[Any])
 
@@ -106,6 +109,9 @@ class StageContext:
             self.generated += 1
         return produced
 
+    def shot_seed(self, shot_id: int) -> int:
+        return self.store.shot_seed(shot_id)
+
     def provider(self, stage: str, expected: type[P]) -> P:
         provider = self.providers.get(stage)
         if provider is None:
@@ -148,6 +154,29 @@ def _write_index(ctx: StageContext, name: str, items: list[MediaItem]) -> list[s
     return [ctx.project.write_model(name, MediaIndex(items=items)), *(i.path for i in items)]
 
 
+#: What each motion type means to the storyboarding model (the vocabulary is the MotionType enum).
+MOTION_DESCRIPTIONS: dict[MotionType, str] = {
+    MotionType.PUSH_IN: "the camera slowly pushes in towards the subject",
+    MotionType.PAN: "the camera slowly pans sideways across the scene",
+    MotionType.AMBIENT: "the camera is still; only gentle motion in the scene (wind, steam, light)",
+}
+
+
+def _ask[M: BaseModel](
+    provider: TextProvider, prompt: str, model: type[M], check: Callable[[M], None]
+) -> M:
+    """Ask a text provider for a validated ``model``; a provider failure fails the stage."""
+    try:
+        return ask(provider, prompt, model, check)
+    except TextProviderError as exc:
+        raise StageError(str(exc)) from exc
+
+
+def _check_script(draft: ScriptDraft) -> None:
+    if blank := [i for i, line in enumerate(draft.lines, start=1) if not line.strip()]:
+        raise ValueError(f"script lines are blank: {blank}")
+
+
 class BriefStage(Stage):
     name = "brief"
 
@@ -166,22 +195,31 @@ class ScriptStage(Stage):
     def run(self, ctx: StageContext) -> list[str]:
         brief = ctx.project.read_model("brief.json", Brief)
         provider = ctx.provider("script", TextProvider)
+        language = ctx.project.config.primary_language
         prompt = (
-            f"Write a short narration script in language {ctx.project.config.primary_language!r}, "
-            f"one sentence per line, for a video titled {brief.title!r}.\n\n{brief.body}"
+            f"Write the narration script for a short video titled {brief.title!r}, in the "
+            f"language with code {language!r}. It will be read aloud over a sequence of shots, "
+            f"one line per shot.\n\n"
+            f"Rules:\n"
+            f"- Put one sentence per entry of `lines`, in the order they are spoken.\n"
+            f"- Keep each line short enough to speak in 3 to 5 seconds (at most 14 words).\n"
+            f"- Use 6 to 12 lines, so the whole video stays under 60 seconds.\n"
+            f"- Plain narration only: no stage directions, headings, numbering or markup.\n\n"
+            f"Brief:\n{brief.body}"
         )
 
         def make() -> Made:
-            response = provider.complete(
-                TextRequest(prompt=prompt, json_schema=ScriptDraft.model_json_schema())
-            )
-            draft = ScriptDraft.model_validate(response.data)
+            since = failure_count(provider)
+            draft = _ask(provider, prompt, ScriptDraft, _check_script)
             script = Script(
                 language=ctx.project.config.primary_language,
                 title=brief.title,
                 lines=[ScriptLine(id=i, text=t) for i, t in enumerate(draft.lines, start=1)],
             )
-            return Made([ctx.project.write_model("script.json", script)])
+            return Made(
+                [ctx.project.write_model("script.json", script)],
+                fallback=fallback_note(provider, since),
+            )
 
         made = ctx.produce(
             "script",
@@ -222,26 +260,12 @@ class TranslationStage(Stage):
         for lang in self._targets(ctx):
 
             def make(lang: str = lang) -> Made:
-                response = provider.translate(
-                    TranslationRequest(
-                        texts=[line.text for line in script.lines],
-                        source_language=script.language,
-                        target_language=lang,
-                    )
-                )
-                if len(response.texts) != len(script.lines):
-                    raise StageError(
-                        f"translation into {lang!r} returned the wrong number of lines"
-                    )
-                translated = Script(
-                    language=lang,
-                    title=script.title,
-                    lines=[
-                        ScriptLine(id=line.id, text=text)
-                        for line, text in zip(script.lines, response.texts, strict=True)
-                    ],
-                )
-                return Made([ctx.project.write_model(f"translation/{lang}.json", translated)])
+                try:
+                    done = translate_script(provider, script, lang)
+                except TranslationError as exc:
+                    raise StageError(str(exc)) from exc
+                path = ctx.project.write_model(f"translation/{lang}.json", done.script)
+                return Made([path], data=done.data, fallback=done.fallback)
 
             made = ctx.produce(
                 f"translation/{lang}",
@@ -250,7 +274,53 @@ class TranslationStage(Stage):
                 make=make,
             )
             outputs += _rels(ctx, made)
+            if isinstance(provider, TextTranslator):
+                outputs += self._review(ctx, provider, script, lang, made.data)
         return outputs
+
+    def _review(
+        self,
+        ctx: StageContext,
+        provider: TextTranslator,
+        script: Script,
+        lang: str,
+        translator: dict[str, Any],
+    ) -> list[str]:
+        """Back-translation check of ``lang``'s translation, re-run when the translated text (a
+        hand edit, say) or the translator changes. Flags land in ``translation/<lang>.review.json``.
+        """
+
+        def make() -> Made:
+            try:
+                reviewed = provider.review(
+                    script,
+                    ctx.script(lang),
+                    translator=translator.get("translator", provider.name),
+                    translator_fingerprint=translator.get("translator_fingerprint"),
+                )
+            except TranslationError as exc:
+                raise StageError(str(exc)) from exc
+            path = ctx.project.write_model(review_path(lang), reviewed.review)
+            return Made(
+                [path],
+                data={
+                    "drifted": [line.id for line in reviewed.review.drifted],
+                    "same_model": reviewed.review.same_model,
+                    "checker": reviewed.review.checker,
+                    "translator": reviewed.review.translator,
+                },
+                fallback=reviewed.fallback,
+            )
+
+        made = ctx.produce(
+            f"translation/{lang}/review",
+            inputs=Inputs(
+                files=["script.json", f"translation/{lang}.json"], values={"translator": translator}
+            ),
+            parameters={"source_language": script.language, "target_language": lang},
+            make=make,
+        )
+        return _rels(ctx, made)
 
 
 class StoryboardStage(Stage):
@@ -260,27 +330,40 @@ class StoryboardStage(Stage):
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("storyboard", TextProvider)
         lines = "\n".join(f"{line.id}. {line.text}" for line in script.lines)
+        motions = "\n".join(f"  - {m.value}: {MOTION_DESCRIPTIONS[m]}" for m in MotionType)
         prompt = (
-            "Storyboard this script as shots, each with a visual description and a motion type "
-            f"(push_in, pan or ambient).\n\n{lines}"
+            "Storyboard this narration script for a short stylized video. Give each script line "
+            "one shot, in script order.\n\n"
+            "For each shot:\n"
+            "- `line_id`: the number of the script line the shot illustrates.\n"
+            "- `visual`: one concrete sentence describing a single still image: subject, setting, "
+            "light and mood. No complex action, no text or lettering in the image.\n"
+            "- `motion_type`: exactly one of the following (the video model can do nothing else):\n"
+            f"{motions}\n\n"
+            f"Script:\n{lines}"
         )
+        valid_ids = {line.id for line in script.lines}
+
+        def check(draft: StoryboardDraft) -> None:
+            used = {s.line_id for s in draft.shots}
+            if unknown := sorted(used - valid_ids):
+                raise ValueError(f"shots refer to script lines that do not exist: {unknown}")
+            if missing := sorted(valid_ids - used):
+                raise ValueError(f"script lines with no shot: {missing}")
 
         def make() -> Made:
-            response = provider.complete(
-                TextRequest(prompt=prompt, json_schema=StoryboardDraft.model_json_schema())
-            )
-            draft = StoryboardDraft.model_validate(response.data)
-            valid_ids = {line.id for line in script.lines}
-            bad = [s.line_id for s in draft.shots if s.line_id not in valid_ids]
-            if bad:
-                raise StageError(f"storyboard refers to unknown script lines: {bad}")
+            since = failure_count(provider)
+            draft = _ask(provider, prompt, StoryboardDraft, check)
             storyboard = Storyboard(
                 shots=[
                     Shot(id=i, line_id=s.line_id, visual=s.visual, motion_type=s.motion_type)
                     for i, s in enumerate(draft.shots, start=1)
                 ]
             )
-            return Made([ctx.project.write_model("storyboard.json", storyboard)])
+            return Made(
+                [ctx.project.write_model("storyboard.json", storyboard)],
+                fallback=fallback_note(provider, since),
+            )
 
         made = ctx.produce(
             "storyboard",
@@ -409,7 +492,7 @@ class KeyframesStage(Stage):
                         prompt=shot.visual,
                         width=config.width,
                         height=config.height,
-                        seed=shot.id,
+                        seed=ctx.shot_seed(shot.id),
                         output_path=ctx.project.artifact_path(f"{key}.png"),
                     )
                 )
@@ -419,7 +502,7 @@ class KeyframesStage(Stage):
                 key,
                 inputs=Inputs(values={"prompt": shot.visual}),
                 parameters={"width": config.width, "height": config.height},
-                seed=shot.id,
+                seed=ctx.shot_seed(shot.id),
                 make=make,
             )
             items.append(_item(ctx, shot.id, made.paths[0]))
@@ -460,7 +543,7 @@ class VideoStage(Stage):
                             prompt=shot.visual,
                             motion_type=shot.motion_type,
                             duration_s=seconds,
-                            seed=shot.id,
+                            seed=ctx.shot_seed(shot.id),
                             output_path=ctx.project.artifact_path(f"{key}.mp4"),
                         )
                     )
@@ -470,7 +553,7 @@ class VideoStage(Stage):
                     key,
                     inputs=Inputs(files=[image], values={"prompt": shot.visual}),
                     parameters={"motion_type": shot.motion_type.value, "duration_s": seconds},
-                    seed=shot.id,
+                    seed=ctx.shot_seed(shot.id),
                     make=make,
                 )
                 items.append(

@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.cli_text_fixtures import fake_clis as fake_clis
+
 SAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample"
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
@@ -38,6 +40,11 @@ def make_project(tmp_path: Path) -> MakeProject:
         config = yaml.safe_load((root / "vidpipe.yaml").read_text(encoding="utf-8"))
         providers = config_overrides.pop("providers", {})
         config["providers"].update(providers)
+        # Gates would pause most tests mid-run: they are off unless a test asks (`gates=None` keeps
+        # the default gate set).
+        gates = config_overrides.pop("gates", [])
+        if gates is not None:
+            config["gates"] = gates
         config.update(config_overrides)
         text: str = yaml.safe_dump(config)  # pyright: ignore[reportUnknownMemberType]
         (root / "vidpipe.yaml").write_text(text, encoding="utf-8")
