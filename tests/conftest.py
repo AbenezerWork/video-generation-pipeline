@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.cli_text_fixtures import fake_clis as fake_clis
+
 SAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample"
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
