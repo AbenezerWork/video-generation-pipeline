@@ -11,7 +11,7 @@ from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.chain import build_provider, describe
 from vidpipe.config import STAGE_KINDS, ProviderSelection
-from vidpipe.contracts import Provider
+from vidpipe.contracts import ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper
 from vidpipe.models import Manifest, StageRecord, Storyboard
@@ -73,12 +73,15 @@ def _build_context(
     project: Project, registry: Registry, assembler: Assembler, problems: list[str]
 ) -> StageContext:
     providers: dict[str, Provider[Any]] = {}
+    about = ProjectContext(root=project.root, comfyui_url=project.config.comfyui.url)
     for stage, selection in project.config.providers.items():
         kind = STAGE_KINDS.get(stage)
         if kind is None:
             continue  # e.g. `song`: configurable, but not part of the stage graph yet
         try:
-            providers[stage] = build_provider(registry, kind, selection)
+            provider = build_provider(registry, kind, selection)
+            provider.attach(about)
+            providers[stage] = provider
         except UnknownProvider as exc:
             problems.append(f"{stage}: {exc}")
         except (TypeError, ValueError) as exc:  # ValueError includes pydantic.ValidationError
@@ -169,7 +172,12 @@ def run(
     for index, stage_obj in enumerate(selected):
         stage = stage_obj.name
         ctx.begin(stage)
-        outputs = stage_obj.run(ctx)
+        try:
+            outputs = stage_obj.run(ctx)
+        finally:
+            # One model resident at a time: the stage's provider lets go (also after a failure).
+            if used := ctx.providers.get(stage):
+                used.release()
         selection = project.config.providers.get(stage)
         manifest.stages.append(
             StageRecord(

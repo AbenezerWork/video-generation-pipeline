@@ -34,6 +34,7 @@ from vidpipe.contracts import (
     TTSRequest,
     UnsupportedRequest,
 )
+from vidpipe.providers._media import png_size, write_png
 
 UNSUPPORTED_LANGUAGE = "zz-unsupported"
 
@@ -97,30 +98,56 @@ def check_tts(provider: TTSProvider, tmp_path: Path) -> None:
         )
 
 
+def _round_up(value: int, multiple: int) -> int:
+    return -(-value // multiple) * multiple
+
+
 def check_keyframer(provider: KeyframerProvider, tmp_path: Path) -> None:
     caps = provider.capabilities
-    out = tmp_path / "frame"
-    result = provider.generate(
-        KeyframeRequest(
-            prompt="a misty ridge",
-            width=64,
-            height=36,
-            seed=7,
-            output_path=out,
-            extras={"unknown_option": True},
-        )
-    )
-    _same_place(out, result.path)
-    assert (result.width, result.height) == (64, 36)
-    with pytest.raises(UnsupportedRequest):
-        provider.generate(
-            KeyframeRequest(
-                prompt="too big",
-                width=caps.max_width + 2,
-                height=36,
-                output_path=tmp_path / "big",
+    # The smallest 16:9-ish size the provider declares it can draw.
+    width = _round_up(max(caps.min_width, 64), caps.width_multiple)
+    height = _round_up(max(caps.min_height, 36), caps.height_multiple)
+    references: list[Path] = []
+    for index in range(caps.max_reference_images + 1):
+        references.append(tmp_path / f"reference_{index}.png")
+        write_png(references[-1], 64, 64, (40 * index, 120, 200))
+
+    def request(name: str, **changes: Any) -> KeyframeRequest:
+        values: dict[str, Any] = {"width": width, "height": height, "output_path": tmp_path / name}
+        return KeyframeRequest(prompt=" a misty ridge ", seed=7, **{**values, **changes})
+
+    # No references, then every number of references up to the declared maximum.
+    for count in range(caps.max_reference_images + 1):
+        out = tmp_path / f"frame_{count}"
+        result = provider.generate(
+            request(
+                out.name,
+                reference_images=references[:count],
+                extras={"unknown_option": True},
             )
         )
+        _same_place(out, result.path)
+        assert (result.width, result.height) == (width, height)
+        if result.path.suffix == ".png":
+            assert png_size(result.path) == (width, height)
+
+    # Anything outside the declared capabilities is refused.
+    refused: list[dict[str, Any]] = [
+        {"reference_images": references},  # one more than declared
+        {"width": _round_up(caps.max_width + 1, caps.width_multiple)},
+        {"height": _round_up(caps.max_height + 1, caps.height_multiple)},
+    ]
+    if caps.width_multiple > 1:
+        refused.append({"width": width + 1})
+    if caps.height_multiple > 1:
+        refused.append({"height": height + 1})
+    if caps.min_width > caps.width_multiple:
+        refused.append({"width": caps.min_width - caps.width_multiple})
+    if caps.max_pixels is not None and caps.max_width * caps.max_height > caps.max_pixels:
+        refused.append({"width": caps.max_width, "height": caps.max_height})
+    for index, changes in enumerate(refused):
+        with pytest.raises(UnsupportedRequest):
+            provider.generate(request(f"refused_{index}", **changes))
 
 
 def check_image_to_video(provider: ImageToVideoProvider, tmp_path: Path, image: Path) -> None:

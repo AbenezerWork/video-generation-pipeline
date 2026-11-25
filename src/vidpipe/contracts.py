@@ -8,7 +8,10 @@ Each provider:
 * accepts a request model that carries an ``extras`` dict for provider-specific options;
 * writes any media to ``request.output_path`` and returns a small result model.
 
-Providers raise :class:`UnsupportedRequest` when a request falls outside their capabilities.
+Providers raise :class:`UnsupportedRequest` when a request falls outside their capabilities, and
+:class:`GenerationError` when they cannot produce the asset (after any retries of their own). What
+they had to do to produce it (retries, a quality step-down) goes back in a
+:class:`GenerationRecord`, which the pipeline stores with the artifact.
 """
 
 from __future__ import annotations
@@ -44,8 +47,34 @@ class UnsupportedRequest(Exception):
     """A request needs something the provider's capabilities do not declare."""
 
 
+class GenerationError(Exception):
+    """The provider could not produce the asset; the stage fails (completed artifacts are kept)."""
+
+
 class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+
+class ProjectContext(Frozen):
+    """What the pipeline tells a provider about the project it works for (see ``attach``)."""
+
+    #: The project directory; relative paths in provider options are resolved against it.
+    root: Path
+    #: ``comfyui.url`` from ``vidpipe.yaml``.
+    comfyui_url: str | None = None
+
+
+class GenerationRecord(BaseModel):
+    """What a provider actually did to produce an asset, recorded with the artifact."""
+
+    #: The seed that produced the output, when it differs from the requested one (a retry).
+    seed: int | None = None
+    #: In words: retries made and any quality step-down applied. ``None``: first try, as asked.
+    fallback: str | None = None
+    #: Exact GPU seconds, when the backend reports them.
+    gpu_seconds: float | None = None
+    #: JSON-able details worth keeping (settings used, attempts); stored in the ledger's ``data``.
+    details: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
 class Request(BaseModel):
@@ -157,16 +186,41 @@ class TTSResult(BaseModel):
 
 
 class KeyframerCapabilities(Capabilities):
-    reference_images: bool = False
+    #: How many reference images one request may carry (0: text prompts only).
+    max_reference_images: int = 0
+    min_width: int = 1
+    min_height: int = 1
     max_width: int = 1024
     max_height: int = 1024
+    #: Cap on width x height, when the two maxima cannot be used together.
+    max_pixels: int | None = None
+    width_multiple: int = 1
+    height_multiple: int = 1
+
+    def size_problems(self, width: int, height: int) -> list[str]:
+        """Why this size cannot be drawn (empty when it can)."""
+        found: list[str] = []
+        sides = (
+            ("width", width, self.min_width, self.max_width, self.width_multiple),
+            ("height", height, self.min_height, self.max_height, self.height_multiple),
+        )
+        for name, value, low, high, multiple in sides:
+            if not low <= value <= high:
+                found.append(f"{name} {value} is outside {low}-{high}")
+            if value % multiple:
+                found.append(f"{name} {value} is not a multiple of {multiple}")
+        if self.max_pixels is not None and width * height > self.max_pixels:
+            found.append(f"{width}x{height} is more than {self.max_pixels} pixels")
+        return found
 
 
 class KeyframeRequest(Request):
+    #: English description of the still. It calls the reference images "image 1", "image 2", ...
     prompt: str
     width: int
     height: int
     seed: int = 0
+    #: In order of importance: the character first, then the location or style (ADR 0001).
     reference_images: list[Path] = Field(default_factory=list[Path])
     output_path: Path
 
@@ -175,6 +229,7 @@ class KeyframeResult(BaseModel):
     path: Path
     width: int
     height: int
+    record: GenerationRecord = Field(default_factory=GenerationRecord)
 
 
 # ------------------------------------------------------------------------------ image-to-video
@@ -255,6 +310,9 @@ class Provider[C: Capabilities](ABC):
     fake: ClassVar[bool] = False
     #: Generation runs on the local GPU, so the call's wall time is recorded as GPU time.
     uses_gpu: ClassVar[bool] = False
+    #: Options that cannot change the output (a server address, a timeout), so changing them
+    #: regenerates nothing. ``fingerprint`` must leave them out too.
+    unhashed_options: ClassVar[frozenset[str]] = frozenset()
     capabilities: C
     #: What this provider's work costs (free unless it declares otherwise); see ``vidpipe plan``.
     cost: CostModel = CostModel()
@@ -269,6 +327,13 @@ class Provider[C: Capabilities](ABC):
         version): the artifacts it made are then regenerated when that changes.
         """
         return {"name": self.name, "options": self.options}
+
+    def attach(self, context: ProjectContext) -> None:  # noqa: B027 - optional hook
+        """Called once by the pipeline before the provider is used on a project."""
+
+    def release(self) -> None:  # noqa: B027 - optional hook
+        """Give back what the provider holds (GPU memory). The pipeline calls it after each stage
+        that used the provider, also when the stage failed; it must not raise."""
 
 
 class TextProvider(Provider[TextCapabilities]):

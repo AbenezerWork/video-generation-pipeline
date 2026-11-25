@@ -280,14 +280,16 @@ class ArtifactStore:
 
         ``options`` are the provider options from the project config: they are hashed and recorded
         (a provider may consume them in its constructor, so ``provider.options`` is not enough).
+        The provider's ``unhashed_options`` (a server address, say) are recorded but not hashed.
         """
         params = dict(parameters or {})
         configured = dict(options or {})
         mapped = self.input_map(inputs)
+        unhashed: frozenset[str] = provider.unhashed_options if provider else frozenset()
         wanted = self.input_hash(
             stage=stage,
             provider=provider,
-            options=configured,
+            options={k: v for k, v in configured.items() if k not in unhashed},
             inputs=mapped,
             parameters=params,
             seed=seed,

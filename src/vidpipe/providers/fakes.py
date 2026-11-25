@@ -46,6 +46,7 @@ from vidpipe.contracts import (
 from vidpipe.providers._media import (
     Y4M_FPS,
     color_from,
+    file_digest,
     png_size,
     stable_int,
     write_png,
@@ -215,18 +216,29 @@ class FakeKeyframer(KeyframerProvider):
     name = "fake-keyframer"
     fake = True
     uses_gpu = True  # stands in for a GPU-backed provider
-    capabilities = KeyframerCapabilities(reference_images=True, max_width=512, max_height=512)
+    capabilities = KeyframerCapabilities(max_reference_images=2, max_width=512, max_height=512)
     cost = CostModel(unit=CostUnit.CALL, gpu_minutes=0.4)  # per image
 
     def generate(self, request: KeyframeRequest) -> KeyframeResult:
         caps = self.capabilities
-        if request.width > caps.max_width or request.height > caps.max_height:
-            raise UnsupportedRequest(f"size {request.width}x{request.height}")
-        if request.reference_images and not caps.reference_images:
-            raise UnsupportedRequest("reference images")
+        if problems := caps.size_problems(request.width, request.height):
+            raise UnsupportedRequest("; ".join(problems))
+        if len(request.reference_images) > caps.max_reference_images:
+            raise UnsupportedRequest(f"{len(request.reference_images)} reference images")
+        # The colour depends on the reference pictures too, so a changed reference shows.
+        references = [file_digest(p) for p in request.reference_images]
         path = request.output_path.with_suffix(".png")
-        write_png(path, request.width, request.height, color_from(request.prompt, request.seed))
+        colour = color_from(request.prompt, request.seed, *references)
+        write_png(path, request.width, request.height, colour)
         return KeyframeResult(path=path, width=request.width, height=request.height)
+
+
+@register
+class FakeKeyframerTextOnly(FakeKeyframer):
+    """A keyframer that cannot take reference images: the bible's descriptions stand in."""
+
+    name = "fake-keyframer-text-only"
+    capabilities = KeyframerCapabilities(max_reference_images=0, max_width=512, max_height=512)
 
 
 # ------------------------------------------------------------------------------- image-to-video

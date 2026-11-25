@@ -23,6 +23,10 @@ def stable_int(*parts: object) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
+def file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def color_from(*parts: object) -> tuple[int, int, int]:
     n = stable_int(*parts)
     return (n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF)

@@ -37,12 +37,15 @@ def test_provider_passes_its_contract_suite(
     suites.declares_identity_and_capabilities(provider)
     suites.has_a_stable_fingerprint(provider)
     check = suites.CHECKS[provider.kind.value]
-    if provider.kind is ProviderKind.IMAGE_TO_VIDEO:
-        image = tmp_path / "keyframe.png"
-        write_png(image, 64, 36, (10, 20, 30))
-        check(provider, tmp_path, image)
-    else:
-        check(provider, tmp_path)
+    try:
+        if provider.kind is ProviderKind.IMAGE_TO_VIDEO:
+            image = tmp_path / "keyframe.png"
+            write_png(image, 64, 36, (10, 20, 30))
+            check(provider, tmp_path, image)
+        else:
+            check(provider, tmp_path)
+    finally:
+        provider.release()  # a real GPU provider gives its memory back
 
 
 def test_every_contract_has_a_fake_provider() -> None:

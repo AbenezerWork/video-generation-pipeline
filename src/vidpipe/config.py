@@ -99,6 +99,15 @@ class MixConfig(BaseModel):
     duck_ratio: float = Field(default=8.0, ge=1, le=20)
 
 
+class ComfyUIConfig(BaseModel):
+    """The ComfyUI server every ``comfyui-*`` provider talks to (it runs outside vidpipe)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Default ``http://127.0.0.1:8188``. A provider's own ``url`` option wins over this.
+    url: str | None = None
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -113,6 +122,7 @@ class ProjectConfig(BaseModel):
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
     mix: MixConfig = Field(default_factory=MixConfig)
+    comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
     #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
     #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
