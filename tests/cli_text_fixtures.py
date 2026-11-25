@@ -60,9 +60,11 @@ class FakeClis:
     def fail(self, binary: str, stderr: str, exit_code: int = 1) -> None:
         self._queue(binary, [{"kind": "fail", "stderr": stderr, "exit": exit_code}])
 
-    def hang(self, binary: str) -> None:
-        """Queue a reply that blocks until :meth:`release`, keeping the calling run in progress."""
-        self._queue(binary, [{"kind": "hang"}])
+    def hang(self, binary: str, then: str | None = None) -> None:
+        """Queue a reply that blocks until :meth:`release`, keeping the calling run in progress.
+
+        Released, it fails, or answers ``then`` when given (as :meth:`reply` would)."""
+        self._queue(binary, [{"kind": "hang", "then": then}])
 
     @property
     def hanging(self) -> bool:
@@ -70,7 +72,7 @@ class FakeClis:
         return (self.root / "hanging").exists()
 
     def release(self) -> None:
-        """Let every blocked ``hang`` reply return (as a failure)."""
+        """Let every blocked ``hang`` reply return."""
         (self.root / "release").write_text("", encoding="utf-8")
 
     def calls(self, binary: str) -> list[Call]:
