@@ -7,6 +7,15 @@ const rail = document.getElementById("rail");
 const detail = document.getElementById("stage-detail");
 const announcer = document.getElementById("announcer");
 const tabTemplate = document.getElementById("stage-tab");
+const controls = document.getElementById("run-controls");
+const startForm = document.getElementById("start-run");
+const until = document.getElementById("run-until");
+const startButton = document.getElementById("start-button");
+const stopButton = document.getElementById("stop-button");
+const stopNowButton = document.getElementById("stop-now-button");
+const actionError = document.getElementById("run-action-error");
+const logs = document.getElementById("run-logs");
+const logText = document.getElementById("run-log-text");
 
 /** Statuses the design system draws (data-status); a stopped stage rests like a waiting one. */
 const TONE = { stopped: "waiting" };
@@ -132,7 +141,7 @@ function renderRunSummary() {
   if (!run) {
     chip.dataset.status = "waiting";
     chip.querySelector(".status-text").textContent = "No run yet";
-    detailText.textContent = "Start one with vidpipe run.";
+    detailText.textContent = "";
     return;
   }
   const { tone, text } = RUN_STATUS[run.status];
@@ -260,6 +269,93 @@ function announce(lines) {
   }, 5000);
 }
 
+// ---------------------------------------------------------------- run controls and logs
+
+let sendingAction = false;
+let logTimer;
+let loadingLog = false;
+
+function renderControls(before) {
+  const focused = document.activeElement;
+  const active = run?.status === "running" || run?.status === "stopping";
+  const resume = run?.status === "stopped" || run?.status === "failed";
+  if (resume && (before?.run_id !== run.run_id || before?.status !== run.status)) {
+    until.value = run.until ?? "";
+  }
+  startButton.textContent = resume ? "Resume" : "Start run";
+  startForm.hidden = active;
+  stopButton.hidden = run?.status !== "running";
+  stopNowButton.hidden = run?.status !== "stopping";
+  for (const button of [startButton, stopButton, stopNowButton]) {
+    button.setAttribute("aria-disabled", String(sendingAction));
+  }
+  if (controls.contains(focused) && focused.closest("[hidden]")) {
+    const activeButton = stopButton.hidden ? stopNowButton : stopButton;
+    (active ? activeButton : startButton).focus();
+  }
+}
+
+async function runAction(action, body) {
+  if (sendingAction) return;
+  sendingAction = true;
+  actionError.textContent = "";
+  renderControls(run);
+  try {
+    const response = await fetch(`/api/run/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const problem = await response.json();
+      actionError.textContent = problem.error;
+    }
+  } catch {
+    actionError.textContent = "Could not reach the server. Check the run status before trying again.";
+  } finally {
+    sendingAction = false;
+    renderControls(run);
+  }
+}
+
+startForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runAction("start", { until: until.value || null });
+});
+stopButton.addEventListener("click", () => runAction("stop", { run_id: run.run_id }));
+stopNowButton.addEventListener("click", () => runAction("stop-now", { run_id: run.run_id }));
+
+async function refreshLog() {
+  if (loadingLog || !logs.open) return;
+  loadingLog = true;
+  let text;
+  try {
+    const response = await fetch("/api/logs", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error();
+    const log = await response.json();
+    if (log) {
+      text = log.truncated ? `Showing the end of the log.\n\n${log.text}` : log.text;
+    } else {
+      text = run?.origin === "cli"
+        ? "Output for this run is in the terminal that started it."
+        : "No captured log yet.";
+    }
+  } catch {
+    text = "Could not load the run log.";
+  } finally {
+    loadingLog = false;
+  }
+  if (logs.open && text !== logText.textContent) logText.textContent = text;
+}
+
+logs.addEventListener("toggle", () => {
+  clearInterval(logTimer);
+  if (logs.open) {
+    refreshLog();
+    logTimer = setInterval(refreshLog, 1500);
+  }
+});
+
 // ---------------------------------------------------------------- live updates
 
 function update(state, { speak }) {
@@ -268,6 +364,7 @@ function update(state, { speak }) {
   if (speak) announce(transitions(before, state));
   for (const stage of stages) renderStage(stage);
   renderRunSummary();
+  renderControls(before);
   if (!pinned) {
     const follow = run?.current_stage ?? run?.paused_at ?? run?.error?.stage ?? null;
     if (follow && follow !== selected) select(follow);
@@ -288,6 +385,8 @@ async function start() {
   if (!response.ok) throw new Error(`/api/project: ${response.status}`);
   const summary = await response.json();
   stages = summary.stages;
+  for (const stage of stages) until.add(new Option(stage.label, stage.stage));
+  controls.hidden = false;
   document.getElementById("project-name").textContent = summary.name;
   document.title = `Run · ${summary.name} · vidpipe`;
   buildRail();

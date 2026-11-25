@@ -29,6 +29,8 @@ from vidpipe.project import Project
 RUN_STATE_FILENAME = "run_state.json"
 #: Environment variable naming who started the run (``cli`` or ``ui``); the UI sets it to ``ui``.
 ORIGIN_ENV = "VIDPIPE_RUN_ORIGIN"
+#: Lets the UI launcher identify its run even when a Windows venv uses a redirector process.
+RUN_ID_ENV = "VIDPIPE_RUN_ID"
 #: Version of the record's schema, bumped on incompatible changes.
 SCHEMA_VERSION = 1
 #: Progress after an artifact is written at most this often; stage and run changes always are.
@@ -165,6 +167,10 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def new_run_id() -> str:
+    return f"{datetime.now():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
+
+
 def read_run_state(project_dir: Path) -> RunState | None:
     """The last run state of a project (``None`` if no run has recorded one).
 
@@ -236,7 +242,7 @@ class RunStatePublisher:
         self.path = project.build / RUN_STATE_FILENAME
         now = _now()
         self.state = RunState(
-            run_id=f"{datetime.now():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}",
+            run_id=(os.environ.get(RUN_ID_ENV) if origin == Origin.UI else None) or new_run_id(),
             command=command,
             shot=shot,
             origin=origin,

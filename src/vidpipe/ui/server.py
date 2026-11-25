@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import socket
 from pathlib import Path
@@ -11,6 +12,7 @@ import uvicorn
 from vidpipe.project import Project
 from vidpipe.ui.access import new_token
 from vidpipe.ui.app import create_app
+from vidpipe.ui.runs import ask_on_quit
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -57,4 +59,7 @@ def serve(project_dir: Path, *, host: str = DEFAULT_HOST, port: int = DEFAULT_PO
         print(f"Open: http://{_shown_host(host)}:{port}/?token={token}")
         print("Anyone with this link can watch and control runs of this project.")
     print("Press Ctrl+C to quit.", flush=True)
-    uvicorn.run(app, host=host, port=port, log_level="warning", timeout_graceful_shutdown=2)
+    # Uvicorn re-raises SIGINT after it finishes shutting down.
+    with contextlib.suppress(KeyboardInterrupt):
+        uvicorn.run(app, host=host, port=port, log_level="warning", timeout_graceful_shutdown=2)
+    ask_on_quit(project_dir)

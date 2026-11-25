@@ -48,17 +48,20 @@ class RunStopped(Exception):  # noqa: N818 (an outcome, not an error)
     """Raised in the runner between artifacts once a stop was asked for."""
 
 
-def request_stop(project_dir: Path, *, now: bool = False) -> StopRequest:
+def request_stop(project_dir: Path, *, now: bool = False, run_id: str | None = None) -> StopRequest:
     """Ask the run in progress on ``project_dir`` to stop (``now``: stop now).
 
     Does not take the project lock. Raises :class:`NoRunInProgress` when no run is in progress.
     Asking again is harmless; a stop now after a stop turns it into a stop now (never back).
-    Returns the request written; the run state shows ``stopping`` once the run has seen it.
+    If supplied, ``run_id`` must still be the active run. Returns the request written; the run
+    state shows ``stopping`` once the run has seen it.
     """
     root = Path(project_dir)
     state = read_run_state(root)
     if state is None or state.status not in ACTIVE:
         raise NoRunInProgress(f"{root}: no run in progress to stop")
+    if run_id is not None and state.run_id != run_id:
+        raise NoRunInProgress("the selected run ended; refresh the run state before stopping")
     path = root / "build" / STOP_REQUEST_FILENAME
     earlier = _read(path)
     already_now = earlier is not None and earlier.run_id == state.run_id and earlier.now
@@ -89,7 +92,6 @@ class StopWatcher:
         self._requested = threading.Event()
         self._now = threading.Event()
         self._done = threading.Event()
-        self._remove()  # a request left by an earlier run is not for this one
         self._thread = threading.Thread(target=self._watch, name="vidpipe-stop", daemon=True)
         self._thread.start()
 
@@ -110,9 +112,8 @@ class StopWatcher:
         """Stop watching and remove this run's request (the run has ended)."""
         self._done.set()
         self._thread.join(timeout=5)
-        request = _read(self.path)
-        if request is None or request.run_id == self._run_id:
-            self._remove()
+        # The writer still holds the lock, so no newer run can have a request here.
+        self._remove()
 
     def _watch(self) -> None:
         while not self._done.wait(POLL_S):

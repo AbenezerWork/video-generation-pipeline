@@ -115,8 +115,7 @@ the file is left as it is.
 `vidpipe ui <project>` serves a web console for one project (the optional `ui` extra:
 `pip install 'vidpipe[ui]'` or `uv sync --extra ui`; the dev environment has it). The Run view
 shows the ten stages as a rail with each stage's status, provider, time and, while it runs, a
-progress ring, following the run state live. Runs are started from the CLI for now; one started
-in another terminal shows up on its own, and closing the tab never affects it.
+progress ring, following the run state live.
 
 ```
 uv run vidpipe ui examples/sample                   # http://127.0.0.1:8765/, this machine only
@@ -125,15 +124,28 @@ uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: print
 
 ![The Run view during a run on fake providers](docs/assets/ui-run-view.jpg)
 
+- **Run controls.** Choose **All stages** or a stage to run through, then select **Start run**.
+  **Stop** lets the artifact in progress finish. While the run is stopping, **Stop now** cancels
+  the current ComfyUI job. **Resume** starts a new run with the previous stage limit selected
+  and reuses finished work. The same stop controls apply to a run started from the CLI.
+- **Leaving the UI.** Closing the tab leaves the run going. Ctrl+C in the UI server's terminal
+  prompts when a run is in progress. Press Enter to leave it running or enter `s` to request a
+  graceful stop. A server with redirected input leaves the run going. Reopening the UI picks up
+  the project's current run state.
+- **Run log.** Expand **Run log** to see the recent output of the current UI-started run.
+  Full logs are saved under `build/logs/ui-run-<run-id>.log`. For CLI-started runs, output
+  is in the terminal that started them.
 - **Access.** By default the UI listens on 127.0.0.1 and accepts only loopback host names (so a web
   page cannot reach it by rebinding a domain to 127.0.0.1). With any other `--host` it requires a
   random token printed at startup as a link, `http://<address>:8765/?token=<token>`: opening it
   swaps the token for an `HttpOnly`, `SameSite=Lax` cookie that the page and its event stream carry;
   scripts can send `Authorization: Bearer <token>`. Anything else gets 401. Use `--port` to move it.
 - **HTTP API.** `GET /api/project` (the stages with provider, phase and gate, the project config's
-  languages and gates, and the run state), `GET /api/run` (the run state above, or `null`), and
-  `GET /api/events`, one SSE stream whose `run` events carry the run state on connect and whenever
-  it changes.
+  languages and gates, and the run state), `GET /api/run` (the run state above, or `null`),
+  `GET /api/logs` (captured output for the current run, or `null`), and `GET /api/events`, one
+  SSE stream whose `run` events carry the run state on connect and whenever it changes.
+  Actions are `POST /api/run/start` (optional JSON `until`), `POST /api/run/stop` and
+  `POST /api/run/stop-now` (optional JSON `run_id` to target the run shown on screen).
 - **Front end.** No-build HTML, CSS and JS in `src/vidpipe/ui/static/`, styled only with the design
   system there (`style.html` shows every token and component). The rail is operable by keyboard
   (arrow keys, Home, End) and becomes a horizontal strip on narrow screens; a polite live region

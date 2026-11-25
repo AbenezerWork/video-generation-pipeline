@@ -56,6 +56,33 @@ body {
   min-inline-size: 0;
 }
 
+.run-controls,
+#start-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.run-controls label {
+  font-size: var(--text-sm);
+}
+
+.run-controls[hidden],
+.run-controls [hidden] {
+  display: none;
+}
+
+.run-action-error {
+  flex-basis: 100%;
+  color: var(--color-status-failed);
+  overflow-wrap: anywhere;
+
+  &:empty {
+    position: absolute;
+  }
+}
+
 /* ---------- Run view: rail beside the selected stage's detail ---------- */
 
 .run-view {
@@ -154,6 +181,7 @@ body {
 
 /* ---------- Stage detail (filled in by later features) ---------- */
 
+.run-detail-column,
 .stage-detail {
   min-inline-size: 0;
   border-radius: var(--radius-3);
@@ -170,6 +198,23 @@ body {
   & h2 {
     font-size: var(--text-2xl);
   }
+}
+
+.run-logs {
+  margin-block-start: var(--space-3);
+}
+
+.run-logs summary {
+  cursor: pointer;
+}
+
+#run-log-text {
+  margin: var(--space-3) 0 0;
+  max-block-size: calc(var(--space-8) * 4);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
 }
 
 .facts {

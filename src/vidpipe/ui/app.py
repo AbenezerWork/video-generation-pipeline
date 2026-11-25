@@ -4,9 +4,9 @@ Route conventions (later features add a module with a ``routes()`` list and one 
 
 - ``/``: the console page (Run view; the Config view will be a second view of the same page).
 - ``/static/...``: the no-build front end in ``vidpipe/ui/static``.
-- ``GET /api/<thing>``: JSON reads (``project``, ``run``; later ``config``, ``providers``,
-  ``stages/<stage>/outputs``, ``logs``). Media files go under ``/media/...``.
-- ``POST /api/<thing>/<action>``: actions (later ``run/start``, ``run/stop``, ``run/stop-now``,
+- ``GET /api/<thing>``: JSON reads (``project``, ``run``, ``logs``; later ``config``, ``providers``,
+  ``stages/<stage>/outputs``). Media files go under ``/media/...``.
+- ``POST /api/<thing>/<action>``: actions (``run/start``, ``run/stop``, ``run/stop-now``; later
   ``gates/<stage>/approve``, ``shots/<n>/redo``, ``config/save``), answered with JSON.
 - ``GET /api/events``: the one SSE stream; event ``run`` carries the run state (later ``config``).
 """
@@ -21,7 +21,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.routing import BaseRoute
 
-from vidpipe.ui import api, events, pages
+from vidpipe.ui import api, events, pages, runs
 from vidpipe.ui.access import TokenGate
 from vidpipe.ui.context import UiContext
 
@@ -44,6 +44,7 @@ def create_app(
         *pages.routes(),
         *api.routes(),
         *events.routes(),
+        *runs.routes(),
     ]
     middleware: list[Middleware] = []
     if allowed_hosts is not None:
@@ -51,5 +52,7 @@ def create_app(
     if token is not None:
         middleware.append(Middleware(TokenGate, token=token))
     app = Starlette(routes=routes, middleware=middleware)
-    app.state.ui = UiContext(project_dir=project_dir.resolve(), poll_interval=poll_interval)
+    context = UiContext(project_dir=project_dir.resolve(), poll_interval=poll_interval)
+    app.state.ui = context
+    app.state.run_launcher = runs.RunLauncher(context.project_dir)
     return app

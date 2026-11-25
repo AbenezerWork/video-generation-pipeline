@@ -62,6 +62,23 @@ class UiClient:
         finally:
             conn.close()
 
+    def post(self, path: str, body: Any = None, headers: dict[str, str] | None = None) -> Response:
+        """A JSON ``POST`` (an action), sent with this UI's own ``Origin`` as a browser would."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+        payload = b"" if body is None else json.dumps(body).encode("utf-8")
+        sent = {
+            "Content-Type": "application/json",
+            "Origin": f"http://127.0.0.1:{self.port}",
+            **(headers or {}),
+        }
+        try:
+            conn.request("POST", path, body=payload, headers=sent)
+            reply = conn.getresponse()
+            headers_ = {k.lower(): v for k, v in reply.getheaders()}
+            return Response(reply.status, headers_, reply.read())
+        finally:
+            conn.close()
+
     def events(
         self, path: str = "/api/events", headers: dict[str, str] | None = None
     ) -> EventStream:
