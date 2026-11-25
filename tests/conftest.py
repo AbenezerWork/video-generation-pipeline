@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from tests.cli_text_fixtures import fake_clis as fake_clis
+from tests.fake_comfyui import FakeComfyUI
 
 SAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample"
 
@@ -25,6 +26,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if "needs_ffmpeg" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture
+def comfy() -> Iterator[FakeComfyUI]:
+    """A fake ComfyUI server (``comfy.url``) for the length of a test."""
+    server = FakeComfyUI().start()
+    yield server
+    server.stop()
 
 
 MakeProject = Callable[..., Path]
