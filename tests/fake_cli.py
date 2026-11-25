@@ -14,12 +14,14 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def _envelope(flavor: str, text: str) -> str:
     if flavor == "claude":
-        return json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": text})
+        return json.dumps(
+            {"type": "result", "subtype": "success", "is_error": False, "result": text}
+        )
     if flavor == "gemini":
         return json.dumps({"response": text, "stats": {"models": {}}})
     return text  # codex prints the final message as plain text
@@ -46,8 +48,8 @@ def main() -> int:
     )
     state_file.write_text(json.dumps(state), encoding="utf-8")
 
-    sys.stdout.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-    sys.stderr.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+    cast(Any, sys.stdout).reconfigure(encoding="utf-8")
+    cast(Any, sys.stderr).reconfigure(encoding="utf-8")
     if reply["kind"] == "text":
         if flavor == "codex":
             # `codex exec ... --output-last-message <file>` writes the final message there.

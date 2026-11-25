@@ -179,7 +179,7 @@ denyMessage = "vidpipe disables all tools for text generation"
 
 @register
 class GeminiCliText(CliTextProvider):
-    """``gemini -p ... -o json``: tools are denied by a catch-all policy rule on top of plan mode."""
+    """``gemini -p ... -o json``: plan mode plus a catch-all policy rule that denies every tool."""
 
     name = "gemini-cli"
     binary = "gemini"

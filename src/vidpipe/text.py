@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -24,8 +24,6 @@ from vidpipe.contracts import (
     TextResponse,
     UnsupportedRequest,
 )
-
-M = TypeVar("M", bound=BaseModel)
 
 
 class TextProviderError(Exception):
@@ -74,7 +72,7 @@ def extract_json(text: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------- stage helper
 
 
-def model_request(
+def model_request[M: BaseModel](
     prompt: str, model: type[M], check: Callable[[M], None] | None = None
 ) -> TextRequest:
     """A text request whose answer must validate as ``model`` (and pass ``check``, if given)."""
@@ -87,7 +85,7 @@ def model_request(
     return TextRequest(prompt=prompt, json_schema=model.model_json_schema(), validator=validator)
 
 
-def ask(
+def ask[M: BaseModel](
     provider: TextProvider,
     prompt: str,
     model: type[M],

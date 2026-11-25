@@ -52,8 +52,10 @@ def test_cli_adapter_passes_the_text_conformance_suite(
     [
         pytest.param(GOOD, id="bare"),
         pytest.param(f"```json\n{GOOD}\n```", id="fenced"),
-        pytest.param(f"Sure! Here is the JSON you asked for:\n\n{GOOD}\n\nAnything else?", id="prose"),
-        pytest.param('Note {not json} first. ' + GOOD, id="stray-braces"),
+        pytest.param(
+            f"Sure! Here is the JSON you asked for:\n\n{GOOD}\n\nAnything else?", id="prose"
+        ),
+        pytest.param("Note {not json} first. " + GOOD, id="stray-braces"),
     ],
 )
 def test_json_is_extracted_from_the_reply(adapter: str, reply: str, fake_clis: FakeClis) -> None:
@@ -169,9 +171,7 @@ def test_cli_runs_in_an_empty_temp_directory_with_tools_disabled(
         assert "shell_tool" in flags
 
 
-def test_model_and_command_options_are_passed_through(
-    fake_clis: FakeClis, tmp_path: Path
-) -> None:
+def test_model_and_command_options_are_passed_through(fake_clis: FakeClis, tmp_path: Path) -> None:
     fake_clis.reply("claude", GOOD)
     provider = default_registry().create(ProviderKind.TEXT, "claude-cli", model="opus")
     assert isinstance(provider, TextProvider)

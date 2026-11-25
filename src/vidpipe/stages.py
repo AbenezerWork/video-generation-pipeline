@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
+
+from pydantic import BaseModel
 
 from vidpipe.assembly import Assembler, AssemblyJob, LanguageRender, ShotSegment
 from vidpipe.config import STAGE_KINDS
@@ -20,11 +23,11 @@ from vidpipe.contracts import (
     ImageToVideoRequest,
     KeyframeRequest,
     KeyframerProvider,
+    MotionType,
     MusicProvider,
     MusicRequest,
     Provider,
     TextProvider,
-    TextRequest,
     TranslationProvider,
     TranslationRequest,
     TTSProvider,
@@ -46,6 +49,7 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
+from vidpipe.text import TextProviderError, ask
 
 P = TypeVar("P", bound=Provider[Any])
 
@@ -98,6 +102,29 @@ def _write_index(ctx: StageContext, name: str, items: list[MediaItem]) -> list[s
     return [ctx.project.write_model(name, MediaIndex(items=items)), *(i.path for i in items)]
 
 
+#: What each motion type means to the storyboarding model (the vocabulary is the MotionType enum).
+MOTION_DESCRIPTIONS: dict[MotionType, str] = {
+    MotionType.PUSH_IN: "the camera slowly pushes in towards the subject",
+    MotionType.PAN: "the camera slowly pans sideways across the scene",
+    MotionType.AMBIENT: "the camera is still; only gentle motion in the scene (wind, steam, light)",
+}
+
+
+def _ask[M: BaseModel](
+    provider: TextProvider, prompt: str, model: type[M], check: Callable[[M], None]
+) -> M:
+    """Ask a text provider for a validated ``model``; a provider failure fails the stage."""
+    try:
+        return ask(provider, prompt, model, check)
+    except TextProviderError as exc:
+        raise StageError(str(exc)) from exc
+
+
+def _check_script(draft: ScriptDraft) -> None:
+    if blank := [i for i, line in enumerate(draft.lines, start=1) if not line.strip()]:
+        raise ValueError(f"script lines are blank: {blank}")
+
+
 class BriefStage(Stage):
     name = "brief"
 
@@ -111,14 +138,19 @@ class ScriptStage(Stage):
     def run(self, ctx: StageContext) -> list[str]:
         brief = ctx.project.read_model("brief.json", Brief)
         provider = ctx.provider("script", TextProvider)
+        language = ctx.project.config.primary_language
         prompt = (
-            f"Write a short narration script in language {ctx.project.config.primary_language!r}, "
-            f"one sentence per line, for a video titled {brief.title!r}.\n\n{brief.body}"
+            f"Write the narration script for a short video titled {brief.title!r}, in the "
+            f"language with code {language!r}. It will be read aloud over a sequence of shots, "
+            f"one line per shot.\n\n"
+            f"Rules:\n"
+            f"- Put one sentence per entry of `lines`, in the order they are spoken.\n"
+            f"- Keep each line short enough to speak in 3 to 5 seconds (at most 14 words).\n"
+            f"- Use 6 to 12 lines, so the whole video stays under 60 seconds.\n"
+            f"- Plain narration only: no stage directions, headings, numbering or markup.\n\n"
+            f"Brief:\n{brief.body}"
         )
-        response = provider.complete(
-            TextRequest(prompt=prompt, json_schema=ScriptDraft.model_json_schema())
-        )
-        draft = ScriptDraft.model_validate(response.data)
+        draft = _ask(provider, prompt, ScriptDraft, _check_script)
         script = Script(
             language=ctx.project.config.primary_language,
             title=brief.title,
@@ -183,18 +215,28 @@ class StoryboardStage(Stage):
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("storyboard", TextProvider)
         lines = "\n".join(f"{line.id}. {line.text}" for line in script.lines)
+        motions = "\n".join(f"  - {m.value}: {MOTION_DESCRIPTIONS[m]}" for m in MotionType)
         prompt = (
-            "Storyboard this script as shots, each with a visual description and a motion type "
-            f"(push_in, pan or ambient).\n\n{lines}"
+            "Storyboard this narration script for a short stylized video. Give each script line "
+            "one shot, in script order.\n\n"
+            "For each shot:\n"
+            "- `line_id`: the number of the script line the shot illustrates.\n"
+            "- `visual`: one concrete sentence describing a single still image: subject, setting, "
+            "light and mood. No complex action, no text or lettering in the image.\n"
+            "- `motion_type`: exactly one of the following (the video model can do nothing else):\n"
+            f"{motions}\n\n"
+            f"Script:\n{lines}"
         )
-        response = provider.complete(
-            TextRequest(prompt=prompt, json_schema=StoryboardDraft.model_json_schema())
-        )
-        draft = StoryboardDraft.model_validate(response.data)
         valid_ids = {line.id for line in script.lines}
-        bad = [s.line_id for s in draft.shots if s.line_id not in valid_ids]
-        if bad:
-            raise StageError(f"storyboard refers to unknown script lines: {bad}")
+
+        def check(draft: StoryboardDraft) -> None:
+            used = {s.line_id for s in draft.shots}
+            if unknown := sorted(used - valid_ids):
+                raise ValueError(f"shots refer to script lines that do not exist: {unknown}")
+            if missing := sorted(valid_ids - used):
+                raise ValueError(f"script lines with no shot: {missing}")
+
+        draft = _ask(provider, prompt, StoryboardDraft, check)
         storyboard = Storyboard(
             shots=[
                 Shot(id=i, line_id=s.line_id, visual=s.visual, motion_type=s.motion_type)

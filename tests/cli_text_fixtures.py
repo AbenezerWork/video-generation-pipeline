@@ -27,8 +27,14 @@ class Call:
 class FakeClis:
     """Queue canned replies per CLI and inspect how each CLI was invoked."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, bin_dir: Path) -> None:
         self.root = root
+        self.bin_dir = bin_dir
+
+    def uninstall(self, binary: str) -> None:
+        """Remove a CLI from PATH, as if it were not installed."""
+        for wrapper in self.bin_dir.glob(f"{binary}*"):
+            wrapper.unlink()
 
     def _file(self, binary: str) -> Path:
         return self.root / f"{binary}.json"
@@ -74,15 +80,18 @@ def fake_clis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeClis:
         if os.name == "nt":
             wrapper = bin_dir / f"{binary}.cmd"
             wrapper.write_text(
-                f'@"{sys.executable}" "{FAKE_CLI_SCRIPT}" {binary} %*\n', encoding="utf-8"
+                f'@"{sys.executable}" -I -S "{FAKE_CLI_SCRIPT}" {binary} %*\n', encoding="utf-8"
             )
         else:
             wrapper = bin_dir / binary
             wrapper.write_text(
-                f'#!/bin/sh\nexec "{sys.executable}" "{FAKE_CLI_SCRIPT}" {binary} "$@"\n',
+                f'#!/bin/sh\nexec "{sys.executable}" -I -S "{FAKE_CLI_SCRIPT}" {binary} "$@"\n',
                 encoding="utf-8",
             )
             wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    # PATH holds only the fakes (plus System32 for cmd.exe on Windows), so a test can never reach
+    # a real gemini/claude/codex installed on the machine, not even by uninstalling a fake.
+    system = [str(Path(os.environ["SystemRoot"]) / "System32")] if os.name == "nt" else []
+    monkeypatch.setenv("PATH", os.pathsep.join([str(bin_dir), *system]))
     monkeypatch.setenv("VIDPIPE_FAKE_CLI_DIR", str(state_dir))
-    return FakeClis(state_dir)
+    return FakeClis(state_dir, bin_dir)

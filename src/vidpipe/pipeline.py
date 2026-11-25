@@ -6,9 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
 from vidpipe.assembly import Assembler, FfmpegAssembler
+from vidpipe.chain import build_provider
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import Provider
 from vidpipe.models import Manifest, StageRecord
@@ -64,11 +63,11 @@ def _build_context(
         if kind is None:
             continue  # e.g. `song`: configurable, but not part of the stage graph yet
         try:
-            providers[stage] = registry.create(kind, selection.name, **selection.options)
+            providers[stage] = build_provider(registry, kind, selection)
         except UnknownProvider as exc:
             problems.append(f"{stage}: {exc}")
-        except (TypeError, ValidationError) as exc:
-            problems.append(f"{stage}: cannot configure provider {selection.name!r}: {exc}")
+        except (TypeError, ValueError) as exc:  # ValueError includes pydantic.ValidationError
+            problems.append(f"{stage}: cannot configure provider {selection.label!r}: {exc}")
     return StageContext(project=project, providers=providers, assembler=assembler)
 
 
@@ -95,7 +94,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, selection.name if selection else None))
+        planned.append(PlannedStage(stage.name, selection.label if selection else None))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -134,7 +133,7 @@ def run(
         manifest.stages.append(
             StageRecord(
                 stage=stage.name,
-                provider=selection.name if selection else None,
+                provider=selection.label if selection else None,
                 outputs=outputs,
             )
         )

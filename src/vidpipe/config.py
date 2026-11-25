@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -25,11 +25,29 @@ class ProviderSelection(BaseModel):
 
     name: str
     options: dict[str, Any] = Field(default_factory=dict)
+    #: Providers tried, in order, if this one fails or is rate limited (text stages only).
+    fallbacks: tuple[ProviderSelection, ...] = ()
 
     @model_validator(mode="before")
     @classmethod
-    def _from_string(cls, value: Any) -> Any:
-        return {"name": value} if isinstance(value, str) else value
+    def _from_string_or_chain(cls, value: Any) -> Any:
+        """YAML forms: ``name``, ``{name:, options:}``, or a list (primary, then fallbacks)."""
+        if isinstance(value, str):
+            return {"name": value}
+        if isinstance(value, list) and value:
+            first, *rest = cast(list[Any], value)
+            primary: dict[str, Any] = {"name": first} if isinstance(first, str) else dict(first)
+            return {**primary, "fallbacks": rest}
+        return cast(Any, value)
+
+    @property
+    def label(self) -> str:
+        """``gemini-cli`` or, for a chain, ``gemini-cli > claude-cli``."""
+        return " > ".join([self.name, *(f.name for f in self.fallbacks)])
+
+
+#: What ``script`` and ``storyboard`` use when ``vidpipe.yaml`` does not choose a provider.
+DEFAULT_TEXT_CHAIN = ["gemini-cli", "claude-cli"]
 
 
 #: Stage name -> the contract kind that implements it.
@@ -54,7 +72,16 @@ class ProjectConfig(BaseModel):
     width: int = 160
     height: int = 90
     fps: int = 8
+    #: Missing ``script`` and ``storyboard`` entries default to ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
+
+    @field_validator("providers", mode="before")
+    @classmethod
+    def _default_text_chains(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        defaults = {stage: DEFAULT_TEXT_CHAIN for stage in ("script", "storyboard")}
+        return {**defaults, **cast(dict[str, Any], value)}
 
     @field_validator("providers")
     @classmethod
