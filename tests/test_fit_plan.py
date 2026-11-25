@@ -15,7 +15,10 @@ from typing import Any
 import pytest
 
 from tests.conftest import MakeProject
+from tests.recording import Recorder, RecordingRegistry
+from vidpipe import pipeline
 from vidpipe.cli import main
+from vidpipe.contracts import ProviderKind
 
 #: Speaks like a real voice: 0.08 s per character, no 4 s cap.
 REAL_SPEECH: dict[str, Any] = {
@@ -210,3 +213,132 @@ def test_a_run_that_needs_continuation_clips_stops_before_generating_anything_el
     assert "continuation" in capsys.readouterr().err
     assert (project / "build" / "fit_plan.json").is_file()  # the plan is kept, for `vidpipe plan`
     assert not (project / "build" / "keyframes.json").exists()
+
+
+# ------------------------------------------------------------------------------------ visuals
+
+#: Speaks at 0.4 s per character, so the 10-character English line takes 4 s and its 15-character
+#: Amharic translation (the fake adds "[am] ") 6 s.
+SLOW_SPEECH: dict[str, Any] = {
+    "name": "fake-tts",
+    "options": {"seconds_per_char": 0.4, "max_seconds": 120.0},
+}
+SHORT_LINES = ["x" * 10, "y" * 10, "z" * 10]
+
+
+def test_per_language_visuals_give_each_language_clips_sized_to_its_own_narration(
+    make_project: MakeProject,
+) -> None:
+    project = project_with_script(
+        make_project, ["x" * 40, "y" * 40, "z" * 40], visuals="per_language"
+    )
+
+    plan = fit_plan(project)
+
+    shot = plan["shots"][0]
+    assert set(shot["visual_sets"]) == {"en", "am"}
+    assert [c["seconds"] for c in shot["visual_sets"]["en"]["clips"]] == [3.25]  # 3.2 s of speech
+    assert [c["seconds"] for c in shot["visual_sets"]["am"]["clips"]] == [3.75]  # 3.6 s
+    assert shot["languages"]["en"]["visual_set"] == "en"
+    assert shot["languages"]["en"]["clips"][0]["speed"] == 1.0  # nothing to squeeze or stretch
+    assert shot["languages"]["am"]["clips"][0]["speed"] == 1.0
+
+
+def test_per_language_visuals_generate_a_clip_per_shot_and_language(
+    make_project: MakeProject,
+) -> None:
+    project = project_with_script(make_project, visuals="per_language")
+    recorder = Recorder()
+
+    pipeline.run(project, until="video", registry=RecordingRegistry(recorder))
+
+    clips = {
+        c.request.output_path.with_suffix("").relative_to(project / "build").as_posix()
+        for c in recorder.of(ProviderKind.IMAGE_TO_VIDEO)
+    }
+    assert clips == {f"video/{lang}/shot_{n:02d}" for lang in ("en", "am") for n in (1, 2, 3)}
+    assert len(recorder.of(ProviderKind.KEYFRAMER)) == 3  # keyframes are per shot, not per language
+
+
+def test_primary_only_visuals_size_clips_to_the_primary_language_and_the_rest_fit_them(
+    make_project: MakeProject,
+) -> None:
+    project = project_with_script(
+        make_project, ["x" * 40, "y" * 40, "z" * 40], visuals="primary_only"
+    )
+    recorder = Recorder()
+
+    pipeline.run(project, until="video", registry=RecordingRegistry(recorder))
+
+    plan = read_json(project / "build" / "fit_plan.json")
+    shot = plan["shots"][0]
+    assert set(shot["visual_sets"]) == {"en"}
+    assert shot["visual_sets"]["en"]["languages"] == ["en", "am"]
+    assert [c["seconds"] for c in shot["visual_sets"]["en"]["clips"]] == [3.25]  # English, 3.2 s
+    am = shot["languages"]["am"]  # 3.6 s of Amharic on a 3.25 s clip: slowed to fit
+    assert am["visual_set"] == "en"
+    assert am["clips"][0]["speed"] == pytest.approx(3.25 / 3.6, abs=0.001)
+    assert len(recorder.of(ProviderKind.IMAGE_TO_VIDEO)) == 3  # one clip set, not two
+
+
+def test_primary_only_reports_a_language_that_cannot_fit_the_primary_clips(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = project_with_script(
+        make_project, SHORT_LINES, visuals="primary_only", providers={"narration": SLOW_SPEECH}
+    )
+
+    assert main(["run", str(project), "--until", "fit-planning"]) == 1
+
+    err = capsys.readouterr().err
+    assert "am narration is 6.00s" in err and "visuals: shared or per_language" in err
+    assert not (project / "build" / "fit_plan.json").exists()
+
+
+def test_shared_visuals_fit_the_same_script_primary_only_cannot(make_project: MakeProject) -> None:
+    project = project_with_script(make_project, SHORT_LINES, providers={"narration": SLOW_SPEECH})
+
+    plan = fit_plan(project)
+
+    shot = plan["shots"][0]
+    assert shot["visual_sets"]["shared"]["driver"] == "am"
+    assert [c["seconds"] for c in shot["visual_sets"]["shared"]["clips"]] == [5.0]  # 6 s, slowed
+    assert shot["languages"]["en"]["clips"][0]["speed"] == pytest.approx(1.25)  # 4 s, sped up
+
+
+# ---------------------------------------------------------------------------------- 90 seconds
+
+
+def with_shots(project: Path, count: int) -> None:
+    """Replace the storyboard with ``count`` shots that all narrate the first script line."""
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+    path = project / "build" / "storyboard.json"
+    storyboard = read_json(path)
+    template = storyboard["shots"][0]
+    storyboard["shots"] = [{**template, "id": i} for i in range(1, count + 1)]
+    path.write_text(json.dumps(storyboard), encoding="utf-8")
+
+
+def test_both_renders_within_90_seconds_are_planned(make_project: MakeProject) -> None:
+    project = project_with_script(make_project)
+    with_shots(project, 14)  # 14 x 5.68 s English, 14 x 6.08 s Amharic
+
+    plan = fit_plan(project)
+
+    assert plan["render_seconds"]["en"] == pytest.approx(14 * 5.68)
+    assert plan["render_seconds"]["am"] == pytest.approx(14 * 6.08)
+    assert max(plan["render_seconds"].values()) <= 90
+
+
+def test_a_render_over_90_seconds_is_an_error_naming_the_language(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = project_with_script(make_project)
+    with_shots(project, 15)  # English is 85.2 s, Amharic 91.2 s
+
+    assert main(["run", str(project), "--until", "fit-planning"]) == 1
+
+    err = capsys.readouterr().err
+    assert "am render would last 91.2s, over the 90s limit" in err
+    assert "en render" not in err
+    assert not (project / "build" / "fit_plan.json").exists()
