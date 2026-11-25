@@ -203,7 +203,26 @@ class ComfyClient:
     # ------------------------------------------------------------------------------- the API
 
     def system_stats(self) -> dict[str, Any]:
-        return self._get_json("/system_stats")
+        stats = self._get_json("/system_stats")
+        if not isinstance(stats, dict):
+            raise ComfyError(f"{self.url}/system_stats did not return system information")
+        return cast(dict[str, Any], stats)
+
+    def node_types(self) -> frozenset[str]:
+        """The node classes currently registered on this server."""
+        info = self._get_json("/object_info")
+        if not isinstance(info, dict):
+            raise ComfyError(f"{self.url}/object_info did not return a node catalog")
+        return frozenset(cast(dict[str, Any], info))
+
+    def model_names(self, category: str) -> frozenset[str]:
+        """Model filenames visible to this server, including extra model paths."""
+        files = self._get_json(f"/models/{urllib.parse.quote(category, safe='')}")
+        if not isinstance(files, list) or not all(
+            isinstance(f, str) for f in cast(list[Any], files)
+        ):
+            raise ComfyError(f"{self.url}/models/{category} did not return a list of filenames")
+        return frozenset(name.replace("\\", "/") for name in cast(list[str], files))
 
     def upload_image(self, path: Path) -> str:
         """Upload an input image; returns the value a ``LoadImage`` node takes.

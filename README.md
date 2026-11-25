@@ -8,7 +8,8 @@ A provider-pluggable studio pipeline for short video. See `.scratch/vidpipe/spec
 uv sync
 uv run vidpipe plan examples/sample          # resolve providers, fit plan and GPU/cost estimate; generates nothing
 uv run vidpipe run examples/sample --until music   # everything except the ffmpeg render
-uv run vidpipe run examples/sample           # full render (needs ffmpeg + ffprobe on PATH)
+uv run vidpipe doctor examples/sample        # check the dependencies for this project
+uv run vidpipe run examples/sample            # full render (needs ffmpeg + ffprobe)
 ```
 
 A project is a directory with `brief.md`, `vidpipe.yaml` and optionally `bible.yaml` (the
@@ -272,12 +273,12 @@ licence (`OFL.txt`); the licence allows redistributing the unmodified fonts. `vi
 is generated; with `burn_in: false` no font is needed. Add a language by listing its font family
 under `subtitles.fonts` and putting the font file in the fonts folder.
 
-**ffmpeg.** Assembly needs `ffmpeg` and `ffprobe` on `PATH`, built with libass (the `subtitles`
-filter) and with `sidechaincompress`; `vidpipe plan` says which is missing
-(`FfmpegAssembler.problems()`, which the future `doctor` can call too). The assembler interface is
-`Assembler.problems()` and `Assembler.assemble(AssemblyJob)` (`vidpipe.assembly`): the job carries per
-language the shots (`ShotSegment`: narration, length, `ClipPlay` list), the music, a `SubtitleTrack`
-and the `MixSettings`.
+**ffmpeg.** Assembly needs `ffmpeg` and `ffprobe` with libass (the `subtitles` filter) and
+`sidechaincompress`. Set `VIDPIPE_FFMPEG_DIR` for a portable build or use tools already on `PATH`.
+See the [setup guide](docs/setup.md) for provider prerequisites and `vidpipe doctor`. The assembler
+interface is `Assembler.problems()` and `Assembler.assemble(AssemblyJob)` (`vidpipe.assembly`). The
+job carries the shots per language (`ShotSegment` with narration, length and `ClipPlay` list), the
+music, a `SubtitleTrack` and the `MixSettings`.
 
 ## Development
 

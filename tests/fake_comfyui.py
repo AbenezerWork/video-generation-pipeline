@@ -124,6 +124,9 @@ class FakeComfyUI:
     deleted: list[str] = field(default_factory=list[str])
     #: Calls made, as ``"POST /prompt"``; shows what happened in what order.
     requests: list[str] = field(default_factory=list[str])
+    version: str = "0.46.3"
+    node_types: set[str] = field(default_factory=set[str])
+    models: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
     _script: list[str] = field(default_factory=list[str])
     #: Decides a job's outcome when set (before the script is consulted).
     decide: Callable[[Job], str | None] | None = None
@@ -299,7 +302,15 @@ def _handler(fake: FakeComfyUI) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/queue":
                 self._json(fake.queue())
             elif url.path == "/system_stats":
-                self._json({"system": {"comfyui_version": "0.46.3"}, "devices": []})
+                self._json({"system": {"comfyui_version": fake.version}, "devices": []})
+            elif url.path == "/object_info":
+                self._json({node: {"name": node} for node in fake.node_types})
+            elif url.path.startswith("/models/"):
+                category = url.path.rsplit("/", 1)[-1]
+                if category in fake.models:
+                    self._json(fake.models[category])
+                else:
+                    self._send(404, b"", "text/plain")
             elif url.path == "/view":
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 data = fake.outputs.get(f"{query.get('subfolder', '')}/{query.get('filename')}")
