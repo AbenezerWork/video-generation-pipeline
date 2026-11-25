@@ -185,6 +185,7 @@ class FakeTTSEnglishOnly(_FakeTTS):
 class FakeKeyframer(KeyframerProvider):
     name = "fake-keyframer"
     fake = True
+    uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = KeyframerCapabilities(reference_images=True, max_width=512, max_height=512)
 
     def generate(self, request: KeyframeRequest) -> KeyframeResult:
@@ -205,6 +206,7 @@ class FakeKeyframer(KeyframerProvider):
 class FakeImageToVideo(ImageToVideoProvider):
     name = "fake-i2v"
     fake = True
+    uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = ImageToVideoCapabilities(min_seconds=1.0, max_seconds=5.0)
 
     def animate(self, request: ImageToVideoRequest) -> ImageToVideoResult:
@@ -227,6 +229,7 @@ class FakeImageToVideo(ImageToVideoProvider):
 class FakeMusic(MusicProvider):
     name = "fake-music"
     fake = True
+    uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = MusicCapabilities(max_seconds=120.0)
 
     def compose(self, request: MusicRequest) -> MusicResult:

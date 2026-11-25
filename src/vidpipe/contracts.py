@@ -214,10 +214,20 @@ class Provider[C: Capabilities](ABC):
     name: ClassVar[str]
     #: Fakes run in CI; real providers run the same conformance suite under ``integration``.
     fake: ClassVar[bool] = False
+    #: Generation runs on the local GPU, so the call's wall time is recorded as GPU time.
+    uses_gpu: ClassVar[bool] = False
     capabilities: C
 
     def __init__(self, **options: Any) -> None:
         self.options = options
+
+    def fingerprint(self) -> dict[str, Any]:
+        """Identity hashed into every artifact this provider produces.
+
+        Override to add anything else that changes the output (workflow JSON, checkpoint, model
+        version): the artifacts it made are then regenerated when that changes.
+        """
+        return {"name": self.name, "options": self.options}
 
 
 class TextProvider(Provider[TextCapabilities]):

@@ -7,6 +7,7 @@ unchanged against a real ComfyUI, CLI or edge-tts provider under the ``integrati
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -201,3 +202,12 @@ CHECKS: dict[str, Callable[..., None]] = {
 def declares_identity_and_capabilities(provider: Provider[Any]) -> None:
     assert provider.name
     assert provider.capabilities is not None
+
+
+def has_a_stable_fingerprint(provider: Provider[Any]) -> None:
+    """The fingerprint is hashed into every artifact the provider makes (skip-unchanged, resume),
+    so it must be JSON-serialisable, name the provider, and be identical across instances."""
+    fingerprint = provider.fingerprint()
+    assert json.loads(json.dumps(fingerprint)) == fingerprint
+    assert fingerprint["name"] == provider.name
+    assert type(provider)(**provider.options).fingerprint() == fingerprint

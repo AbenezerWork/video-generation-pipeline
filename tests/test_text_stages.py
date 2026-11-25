@@ -208,3 +208,49 @@ def test_a_chain_written_as_a_mapping_passes_options_to_each_provider(
 
     argv = fake_clis.calls("claude")[0].argv
     assert argv[argv.index("--model") + 1] == "sonnet"
+
+
+def test_the_ledger_records_which_provider_answered_and_the_fallback_applied(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.fail("gemini", "429 RESOURCE_EXHAUSTED: quota exceeded")
+    fake_clis.reply("claude", SCRIPT)
+    project = cli_project(make_project, ["gemini-cli", "claude-cli"])
+
+    assert main(["run", str(project), "--until", "script"]) == 0
+
+    record = read_json(project / "build" / "ledger.json")["artifacts"]["script"]
+    assert record["provider"] == "gemini-cli > claude-cli"
+    assert "gemini-cli" in record["fallback"]
+    assert "claude-cli" in record["fallback"]
+    assert "quota exceeded" in record["fallback"]
+
+
+def test_no_fallback_is_recorded_when_the_first_provider_answers(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("gemini", SCRIPT)
+    project = cli_project(make_project, ["gemini-cli", "claude-cli"])
+
+    assert main(["run", str(project), "--until", "script"]) == 0
+
+    assert read_json(project / "build" / "ledger.json")["artifacts"]["script"]["fallback"] is None
+
+
+def test_reordering_the_chain_regenerates_the_script(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("gemini", SCRIPT)
+    fake_clis.reply("claude", json.dumps({"lines": ["Claude wrote this line."]}))
+    project = cli_project(make_project, ["gemini-cli", "claude-cli"])
+    assert main(["run", str(project), "--until", "script"]) == 0
+
+    config_file = project / "vidpipe.yaml"
+    config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    config["providers"]["script"] = ["claude-cli", "gemini-cli"]
+    text: str = yaml.safe_dump(config)  # pyright: ignore[reportUnknownMemberType]
+    config_file.write_text(text, encoding="utf-8")
+    assert main(["run", str(project), "--until", "script"]) == 0
+
+    script = read_json(project / "build" / "script.json")
+    assert [line["text"] for line in script["lines"]] == ["Claude wrote this line."]

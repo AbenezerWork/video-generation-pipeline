@@ -37,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if the_plan.ok else 1
         result = pipeline.run(args.project, until=args.until)
         for record in result.manifest.stages:
-            print(f"{record.stage:<14}{record.provider or '-'}")
+            status = "skipped" if record.skipped else f"ran ({record.generated} generated)"
+            print(f"{record.stage:<14}{record.provider or '-':<26}{status}")
         return 0
     except pipeline.PlanError as exc:
         for problem in exc.problems:

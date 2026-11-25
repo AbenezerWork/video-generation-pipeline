@@ -8,7 +8,7 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] A second run with no changes executes no stages
-- [ ] Editing one script line reruns only affected downstream stages
-- [ ] A run killed mid-way resumes without redoing completed shots
-- [ ] Artifact records contain provider, seed and GPU time
+- [x] A second run with no changes executes no stages
+- [x] Editing one script line reruns only affected downstream stages
+- [x] A run killed mid-way resumes without redoing completed shots
+- [x] Artifact records contain provider, seed and GPU time

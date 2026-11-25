@@ -13,10 +13,28 @@ uv run vidpipe run examples/sample           # full render (needs ffmpeg + ffpro
 
 A project is a directory with `brief.md` and `vidpipe.yaml`; artifacts go to `build/`, renders to `out/`.
 
+## Artifacts, skip-unchanged and resume
+
+Every generated artifact is recorded in `build/ledger.json` (key, input hash, provider and options,
+parameters, seed, GPU seconds, wall time, output file hashes, any recorded fallback). `vidpipe run`
+hashes what each artifact depends on and regenerates it only when that changed, so the same command
+skips finished work and resumes a run that was killed (the ledger is saved after every artifact).
+
+- Inputs are hashed by *content*: upstream files, plain values (prompts, text), the provider's
+  `fingerprint()` and the options configured for it in `vidpipe.yaml`, parameters and seed. A regenerated upstream file that comes out
+  identical invalidates nothing downstream.
+- Hand edits work: edit `build/script.json` (or a translation) and only the artifacts that read it are
+  redone. An artifact whose own inputs are unchanged is never overwritten.
+- A stage declares its inputs where it produces an artifact:
+  `ctx.produce(key, inputs=Inputs(files=[...], values={...}), parameters={...}, seed=..., make=fn)`
+  (`vidpipe.artifacts`). Keys are `<stage>` or `<stage>/<unit>`, e.g. `narration/en/shot_03`.
+  `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
+- `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
+
 ## Development
 
 - `uv run pytest` runs the fast suite on fake providers. Two seams only: the pipeline run through
-  the CLI (`tests/test_pipeline.py`) and the per-contract provider conformance suite
+  the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`) and the per-contract provider conformance suite
   (`tests/conformance/`).
 - Tests that need real `ffmpeg`/`ffprobe` carry `@pytest.mark.needs_ffmpeg`: they skip cleanly when the
   binaries are absent and run automatically once they are on `PATH`.
@@ -70,4 +88,5 @@ providers:
 
 Tests drive the adapters through fake `gemini`/`claude`/`codex` executables on PATH
 (`tests/fake_cli.py`, fixture `fake_clis`); `fake-text` keeps the offline pipeline fast. To run the
-real CLIs through the conformance suite: `uv run pytest -m integration -k text`.
+real CLIs through the conformance suite: `uv run pytest -m integration -k text`. When a chain falls back,
+the artifact record in `build/ledger.json` says which provider failed and which answered.

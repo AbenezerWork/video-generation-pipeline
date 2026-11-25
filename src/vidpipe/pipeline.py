@@ -133,6 +133,7 @@ def run(
     for stage in STAGES:
         if stage.name not in wanted:
             continue
+        ctx.begin(stage.name)
         outputs = stage.run(ctx)
         selection = project.config.providers.get(stage.name)
         manifest.stages.append(
@@ -140,6 +141,8 @@ def run(
                 stage=stage.name,
                 provider=_label(stage.name, selection),
                 outputs=outputs,
+                generated=ctx.generated,
+                reused=ctx.reused,
             )
         )
         project.write_model("manifest.json", manifest)

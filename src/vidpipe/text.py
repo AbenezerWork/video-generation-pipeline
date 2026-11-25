@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -114,8 +114,6 @@ def ask[M: BaseModel](
 class FallbackTextProvider(TextProvider):
     """Tries each provider of a chain in order, moving on after a failure or rate limit."""
 
-    name: ClassVar[str] = "fallback"  # pyright: ignore[reportIncompatibleVariableOverride]
-
     def __init__(self, providers: list[TextProvider]) -> None:
         if not providers:
             raise ValueError("a fallback chain needs at least one provider")
@@ -129,6 +127,15 @@ class FallbackTextProvider(TextProvider):
         #: Name of the provider that answered the most recent call.
         self.last_used: str | None = None
 
+    @property
+    def name(self) -> str:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """``gemini-cli > claude-cli``: what plan, the manifest and the ledger show."""
+        return " > ".join(p.name for p in self.providers)
+
+    def fingerprint(self) -> dict[str, Any]:
+        """The whole chain: reordering it, or changing a member's options, regenerates."""
+        return {"name": "fallback", "chain": [p.fingerprint() for p in self.providers]}
+
     def complete(self, request: TextRequest) -> TextResponse:
         errors: list[str] = []
         for provider in self.providers:
@@ -141,3 +148,16 @@ class FallbackTextProvider(TextProvider):
             self.last_used = provider.name
             return response
         raise AllProvidersFailed("; ".join(errors))
+
+
+def failure_count(provider: TextProvider) -> int:
+    """How many provider failures a chain has absorbed so far (0 for a plain provider)."""
+    return len(provider.failures) if isinstance(provider, FallbackTextProvider) else 0
+
+
+def fallback_note(provider: TextProvider, since: int) -> str | None:
+    """A record of the fallback applied since ``since = failure_count(provider)``, if any."""
+    if not isinstance(provider, FallbackTextProvider) or len(provider.failures) <= since:
+        return None
+    failed = "; ".join(f"{name} failed ({error})" for name, error in provider.failures[since:])
+    return f"{failed}; answered by {provider.last_used}"
