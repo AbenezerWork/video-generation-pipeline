@@ -20,9 +20,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/vidpipe"]
 
-# Ship the bundled fonts (and their licence) inside the package: `vidpipe.subtitles` finds them there.
+# Ship the bundled fonts (and their licence) and the ComfyUI workflows inside the package:
+# `vidpipe.subtitles` and `vidpipe.comfy.workflow` find them there.
 [tool.hatch.build.targets.wheel.force-include]
 "assets/fonts" = "vidpipe/_fonts"
+"workflows" = "vidpipe/_workflows"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

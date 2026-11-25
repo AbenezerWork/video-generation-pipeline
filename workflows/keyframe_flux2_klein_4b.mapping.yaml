@@ -1,0 +1,58 @@
+# FLUX.2 [klein] 4B fp8 keyframes with up to two reference images.
+# Decision and measurements: docs/adr/0001-keyframe-model.md. Format: workflows/README.md.
+name: keyframe_flux2_klein_4b
+
+# One workflow per number of reference images.
+variants:
+  - {images: 0, workflow: keyframe_flux2_klein_4b_t2i.json}
+  - {images: 1, workflow: keyframe_flux2_klein_4b_ref1.json}
+  - {images: 2, workflow: keyframe_flux2_klein_4b_ref2.json}
+
+# Where each uploaded reference goes: image 1 (the character), image 2 (location or style).
+images:
+  - ref1_load.inputs.image
+  - ref2_load.inputs.image
+
+# Value -> node inputs. A node a variant does not have is skipped for that variant.
+fields:
+  prompt: [text.inputs.text]
+  seed: [noise.inputs.noise_seed]
+  width: [latent.inputs.width, sched.inputs.width]
+  height: [latent.inputs.height, sched.inputs.height]
+  steps: [sched.inputs.steps]  # 4: the model is distilled, do not raise it
+  reference_megapixels: [ref1_scale.inputs.megapixels, ref2_scale.inputs.megapixels]
+  filename_prefix: [save.inputs.filename_prefix]
+
+outputs: {node: save, key: images}
+
+# Defaults; a project overrides them with `options: {settings: {...}}`.
+settings:
+  reference_megapixels: 0.5
+
+# After an out-of-memory error the first rung that lowers something is applied, once.
+oom_step_down:
+  - set: {reference_megapixels: 0.25}  # 0.25 MP still carried the character in the spike
+  - smaller_size: [[1280, 720], [1024, 576], [832, 480], [640, 352]]
+
+timeout_s: 600
+
+capabilities:
+  min_width: 256
+  min_height: 256
+  max_width: 1280
+  max_height: 1280
+  max_pixels: 921600  # 1280x720, the largest size the spike measured
+  width_multiple: 16
+  height_multiple: 16
+
+# Measured on an RTX 4060 Laptop 8 GB: about 6.5 s per 832x480 image with one reference
+# (about 9 s with two, 4.5 s with none).
+cost: {unit: call, gpu_minutes: 0.11}
+
+requires:
+  comfyui: "0.46.3"
+  custom_nodes: []
+  models:
+    - diffusion_models/flux-2-klein-4b-fp8.safetensors
+    - text_encoders/qwen_3_4b.safetensors
+    - vae/flux2-vae.safetensors
