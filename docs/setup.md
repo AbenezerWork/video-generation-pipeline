@@ -2,6 +2,8 @@
 
 Use Python 3.12 or later and run `uv sync --locked` from the checkout. The sample project uses fake
 providers. A project with real providers needs the dependencies for its selections in `vidpipe.yaml`.
+Keep projects on a local disk: projects on network drives are unsupported, because the lock that
+allows only one run per project at a time is not reliable there.
 
 ```sh
 uv run vidpipe doctor

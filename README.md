@@ -34,6 +34,18 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## One run at a time
+
+A project has at most one run in progress. `vidpipe run`, `redo` and `approve` hold an OS file lock
+on `build/run.lock` (`vidpipe.lock`, through `filelock`) for their whole duration. A second one on
+the same project exits with code 1 and `a run is in progress` instead of writing. The OS releases
+the lock when the process ends, however it ends, so a killed or crashed run never blocks the next
+one; the file left in `build/` means nothing on its own. In the library a refused command raises
+`vidpipe.lock.RunInProgress` (a `ProjectError`).
+
+Projects on network drives (SMB/NFS shares, mapped drives) are unsupported: their file locks are not
+reliable, so two runs could both get in. Keep projects on a local disk.
+
 ## Gates, --auto and redo
 
 The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
