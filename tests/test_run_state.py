@@ -20,6 +20,7 @@ from tests.cli_text_fixtures import FakeClis
 from tests.conftest import MakeProject, nothing_generated
 from vidpipe.cli import main
 from vidpipe.gates import EXIT_PAUSED
+from vidpipe.runstate import ORIGIN_ENV, config_hash, read_run_state
 
 STATE = Path("build") / "run_state.json"
 
@@ -168,3 +169,75 @@ def test_a_run_refused_at_plan_time_fails_before_any_stage(make_project: MakePro
     assert "does not support language 'am'" in state["error"]["message"]
     assert {s["status"] for s in state["stages"]} == {"waiting"}
     assert nothing_generated(project)  # the run state is not an artifact
+
+
+def test_the_run_state_keeps_the_config_hash_the_run_started_with(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    project = make_project(providers={"script": "gemini-cli"})
+    started_with = config_hash(project)
+    config = project / "vidpipe.yaml"
+    commented = "# a comment is not a change\n" + config.read_text(encoding="utf-8")
+    config.write_text(commented, encoding="utf-8")
+    assert config_hash(project) == started_with
+    writer = Writer(project, fake_clis)
+    try:
+        assert read_state(project)["config_hash"] == started_with
+
+        # A pending change (ADR 0002): saved during the run, which keeps its own config.
+        config.write_text(commented.replace("output_name: demo", "output_name: other"), "utf-8")
+
+        assert config_hash(project) != started_with
+        assert read_state(project)["config_hash"] == started_with
+    finally:
+        writer.finish()
+    assert read_state(project)["config_hash"] == started_with
+
+
+@pytest.mark.parametrize(("env", "named"), [({}, "the CLI"), ({ORIGIN_ENV: "ui"}, "the UI")])
+def test_the_lock_refusal_names_who_started_the_run_and_when(
+    project: Path,
+    fake_clis: FakeClis,
+    env: dict[str, str],
+    named: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    writer = Writer(project, fake_clis, env=env)
+    try:
+        state = read_state(project)
+        assert state["origin"] == ("ui" if env else "cli")
+        started = datetime.fromisoformat(state["started_at"])
+        capsys.readouterr()
+
+        assert main(["run", str(project), "--until", "script"]) != 0
+
+        err = capsys.readouterr().err
+        assert "a run is in progress" in err
+        assert f"started from {named} at {started:%Y-%m-%d %H:%M}" in err
+    finally:
+        writer.finish()
+
+
+def test_a_killed_run_reads_as_failed(project: Path, writer: Writer) -> None:
+    writer.kill()
+    assert read_state(project)["status"] == "running"  # nobody was left to say otherwise
+
+    state = read_run_state(project)
+
+    assert state is not None
+    assert state.status == "failed"
+    assert state.error is not None
+    assert state.error.stage == "script"
+    assert "ended unexpectedly" in state.error.message
+
+
+def test_an_unknown_run_origin_is_refused_before_the_run(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project()
+    monkeypatch.setenv(ORIGIN_ENV, "cron")
+
+    assert main(["run", str(project), "--until", "script"]) == 1
+
+    assert f"{ORIGIN_ENV}: unknown run origin 'cron'" in capsys.readouterr().err
+    assert not (project / "build").exists()

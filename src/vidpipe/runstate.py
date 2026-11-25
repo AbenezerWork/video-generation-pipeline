@@ -136,7 +136,8 @@ def resolve_origin(origin: Origin | str | None = None) -> Origin:
         return Origin(value)
     except ValueError:
         choices = ", ".join(o.value for o in Origin)
-        raise ValueError(f"{ORIGIN_ENV}: unknown run origin {value!r} (one of: {choices})") from None
+        message = f"{ORIGIN_ENV}: unknown run origin {value!r} (one of: {choices})"
+        raise ValueError(message) from None
 
 
 def _now() -> str:
@@ -310,4 +311,3 @@ class RunStatePublisher:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(temp)
         self._last_write = time.monotonic()
-

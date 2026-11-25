@@ -215,9 +215,7 @@ def _run(
         shot=shot,
     )
     try:
-        result = _run_stages(
-            project, state, until, registry, assembler, auto, approve, approver
-        )
+        result = _run_stages(project, state, until, registry, assembler, auto, approve, approver)
     except PlanError as exc:
         state.fail("; ".join(exc.problems))
         raise
