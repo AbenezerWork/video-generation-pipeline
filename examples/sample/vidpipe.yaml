@@ -1,0 +1,12 @@
+# Sample project: every stage uses a fake provider (no GPU, no network).
+languages: [en, am]
+visuals: shared
+output_name: demo
+providers:
+  script: fake-text
+  translation: fake-translation
+  storyboard: fake-text
+  narration: fake-tts
+  keyframes: fake-keyframer
+  video: fake-i2v
+  music: fake-music
