@@ -29,11 +29,15 @@ uv run --locked vidpipe doctor $demo
 The shared download tracker is at `%USERPROFILE%\.t3\vidpipe-deps\status.json`.
 If ACE-Step is still downloading there, continue through video with the installed
 models. `doctor` will report the music checkpoint as missing until it is visible
-to ComfyUI. Reuse the tracked download. The commands below use the same exclusive
-Windows file handle as the other integration runs and wait for ComfyUI's queue to
-be idle before starting. Invoke them from the repository root and run one command
-at a time for this project. If Windows PowerShell blocks the local script, run
-`Set-ExecutionPolicy -Scope Process RemoteSigned -Force` in that session.
+to ComfyUI. Reuse the tracked download. The `run-gpu.ps1` commands below wait for
+the machine-wide GPU lock (`%USERPROFILE%\.t3\vidpipe-deps\integration-gpu.lock`,
+shared with the other integration runs and with other projects) and for ComfyUI's
+queue to be idle before starting. The GPU lock is the same OS file lock vidpipe
+takes per project (`filelock`, see `run_gpu.py`), so a killed run releases both.
+Invoke them from the repository root. A second command on the same project while
+one is running is refused with `a run is in progress`. Keep the project on a local
+disk; network drives are unsupported. If Windows PowerShell blocks the local script,
+run `Set-ExecutionPolicy -Scope Process RemoteSigned -Force` in that session.
 
 Generate the text first and inspect `build/translation/am.review.json`. If the
 review flags a mistranslation, edit the corresponding `text` in

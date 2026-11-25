@@ -7,28 +7,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# File existence is immaterial. Only an open, exclusive handle owns the lock.
-while ($true) {
-    try {
-        $lock = [IO.File]::Open($LockPath, 'OpenOrCreate', 'ReadWrite', 'None')
-        break
-    } catch [IO.IOException] {
-        $win32Code = $_.Exception.HResult -band 0xFFFF
-        if ($win32Code -notin 32, 33) { throw }
-        Start-Sleep -Seconds 2
-    }
-}
-
-try {
-    do {
-        $queue = Invoke-RestMethod -Uri "$($ComfyUrl.TrimEnd('/'))/queue" -TimeoutSec 10
-        $busy = ($queue.queue_running.Count + $queue.queue_pending.Count) -gt 0
-        if ($busy) { Start-Sleep -Seconds 2 }
-    } while ($busy)
-
-    uv run --locked vidpipe @VidpipeArgs
-    $status = $LASTEXITCODE
-} finally {
-    $lock.Dispose()
-}
-exit $status
+# The GPU lock is the same cross-platform OS file lock (filelock) vidpipe takes per project;
+# run_gpu.py waits for it and for an idle ComfyUI queue, then runs the command. On another OS,
+# run `uv run --locked python examples/coffee-origin/run_gpu.py -- <vidpipe arguments>`.
+$guard = Join-Path $PSScriptRoot 'run_gpu.py'
+uv run --locked python $guard --comfy-url $ComfyUrl --lock $LockPath -- @VidpipeArgs
+exit $LASTEXITCODE

@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import MakeProject
+from tests.conftest import MakeProject, nothing_generated
 from tests.recording import Recorder, RecordingRegistry
 from vidpipe import pipeline
 from vidpipe.assembly import Assembler, AssemblyJob
@@ -91,7 +91,7 @@ def test_unknown_gate_is_a_plan_problem(
     assert main(["run", str(project), "--until", "music"]) == 1
 
     assert "colour-grade" in capsys.readouterr().err
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_auto_runs_end_to_end_without_pausing(

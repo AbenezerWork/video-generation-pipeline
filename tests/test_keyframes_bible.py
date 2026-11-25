@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from tests.cli_text_fixtures import FakeClis
-from tests.conftest import SAMPLE, MakeProject
+from tests.conftest import SAMPLE, MakeProject, nothing_generated
 from tests.fake_comfyui import FakeComfyUI
 from vidpipe.cli import main
 
@@ -241,7 +241,7 @@ def test_a_bible_that_cannot_be_used_is_a_plan_problem(
     assert main(["plan", str(project), "--until", "keyframes"]) == 1
     assert complaint in capsys.readouterr().err
     assert run_keyframes(project) == 1
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_a_shot_cast_with_someone_the_bible_does_not_know_stops_before_any_drawing(
@@ -292,7 +292,7 @@ def test_a_broken_bible_is_reported_before_the_script_is_written(
     assert main(["run", str(project), "--until", "storyboard"]) == 1
 
     assert "invalid bible" in capsys.readouterr().err
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_the_storyboarding_model_casts_the_shots_from_the_bible(
