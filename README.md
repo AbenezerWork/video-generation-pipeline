@@ -117,6 +117,11 @@ the file is left as it is.
 shows the ten stages as a rail with each stage's status, provider, time and, while it runs, a
 progress ring, following the run state live.
 
+The Config view lets you try changes to the project config and preview the resulting YAML.
+Each stage offers the providers that implement its contract, with readiness and suggested fixes
+from `vidpipe doctor`. The CLI checks cover executable discovery. Text stages also let you
+edit their fallback order. Validation runs as you type, and the project file stays unchanged.
+
 ```
 uv run vidpipe ui examples/sample                   # http://127.0.0.1:8765/, this machine only
 uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: prints a link with a token

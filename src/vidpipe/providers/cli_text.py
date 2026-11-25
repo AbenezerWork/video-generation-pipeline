@@ -56,11 +56,21 @@ class CliTextProvider(TextProvider):
     max_reprompts: ClassVar[int] = 2
     capabilities = TextCapabilities(structured_output=True)
 
-    def __init__(self, **options: Any) -> None:
-        super().__init__(**options)
-        self.model: str | None = options.get("model")
-        self.timeout_s = float(options.get("timeout_s", 300))
-        self.command = str(options.get("command", self.binary))
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        timeout_s: float | None = None,
+        command: str | None = None,
+        **options: Any,
+    ) -> None:
+        """``model``: the CLI's model (its own default when unset); ``timeout_s``: seconds per
+        call (300 when unset); ``command``: the executable (``binary`` on PATH when unset)."""
+        given = {"model": model, "timeout_s": timeout_s, "command": command}
+        super().__init__(**{k: v for k, v in given.items() if v is not None}, **options)
+        self.model = model
+        self.timeout_s = float(300 if timeout_s is None else timeout_s)
+        self.command = str(self.binary if command is None else command)
 
     # ------------------------------------------------------------------ per-CLI details
 

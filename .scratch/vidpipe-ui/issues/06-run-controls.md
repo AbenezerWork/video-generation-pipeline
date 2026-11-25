@@ -22,6 +22,7 @@ process with closed piped stdin and correlates its run state by run ID, includin
 virtual environment. CLI runs have the same stop controls. Each UI launch gets its own log in
 `build/logs/`. The Logs and diagnostics disclosure follows the current UI-started run's output.
 Ctrl+C at the UI server prompts to keep the run going or request a graceful stop.
+Ledger writes retry briefly when a live stage view is reading the file on Windows.
 
 **Verification.** HTTP and SSE tests on Windows cover launch through assembly with portable FFmpeg
 9.1, a stage-limited launch, an unattended gate pause, reconnection after client and server exit,

@@ -17,6 +17,7 @@ vidpipe = "vidpipe.cli:main"
 [project.optional-dependencies]
 # `vidpipe ui`: the local web console (README, "The UI"). The core install stays without it.
 ui = [
+    "ruamel-yaml>=0.19.1",
     "starlette>=1.10.0",
     "uvicorn>=0.54.0",
 ]

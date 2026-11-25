@@ -2,10 +2,10 @@
 
 Route conventions (later features add a module with a ``routes()`` list and one line below):
 
-- ``/``: the console page (Run view; the Config view will be a second view of the same page).
+- ``/``: the console page with Run and Config views.
 - ``/static/...``: the no-build front end in ``vidpipe/ui/static``.
-- ``GET /api/<thing>``: JSON reads (``project``, ``run``, ``logs``; later ``config``, ``providers``,
-  ``stages/<stage>/outputs``). Media files go under ``/media/...``.
+- ``GET /api/<thing>``: JSON reads (``project``, ``run``, ``config``, ``providers``,
+  ``stages/<stage>/outputs``, ``logs``). Media files go under ``/media/...``.
 - ``POST /api/<thing>/<action>``: actions (``run/start``, ``run/stop``, ``run/stop-now``; later
   ``gates/<stage>/approve``, ``shots/<n>/redo``, ``config/save``), answered with JSON.
 - ``GET /api/events``: the one SSE stream; event ``run`` carries the run state (later ``config``).
@@ -21,7 +21,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.routing import BaseRoute
 
-from vidpipe.ui import api, detail, events, pages, runs
+from vidpipe.ui import api, config_api, detail, events, pages, runs
 from vidpipe.ui.access import TokenGate
 from vidpipe.ui.context import UiContext
 
@@ -44,6 +44,7 @@ def create_app(
         *pages.routes(),
         *api.routes(),
         *events.routes(),
+        *config_api.routes(),
         *detail.routes(),
         *runs.routes(),
     ]
