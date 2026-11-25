@@ -60,6 +60,19 @@ class FakeClis:
     def fail(self, binary: str, stderr: str, exit_code: int = 1) -> None:
         self._queue(binary, [{"kind": "fail", "stderr": stderr, "exit": exit_code}])
 
+    def hang(self, binary: str) -> None:
+        """Queue a reply that blocks until :meth:`release`, so the run calling it stays in progress."""
+        self._queue(binary, [{"kind": "hang"}])
+
+    @property
+    def hanging(self) -> bool:
+        """Whether a ``hang`` reply has been reached (some run is now blocked in that CLI)."""
+        return (self.root / "hanging").exists()
+
+    def release(self) -> None:
+        """Let every blocked ``hang`` reply return (as a failure)."""
+        (self.root / "release").write_text("", encoding="utf-8")
+
     def calls(self, binary: str) -> list[Call]:
         return [
             Call(c["argv"], Path(c["cwd"]), c["cwd_entries"], c["stdin"])

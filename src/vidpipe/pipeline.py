@@ -14,6 +14,7 @@ from vidpipe.config import STAGE_KINDS, ProviderSelection
 from vidpipe.contracts import MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper
+from vidpipe.lock import writer_lock
 from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
@@ -161,7 +162,32 @@ def run(
     that gate is approved (``vidpipe.gates``): ``approve`` approves gates in advance, ``approver``
     is asked about the others, and ``auto`` skips every gate. A gate after the last stage the run
     was asked for holds nothing back, so it does not pause.
+
+    The run holds the project's one-writer lock throughout (``vidpipe.lock``): while another run
+    is in progress it raises ``RunInProgress`` before doing anything.
     """
+    with writer_lock(Project(project_dir).root):
+        return _run(
+            project_dir,
+            until=until,
+            registry=registry,
+            assembler=assembler,
+            auto=auto,
+            approve=approve,
+            approver=approver,
+        )
+
+
+def _run(
+    project_dir: Path,
+    *,
+    until: str | None,
+    registry: Registry | None,
+    assembler: Assembler | None,
+    auto: bool,
+    approve: Sequence[str],
+    approver: Approver | None,
+) -> RunResult:
     the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
     problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
     if not the_plan.ok or problems:
@@ -207,13 +233,17 @@ def run(
 
 
 def approve(project_dir: Path, gates: Sequence[str]) -> None:
-    """Approve what each gated stage has produced so far (``vidpipe approve``)."""
+    """Approve what each gated stage has produced so far (``vidpipe approve``).
+
+    Refused (``RunInProgress``) while a run holds the project's one-writer lock.
+    """
     project = Project(project_dir)
-    keeper = GateKeeper(project, ArtifactStore(project))
-    for gate in gates:
-        if gate not in STAGE_NAMES:
-            raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
-        keeper.approve(gate)
+    with writer_lock(project.root):
+        keeper = GateKeeper(project, ArtifactStore(project))
+        for gate in gates:
+            if gate not in STAGE_NAMES:
+                raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
+            keeper.approve(gate)
 
 
 def redo(
@@ -233,25 +263,27 @@ def redo(
     of its keyframe and video, and the new video file changes what the assemblies read. A normal
     run then regenerates exactly those; every other shot's artifacts keep their records. Gates
     still apply: the new keyframe is shown at the keyframes gate again before it is animated.
+    The redo holds the one-writer lock from the re-roll to the end of its run.
     """
     project = Project(project_dir)
-    if not (project.build / "storyboard.json").is_file():
-        raise PlanError(["nothing to redo: run the storyboard stage first"])
-    storyboard = project.read_model("storyboard.json", Storyboard)
-    if shot not in {s.id for s in storyboard.shots}:
-        known = ", ".join(str(s.id) for s in storyboard.shots)
-        raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
-    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
-    if not the_plan.ok:
-        raise PlanError(the_plan.problems)
+    with writer_lock(project.root):
+        if not (project.build / "storyboard.json").is_file():
+            raise PlanError(["nothing to redo: run the storyboard stage first"])
+        storyboard = project.read_model("storyboard.json", Storyboard)
+        if shot not in {s.id for s in storyboard.shots}:
+            known = ", ".join(str(s.id) for s in storyboard.shots)
+            raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
+        the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+        if not the_plan.ok:
+            raise PlanError(the_plan.problems)
 
-    ArtifactStore(project).reroll_shot(shot)
-    return run(
-        project_dir,
-        until=until,
-        registry=registry,
-        assembler=assembler,
-        auto=auto,
-        approve=approve,
-        approver=approver,
-    )
+        ArtifactStore(project).reroll_shot(shot)
+        return _run(
+            project_dir,
+            until=until,
+            registry=registry,
+            assembler=assembler,
+            auto=auto,
+            approve=approve,
+            approver=approver,
+        )
