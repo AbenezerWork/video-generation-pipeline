@@ -91,7 +91,7 @@ def fake_clis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeClis:
             wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
     # PATH holds only the fakes (plus System32 for cmd.exe on Windows), so a test can never reach
     # a real gemini/claude/codex installed on the machine, not even by uninstalling a fake.
-    system = [str(Path(os.environ["SystemRoot"]) / "System32")] if os.name == "nt" else []
+    system = [str(Path(os.environ["SYSTEMROOT"]) / "System32")] if os.name == "nt" else []
     monkeypatch.setenv("PATH", os.pathsep.join([str(bin_dir), *system]))
     monkeypatch.setenv("VIDPIPE_FAKE_CLI_DIR", str(state_dir))
     return FakeClis(state_dir, bin_dir)

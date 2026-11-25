@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from vidpipe.assembly import Assembler, FfmpegAssembler
-from vidpipe.chain import build_provider
-from vidpipe.config import STAGE_KINDS
+from vidpipe.chain import build_provider, describe
+from vidpipe.config import STAGE_KINDS, ProviderSelection
 from vidpipe.contracts import Provider
 from vidpipe.models import Manifest, StageRecord
 from vidpipe.project import Project
@@ -46,6 +46,11 @@ class RunResult:
     manifest: Manifest
 
 
+def _label(stage: str, selection: ProviderSelection | None) -> str | None:
+    kind = STAGE_KINDS.get(stage)
+    return describe(kind, selection) if kind is not None and selection is not None else None
+
+
 def _selected_stages(until: str | None) -> list[str]:
     if until is None:
         return list(STAGE_NAMES)
@@ -67,7 +72,7 @@ def _build_context(
         except UnknownProvider as exc:
             problems.append(f"{stage}: {exc}")
         except (TypeError, ValueError) as exc:  # ValueError includes pydantic.ValidationError
-            problems.append(f"{stage}: cannot configure provider {selection.label!r}: {exc}")
+            problems.append(f"{stage}: cannot configure provider {selection.name!r}: {exc}")
     return StageContext(project=project, providers=providers, assembler=assembler)
 
 
@@ -94,7 +99,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, selection.label if selection else None))
+        planned.append(PlannedStage(stage.name, _label(stage.name, selection)))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -133,7 +138,7 @@ def run(
         manifest.stages.append(
             StageRecord(
                 stage=stage.name,
-                provider=selection.label if selection else None,
+                provider=_label(stage.name, selection),
                 outputs=outputs,
             )
         )

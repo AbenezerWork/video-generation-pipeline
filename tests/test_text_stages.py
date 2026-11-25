@@ -184,16 +184,6 @@ def test_an_unknown_provider_in_a_chain_is_a_plan_problem(
     assert "no-such-cli" in capsys.readouterr().err
 
 
-def test_a_fallback_chain_on_a_stage_that_does_not_support_it_is_a_plan_problem(
-    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
-) -> None:
-    project = make_project(providers={"narration": ["fake-tts", "fake-tts-en-only"]})
-
-    assert main(["plan", str(project)]) == 1
-
-    assert "narration" in capsys.readouterr().err
-
-
 def test_fake_text_provider_still_drives_the_offline_pipeline(make_project: MakeProject) -> None:
     project = make_project()
 
@@ -201,3 +191,20 @@ def test_fake_text_provider_still_drives_the_offline_pipeline(make_project: Make
 
     shots = read_json(project / "build" / "storyboard.json")["shots"]
     assert {s["motion_type"] for s in shots} <= {"push_in", "pan", "ambient"}
+
+
+def test_a_chain_written_as_a_mapping_passes_options_to_each_provider(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.fail("gemini", "quota exceeded")
+    fake_clis.reply("claude", SCRIPT)
+    script = {
+        "name": "gemini-cli",
+        "fallback": [{"name": "claude-cli", "options": {"model": "sonnet"}}],
+    }
+    project = cli_project(make_project, script)
+
+    assert main(["run", str(project), "--until", "script"]) == 0
+
+    argv = fake_clis.calls("claude")[0].argv
+    assert argv[argv.index("--model") + 1] == "sonnet"

@@ -5,6 +5,7 @@ description = "Provider-pluggable studio pipeline for short video"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "edge-tts>=7.3.1",
     "pydantic>=2.14.4",
     "pyyaml>=6.0.4",
 ]

@@ -25,8 +25,10 @@ class ProviderSelection(BaseModel):
 
     name: str
     options: dict[str, Any] = Field(default_factory=dict)
-    #: Providers tried, in order, if this one fails or is rate limited (text stages only).
-    fallbacks: tuple[ProviderSelection, ...] = ()
+    #: Providers to fall back to, in order, after this one fails or is rate limited. Acted on for
+    #: text stages (e.g. ``script: [gemini-cli, claude-cli]``); for other stages it is declared and
+    #: validated only (``narration: {name: edge-tts, fallback: [mms-tts]}``).
+    fallback: tuple[ProviderSelection, ...] = ()
 
     @model_validator(mode="before")
     @classmethod
@@ -37,13 +39,13 @@ class ProviderSelection(BaseModel):
         if isinstance(value, list) and value:
             first, *rest = cast(list[Any], value)
             primary: dict[str, Any] = {"name": first} if isinstance(first, str) else dict(first)
-            return {**primary, "fallbacks": rest}
+            return {**primary, "fallback": rest}
         return cast(Any, value)
 
     @property
     def label(self) -> str:
         """``gemini-cli`` or, for a chain, ``gemini-cli > claude-cli``."""
-        return " > ".join([self.name, *(f.name for f in self.fallbacks)])
+        return " > ".join([self.name, *(f.name for f in self.fallback)])
 
 
 #: What ``script`` and ``storyboard`` use when ``vidpipe.yaml`` does not choose a provider.
