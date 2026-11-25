@@ -12,8 +12,8 @@ from vidpipe.chain import build_provider
 from vidpipe.comfy.client import ComfyClient, ComfyError
 from vidpipe.comfy.provider import ComfyProvider
 from vidpipe.comfy.workflow import WorkflowModel
-from vidpipe.config import CONFIG_FILENAME, STAGE_KINDS, ProjectConfig
-from vidpipe.contracts import ProjectContext, Provider
+from vidpipe.config import CONFIG_FILENAME, STAGE_KINDS, ProjectConfig, ProviderSelection
+from vidpipe.contracts import ProjectContext, Provider, ProviderKind
 from vidpipe.project import Project
 from vidpipe.providers.cli_text import CliTextProvider
 from vidpipe.providers.edge import EdgeTTS
@@ -28,6 +28,8 @@ class Check:
     name: str
     detail: str
     ok: bool = True
+    #: For a failed provider check: what is wrong, in a few words ("CLI not found").
+    problem: str = ""
 
 
 def _media_checks(root: Path, config: ProjectConfig) -> list[Check]:
@@ -64,6 +66,7 @@ def _cli_check(provider: CliTextProvider) -> Check:
         f"executable {provider.command!r} not found. Install and sign in to {provider.binary}, "
         "or set the provider's `options.command` in vidpipe.yaml to its executable path.",
         False,
+        "CLI not found",
     )
 
 
@@ -87,7 +90,12 @@ def _model_checks(client: ComfyClient, workflows: list[WorkflowModel]) -> list[C
         category, name = _model_location(file)
         if not category or not name:
             checks.append(
-                Check("model", f"{file!r}: use folder/filename in requires.models", False)
+                Check(
+                    "model",
+                    f"{file!r}: use folder/filename in requires.models",
+                    False,
+                    "Workflow invalid",
+                )
             )
             continue
         if category not in catalogs:
@@ -103,7 +111,12 @@ def _model_checks(client: ComfyClient, workflows: list[WorkflowModel]) -> list[C
                 else f"check the model folder {category!r} in your ComfyUI installation"
             )
             checks.append(
-                Check("model", f"cannot verify {file} at {client.url} ({catalog}); {fix}", False)
+                Check(
+                    "model",
+                    f"cannot verify {file} at {client.url} ({catalog}); {fix}",
+                    False,
+                    "Model not verified",
+                )
             )
         elif name in catalog:
             checks.append(Check("model", f"{file} at {client.url}"))
@@ -114,6 +127,7 @@ def _model_checks(client: ComfyClient, workflows: list[WorkflowModel]) -> list[C
                     f"{file} missing at {client.url}. Download the file listed in the setup "
                     f"guide and place it at models/{file} or the matching extra model path.",
                     False,
+                    "Model not found",
                 )
             )
     return checks
@@ -137,6 +151,7 @@ def _comfy_checks(url: str, workflows: list[WorkflowModel]) -> list[Check]:
                 f"{url}: {exc}. Start ComfyUI or correct `comfyui.url` or the provider's "
                 "`options.url` in vidpipe.yaml.",
                 False,
+                "ComfyUI not reachable",
             )
         ]
 
@@ -150,13 +165,19 @@ def _comfy_checks(url: str, workflows: list[WorkflowModel]) -> list[Check]:
                     f"{workflow.spec.name} is pinned to {pin}; {url} is running {version}. "
                     f"Use ComfyUI {pin} for this workflow.",
                     False,
+                    "Wrong ComfyUI version",
                 )
             )
     try:
         available = client.node_types()
     except ComfyError as exc:
         checks.append(
-            Check("ComfyUI nodes", f"{url}: {exc}; check the server's /object_info", False)
+            Check(
+                "ComfyUI nodes",
+                f"{url}: {exc}; check the server's /object_info",
+                False,
+                "Nodes not verified",
+            )
         )
     else:
         for workflow in workflows:
@@ -172,6 +193,7 @@ def _comfy_checks(url: str, workflows: list[WorkflowModel]) -> list[Check]:
                         "ComfyUI nodes",
                         f"{workflow.spec.name} at {url} needs {', '.join(missing)}; {fix}",
                         False,
+                        "Nodes missing",
                     )
                 )
             else:
@@ -219,3 +241,62 @@ def check_environment(project_dir: Path | None = None) -> list[Check]:
     for url, workflows in servers.items():
         checks.extend(_comfy_checks(url, list(workflows.values())))
     return checks
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """Whether one provider, as configured, would work now (the doctor's checks for it alone)."""
+
+    ready: bool
+    #: ``Ready``, or what is wrong in a few words (the first failed check's ``problem``).
+    label: str
+    #: The doctor's fix when not ready; what was found when ready.
+    fix: str
+
+
+#: Doctor checks already made, by ComfyUI server and workflow, so one readiness report asks
+#: each server about each workflow once.
+ComfyMemo = dict[tuple[str, Path], list[Check]]
+
+
+def provider_checks(provider: Provider[Any], memo: ComfyMemo | None = None) -> list[Check]:
+    """The doctor's checks for one attached provider (its CLIs, its ComfyUI server and models);
+    empty when the doctor has nothing to check for it."""
+    checks: list[Check] = []
+    if isinstance(provider, ComfyProvider):
+        key = (provider.client.url, provider.model.source)
+        if memo is None or key not in memo:
+            found = _comfy_checks(provider.client.url, [provider.model])
+            if memo is None:
+                return found
+            memo[key] = found
+        checks += memo[key]
+    if isinstance(provider, EdgeTTS):
+        checks.append(Check("edge-tts", "Python package available (online voices)"))
+    checks += [_cli_check(cli) for cli in _cli_members(provider)]
+    return checks
+
+
+def provider_readiness(
+    project_dir: Path,
+    kind: ProviderKind,
+    selection: ProviderSelection,
+    *,
+    comfyui_url: str | None = None,
+    memo: ComfyMemo | None = None,
+) -> Readiness:
+    """Build ``selection`` as a run would (against ``project_dir``, with ``comfyui.url``) and run
+    the doctor's checks for it. Read-only: nothing is generated or submitted."""
+    context = ProjectContext(root=project_dir.resolve(), comfyui_url=comfyui_url)
+    try:
+        provider = build_provider(default_registry(), kind, selection)
+        provider.attach(context)
+    except (UnknownProvider, TypeError, ValueError, OSError) as exc:
+        return Readiness(False, "Cannot configure", f"{exc}. Check the provider's options.")
+    checks = provider_checks(provider, memo)
+    if failed := next((check for check in checks if not check.ok), None):
+        return Readiness(False, failed.problem or "Not ready", failed.detail)
+    if checks:
+        return Readiness(True, "Ready", "; ".join(check.detail for check in checks))
+    note = "Fake provider for tests" if provider.fake else "Nothing to set up"
+    return Readiness(True, "Ready", note)

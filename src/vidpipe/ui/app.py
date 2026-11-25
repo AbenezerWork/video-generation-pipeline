@@ -21,7 +21,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.routing import BaseRoute
 
-from vidpipe.ui import api, events, pages
+from vidpipe.ui import api, config_api, events, pages
 from vidpipe.ui.access import TokenGate
 from vidpipe.ui.context import UiContext
 
@@ -44,6 +44,7 @@ def create_app(
         *pages.routes(),
         *api.routes(),
         *events.routes(),
+        *config_api.routes(),
     ]
     middleware: list[Middleware] = []
     if allowed_hosts is not None:
