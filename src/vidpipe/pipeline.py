@@ -9,10 +9,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import Provider
-from vidpipe.gates import Approver, GateKeeper
+from vidpipe.gates import Approver, GateError, GateKeeper
 from vidpipe.models import Manifest, StageRecord
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
@@ -172,3 +173,13 @@ def run(
             paused_at = stage
             break
     return RunResult(plan=the_plan, manifest=manifest, paused_at=paused_at)
+
+
+def approve(project_dir: Path, gates: Sequence[str]) -> None:
+    """Approve what each gated stage has produced so far (``vidpipe approve``)."""
+    project = Project(project_dir)
+    keeper = GateKeeper(project, ArtifactStore(project))
+    for gate in gates:
+        if gate not in STAGE_NAMES:
+            raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
+        keeper.approve(gate)

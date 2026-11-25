@@ -8,10 +8,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from vidpipe import pipeline
-from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import AssemblyError
-from vidpipe.gates import EXIT_PAUSED, Approver, GateError, GateKeeper
-from vidpipe.project import Project, ProjectError
+from vidpipe.gates import EXIT_PAUSED, Approver, GateError
+from vidpipe.project import ProjectError
 from vidpipe.stages import STAGE_NAMES, StageError
 
 
@@ -81,13 +80,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"error: {problem}", file=sys.stderr)
             return 0 if the_plan.ok else 1
         if args.command == "approve":
-            project = Project(args.project)
-            keeper = GateKeeper(project, ArtifactStore(project))
-            for gate in args.gates:
-                if gate not in STAGE_NAMES:
-                    raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
-                keeper.approve(gate)
-                print(f"approved {gate}")
+            pipeline.approve(args.project, args.gates)
+            print("approved", ", ".join(args.gates))
             return 0
         result = pipeline.run(
             args.project,
