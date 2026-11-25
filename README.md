@@ -38,13 +38,76 @@ skips finished work and resumes a run that was killed (the ledger is saved after
 
 A project has at most one run in progress. `vidpipe run`, `redo` and `approve` hold an OS file lock
 on `build/run.lock` (`vidpipe.lock`, through `filelock`) for their whole duration. A second one on
-the same project exits with code 1 and `a run is in progress` instead of writing. The OS releases
-the lock when the process ends, however it ends, so a killed or crashed run never blocks the next
-one; the file left in `build/` means nothing on its own. In the library a refused command raises
-`vidpipe.lock.RunInProgress` (a `ProjectError`).
+the same project exits with code 1 and `a run is in progress (started from the CLI at 2026-11-26
+14:03, process 1234)` instead of writing; who and since when come from the run state below. The OS
+releases the lock when the process ends, however it ends, so a killed or crashed run never blocks
+the next one; the file left in `build/` means nothing on its own. In the library a refused command
+raises `vidpipe.lock.RunInProgress` (a `ProjectError`; its `.holder` is that description).
 
 Projects on network drives (SMB/NFS shares, mapped drives) are unsupported: their file locks are not
 reliable, so two runs could both get in. Keep projects on a local disk.
+
+## Run state
+
+While a run (`vidpipe run`, `vidpipe redo`) is in progress it publishes its run state in
+`build/run_state.json` (`vidpipe.runstate`), so anything outside the run (the lock refusal above,
+the UI) can see which stage is running and how far through it is. The file is replaced atomically
+(written to a temporary file, then renamed over it), so a reader never sees half a record. It is
+rewritten when the run starts, when a stage begins, after each artifact (at most every 0.25 s, so
+reused artifacts do not hammer the disk) and when a stage or the run ends. It stays behind after the
+run as the record of how the last run ended. `manifest.json` is unchanged.
+
+```json
+{
+  "schema_version": 1,
+  "run_id": "20261126T140312-3fa9c1",
+  "command": "run",
+  "shot": null,
+  "origin": "cli",
+  "pid": 1234,
+  "started_at": "2026-11-26T14:03:12+03:00",
+  "updated_at": "2026-11-26T14:20:41+03:00",
+  "finished_at": null,
+  "seq": 42,
+  "status": "running",
+  "until": null,
+  "current_stage": "video",
+  "paused_at": null,
+  "config_hash": "9b1c...e4",
+  "stages": [
+    {"stage": "brief", "provider": null, "status": "reused", "done": 1, "total": 1,
+     "generated": 0, "reused": 1, "started_at": "...", "finished_at": "..."},
+    {"stage": "video", "provider": "fake-i2v", "status": "running", "done": 4, "total": 11,
+     "generated": 3, "reused": 1, "started_at": "...", "finished_at": null}
+  ],
+  "error": null
+}
+```
+
+- `origin`: `cli`, or `ui` when the environment variable `VIDPIPE_RUN_ORIGIN=ui` is set (the UI
+  sets it on the runs it starts; any other value is refused). `command` is `run` or `redo` (then
+  `shot` is the re-rolled shot). Times are ISO 8601 local time with the UTC offset.
+- `status` (the run): `running`, `stopping` (a stop was asked for), `paused` (at the gate in
+  `paused_at`), `failed`, `finished`, `stopped`. `current_stage` is the stage running now, `null`
+  before the first stage and after the run ends.
+- `stages`: the stages this run covers (up to `until`), in run order. A stage's `status` is
+  `waiting`, `running`, `done` (generated something), `reused` (every artifact came from an earlier
+  run), `paused` (finished, and its gate holds the run), `failed` or `stopped`. `done` counts the
+  artifacts finished so far (`generated + reused`) out of `total`. `total` is worked out from what
+  is on disk before the stage starts (shots from the storyboard, clips from the fit plan), so it is
+  known up front on a resumed run and is filled in for later stages as earlier ones finish; it is
+  `null` while it cannot be known yet.
+- `error`: `{"stage", "message"}` when the run failed; `stage` is `null` for a run refused at plan
+  time (nothing generated).
+- `config_hash`: `vidpipe.runstate.config_hash(project_dir)` of the project config the run started
+  with. It hashes the validated config, so comments do not count. A different hash for the config on
+  disk means a pending change ([ADR 0002](docs/adr/0002-config-changes-apply-next-run.md)).
+- `seq` goes up by one on every write: a reader polling the file can tell a new record from one it
+  has seen.
+
+Read it with `vidpipe.runstate.read_run_state(project_dir)`, which retries the brief access denial
+a rename can cause on Windows. A record still saying `running` or `stopping` whose process is gone
+(killed, crashed) comes back as `failed` with an error saying so; the file is left as it is.
 
 ## Gates, --auto and redo
 
