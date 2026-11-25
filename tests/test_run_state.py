@@ -105,6 +105,17 @@ def test_a_finished_run_records_every_stage_and_its_counts(make_project: MakePro
     assert counts == {name: ("done", n, n, n, 0) for name, n in SAMPLE_TOTALS.items()}
 
 
+@pytest.mark.needs_ffmpeg
+def test_a_full_run_counts_one_render_per_language(make_project: MakeProject) -> None:
+    project = make_project()
+
+    assert main(["run", str(project)]) == 0
+
+    state = read_state(project)
+    assert (state["status"], state["until"]) == ("finished", None)
+    assembly = stages(state)["assembly"]
+    assert (assembly["status"], assembly["done"], assembly["total"]) == ("done", 2, 2)
+
 def test_a_run_that_reuses_everything_says_so_per_stage(make_project: MakeProject) -> None:
     project = make_project()
     assert main(["run", str(project), "--until", "music"]) == 0
