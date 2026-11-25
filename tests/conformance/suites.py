@@ -158,7 +158,7 @@ def check_image_to_video(provider: ImageToVideoProvider, tmp_path: Path, image: 
     result = provider.animate(
         ImageToVideoRequest(
             image=image,
-            prompt="slow push in",
+            prompt="A mountain landscape at sunrise.",
             motion_type=motion,
             duration_s=caps.min_seconds,
             output_path=out,

@@ -1,0 +1,35 @@
+name: video_wan22_ti2v_5b
+variants:
+  - {images: 1, workflow: video_wan22_ti2v_5b.json}
+images: [keyframe.inputs.image]
+fields:
+  prompt: [positive.inputs.text]
+  negative_prompt: [negative.inputs.text]
+  seed: [sample.inputs.seed]
+  width: [latent.inputs.width]
+  height: [latent.inputs.height]
+  frames: [latent.inputs.length]
+  output_frames: [trim.inputs.length]
+  fps: [video.inputs.fps]
+  steps: [sample.inputs.steps]
+  filename_prefix: [save.inputs.filename_prefix]
+outputs: {node: save, key: images}
+settings: {steps: 20}
+oom_step_down:
+  - smaller_size: [[640, 352], [512, 288], [384, 224]]
+timeout_s: 900
+capabilities:
+  min_seconds: 2
+  max_seconds: 5
+  max_width: 832
+  max_height: 480
+  motion_types: [ambient, pan, push_in]
+# About 37 seconds of ComfyUI execution per output second at 640x352 on an RTX 4060 Laptop 8 GB.
+cost: {unit: output_second, gpu_minutes: 0.62}
+requires:
+  comfyui: "0.46.3"
+  custom_nodes: ["ComfyUI-GGUF@6ea2651e7df66d7585f6ffee804b20e92fb38b8a"]
+  models:
+    - unet/Wan2.2-TI2V-5B-Q5_K_M.gguf
+    - text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+    - vae/wan2.2_vae.safetensors

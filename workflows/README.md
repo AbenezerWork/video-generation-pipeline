@@ -1,6 +1,16 @@
 # ComfyUI workflows (API format)
 
-## Keyframes
+## Wan 2.2 image-to-video
+
+`video_wan22_ti2v_5b.json` uses ComfyUI's `video_wan2_2_5B_ti2v` template
+with the GGUF UNet loader and tiled VAE decoding. The mapping sends one
+input image to `LoadImage` and passes the planned motion as text. Wan
+generates `frames` (a count of the form 4k+1). `ImageFromBatch` keeps
+`output_frames`, and `CreateVideo` plays them at `fps` (24) before
+`SaveVideo` saves H.264 MP4. The resolution step-down leaves both frame
+counts and playback rate intact.
+
+## FLUX.2 keyframes
 
 Decision and measurements: [`docs/adr/0001-keyframe-model.md`](../docs/adr/0001-keyframe-model.md).
 
