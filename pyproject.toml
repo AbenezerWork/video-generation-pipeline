@@ -39,10 +39,11 @@ packages = ["src/vidpipe"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not browser'"
 markers = [
     "needs_ffmpeg: needs real ffmpeg/ffprobe via VIDPIPE_FFMPEG_DIR or PATH",
     "integration: real providers (ComfyUI, CLIs, edge-tts); opt in with -m integration",
+    "browser: Playwright tests on fake providers; opt in with -m browser",
 ]
 
 [tool.ruff]
