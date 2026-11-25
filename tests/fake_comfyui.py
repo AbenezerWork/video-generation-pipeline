@@ -162,6 +162,8 @@ class FakeComfyUI:
     #: Calls made, as ``"POST /prompt"``; shows what happened in what order.
     requests: list[str] = field(default_factory=list[str])
     version: str = "0.46.3"
+    #: What `/system_stats` reports under `devices` (ComfyUI lists each GPU with its VRAM).
+    devices: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     node_types: set[str] = field(default_factory=set[str])
     models: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
     _script: list[str] = field(default_factory=list[str])
@@ -339,7 +341,7 @@ def _handler(fake: FakeComfyUI) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/queue":
                 self._json(fake.queue())
             elif url.path == "/system_stats":
-                self._json({"system": {"comfyui_version": fake.version}, "devices": []})
+                self._json({"system": {"comfyui_version": fake.version}, "devices": fake.devices})
             elif url.path == "/object_info":
                 self._json({node: {"name": node} for node in fake.node_types})
             elif url.path.startswith("/models/"):

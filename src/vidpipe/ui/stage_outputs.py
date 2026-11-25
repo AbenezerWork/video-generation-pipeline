@@ -88,6 +88,31 @@ def stage_records(project_root: Path, stage: str) -> list[ArtifactRecord]:
     ]
 
 
+def ledger_records(project_dir: Path, stage: str) -> list[dict[str, Any]]:
+    """The stage's ledger records in key order: what made each artifact, from what, at what cost.
+
+    Provider options are left out (they come from the project config, shown in the Config view).
+    """
+    if stage not in STAGE_NAMES:
+        raise StageNotFound(stage)
+    records = sorted(stage_records(project_dir.resolve(), stage), key=lambda r: r.key)
+    return [
+        {
+            "key": r.key,
+            "provider": r.provider,
+            "seed": r.seed,
+            "parameters": r.parameters,
+            "gpu_seconds": round(r.gpu_seconds, 3),
+            "wall_seconds": round(r.wall_seconds, 3),
+            "started_at": r.started_at,
+            "fallback": r.fallback,
+            "input_hash": r.input_hash,
+            "outputs": [o.path for o in r.outputs],
+        }
+        for r in records
+    ]
+
+
 def _timing(records: list[ArtifactRecord]) -> dict[str, Any] | None:
     """What the ledger says the stage's current artifacts cost, each when it was last generated."""
     if not records:

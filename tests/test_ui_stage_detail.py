@@ -6,21 +6,22 @@ A project is run once on fake providers through the CLI; the UI then serves what
 
 from __future__ import annotations
 
+import re
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 pytest.importorskip("starlette", reason="needs the optional ui extra")
 pytest.importorskip("uvicorn", reason="needs the optional ui extra")
 
 from tests.cli_text_fixtures import FakeClis  # noqa: E402
 from tests.conftest import HAVE_FFMPEG, SAMPLE, MakeProject  # noqa: E402
+from tests.fake_comfyui import FakeComfyUI, Job  # noqa: E402
 from tests.test_translation import AMHARIC, BACK, queue_happy_path, verdicts  # noqa: E402
-from tests.ui_server import UiServer  # noqa: E402
+from tests.ui_server import UiProcess, UiServer, free_port  # noqa: E402
 from vidpipe.cli import main  # noqa: E402
 from vidpipe.providers.fakes import CANNED_SCRIPT, CANNED_SHOTS  # noqa: E402
 
@@ -36,9 +37,8 @@ def ran(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The sample project after a full fake run (up to music without ffmpeg)."""
     root = tmp_path_factory.mktemp("ran") / "project"
     shutil.copytree(SAMPLE, root)
-    config = yaml.safe_load((root / "vidpipe.yaml").read_text(encoding="utf-8"))
-    config["gates"] = []
-    (root / "vidpipe.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    config = root / "vidpipe.yaml"  # no gates: the run goes through without pausing
+    config.write_text(config.read_text(encoding="utf-8") + "gates: []\n", encoding="utf-8")
     run_project(root, *([] if HAVE_FFMPEG else ["--until", "music"]))
     return root
 
@@ -239,3 +239,101 @@ def test_the_translation_review_flags_drift_beside_the_affected_line(
         for i in (1, 2, 3)
     ]
     assert am["lines"][1]["reason"] == reason
+
+
+# ---------------------------------------------------------- diagnostics, behind the disclosure
+
+
+def test_a_stages_ledger_records_are_served_on_request(ui: UiServer) -> None:
+    reply = ui.get("/api/stages/keyframes/ledger")
+
+    assert reply.status == 200
+    records = reply.json()["records"]
+    assert [r["key"] for r in records] == [
+        "keyframes/shot_01",
+        "keyframes/shot_02",
+        "keyframes/shot_03",
+    ]
+    first = records[0]
+    assert (first["provider"], first["seed"]) == ("fake-keyframer", 1)
+    assert first["outputs"] == ["build/keyframes/shot_01.png"]
+    assert first["gpu_seconds"] > 0
+    assert ui.get("/api/stages/editing/ledger").status == 404
+
+
+def test_the_run_log_is_served_from_its_end(ran: Path, ui: UiServer) -> None:
+    log = ran / "build" / "run.log"
+    assert ui.get("/api/logs").json() == {"path": "build/run.log", "lines": [], "truncated": False}
+
+    log.write_text("".join(f"line {i}\n" for i in range(1, 1001)), encoding="utf-8")
+    try:
+        reply = ui.get("/api/logs").json()
+    finally:
+        log.unlink()
+
+    assert reply["truncated"] is True
+    assert reply["lines"][-1] == "line 1000"
+    assert len(reply["lines"]) == 200
+
+
+def test_comfyui_queue_and_gpu_stats_come_from_the_projects_comfyui(
+    make_project: MakeProject, comfy: FakeComfyUI
+) -> None:
+    comfy.devices = [
+        {
+            "name": "cuda:0 NVIDIA GeForce RTX 4060 Laptop GPU",
+            "type": "cuda",
+            "vram_total": 8_585_216_000,
+            "vram_free": 1_500_000_000,
+            "torch_vram_total": 7_000_000_000,
+            "torch_vram_free": 200_000_000,
+        }
+    ]
+    comfy.jobs += [
+        Job("running-1", {}, None, "success", state="running"),
+        Job("queued-1", {}, None, "success"),
+        Job("queued-2", {}, None, "success"),
+    ]
+    server = UiServer(make_project(comfyui={"url": comfy.url}))
+    try:
+        stats = server.get("/api/comfyui").json()
+    finally:
+        server.stop()
+
+    assert stats["url"] == comfy.url
+    assert (stats["reachable"], stats["version"]) == (True, "0.46.3")
+    assert stats["queue"] == {"running": 1, "pending": 2}
+    (gpu,) = stats["devices"]
+    assert gpu["name"] == "cuda:0 NVIDIA GeForce RTX 4060 Laptop GPU"
+    assert (gpu["vram_total"], gpu["vram_free"]) == (8_585_216_000, 1_500_000_000)
+
+
+def test_an_unreachable_comfyui_is_reported_not_an_error(make_project: MakeProject) -> None:
+    url = f"http://127.0.0.1:{free_port()}"
+    server = UiServer(make_project(comfyui={"url": url}))
+    try:
+        reply = server.get("/api/comfyui")
+    finally:
+        server.stop()
+
+    assert reply.status == 200
+    stats = reply.json()
+    assert (stats["url"], stats["reachable"]) == (url, False)
+    assert "cannot reach ComfyUI" in stats["error"]
+    assert stats["queue"] is None
+    assert stats["devices"] == []
+
+
+def test_opened_to_the_network_media_and_detail_need_the_token(ran: Path) -> None:
+    server = UiProcess(ran, "--host", "0.0.0.0")
+    try:
+        link = next(m for line in server.output for m in re.findall(r"\?token=(\S+)", line))
+        with_cookie = {"Cookie": f"vidpipe_token={link}"}
+        keyframe = "/media/build/keyframes/shot_01.png"
+        for path in (keyframe, "/api/stages/keyframes/outputs", "/api/logs", "/api/comfyui"):
+            assert server.get(path).status == 401, path
+        assert server.get("/api/stages/keyframes/outputs", with_cookie).status == 200
+        reply = server.get(keyframe, {**with_cookie, "Range": "bytes=0-7"})
+        assert (reply.status, reply.body) == (206, PNG_SIGNATURE)
+    finally:
+        server.stop()
