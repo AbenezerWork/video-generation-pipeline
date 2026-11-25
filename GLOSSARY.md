@@ -30,6 +30,10 @@ _Avoid_: Draft, unsaved change
 Ending a run after the artifact in progress finishes, so no finished work is lost.
 _Avoid_: Cancel, abort (those mean discarding the artifact in progress)
 
+**Stop now**:
+A stop that does not wait: the ComfyUI job in progress is cancelled and that one artifact is discarded.
+_Avoid_: Kill, abort
+
 ### Stages and providers
 
 **Stage**:
