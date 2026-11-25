@@ -14,13 +14,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
-from vidpipe.contracts import GenerationError
+from vidpipe.contracts import Cancelled, GenerationError
 
 DEFAULT_URL = "http://127.0.0.1:8188"
 #: Subfolder of ComfyUI's input and output folders that vidpipe's files go into.
@@ -269,11 +269,24 @@ class ComfyClient:
         queue = self._get_json("/queue")
         return len(queue.get("queue_running", [])), len(queue.get("queue_pending", []))
 
-    def wait(self, prompt_id: str, *, timeout_s: float, poll_s: float = 0.5) -> Finished:
-        """Poll until the job finished; raises the matching :class:`ComfyError` if it failed."""
+    def wait(
+        self,
+        prompt_id: str,
+        *,
+        timeout_s: float,
+        poll_s: float = 0.5,
+        stop_now: Callable[[], bool] | None = None,
+    ) -> Finished:
+        """Poll until the job finished; raises the matching :class:`ComfyError` if it failed.
+
+        Raises :class:`~vidpipe.contracts.Cancelled` as soon as ``stop_now()`` is true (the
+        caller takes the job out of ComfyUI's queue).
+        """
         deadline = time.monotonic() + timeout_s
         silent_since: float | None = None
         while True:
+            if stop_now is not None and stop_now():
+                raise Cancelled(f"job {prompt_id} cancelled: the run was asked to stop now")
             try:
                 entry = self.history(prompt_id)
                 if entry is None and prompt_id not in self.queued_ids():

@@ -139,13 +139,38 @@ uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: print
   (arrow keys, Home, End) and becomes a horizontal strip on narrow screens; a polite live region
   announces only stage start, finish, pause at a gate and failure.
 
+## Stop and stop now
+
+```
+uv run vidpipe stop examples/sample          # end the run after the artifact in progress
+uv run vidpipe stop examples/sample --now    # cancel the ComfyUI job in progress and end the run
+```
+
+A **stop** lets the artifact in progress finish (and be recorded), then ends the run: nothing
+finished is lost. **Stop now** also cancels the ComfyUI job in progress (taken out of ComfyUI's
+queue, or interrupted if running; only that job) and discards that one artifact; it is not a failure,
+so the job is not retried. A provider with nothing to cancel (a text CLI, fakes, Edge TTS) finishes
+its artifact, as for a stop. `--now` after a plain stop turns it into a stop now.
+
+Either way the run state shows `stopping` as soon as the run has seen the request, then `stopped`
+(the stage in progress `stopped`, with the artifacts it finished in `done`), and `vidpipe run` exits
+with code **4**. Resuming is an ordinary `vidpipe run`: everything finished before the stop is
+reused.
+
+`vidpipe stop` does not take the project lock (the run holds it). It writes a request,
+`build/stop_request.json`, naming the run's `run_id`; the run looks for it every 0.1 s, acts on it
+between artifacts (and while it waits for a ComfyUI job, for stop now) and removes it when it ends.
+Only the run writes the run state. With no run in progress `vidpipe stop` exits with code 1. In the
+library: `vidpipe.stop.request_stop(project_dir, now=False)` (raises `vidpipe.stop.NoRunInProgress`,
+a `ProjectError`), and `pipeline.run(...).stopped` is true for a stopped run.
+
 ## Gates, --auto and redo
 
 The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
 `vidpipe.yaml` (`gates: [storyboard]`, or `gates: []` for none; any stage name is valid).
 
 - A pause is a normal outcome, not an error: `vidpipe run` prints the stages that ran and how to
-  continue, and exits with code **3** (`0` = finished, `1` = error). In the library,
+  continue, and exits with code **3** (`0` = finished, `1` = error, `4` = [stopped](#stop-and-stop-now)). In the library,
   `pipeline.run(...).paused_at` is the gate name.
 - Approve with `vidpipe approve <project> <gate>` (no input needed: scripts and tests use this) and run
   again; or `vidpipe run --approve <gate>` (repeatable) to approve in advance; or answer the y/N

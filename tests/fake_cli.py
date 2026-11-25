@@ -6,7 +6,8 @@ one per invocation, and every invocation (argv, cwd, what was in the cwd, stdin)
 tests can check how the adapter ran the CLI. Canned replies are wrapped in the output envelope each
 real CLI uses; ``raw`` and ``fail`` replies are emitted verbatim to simulate malformed output,
 rate limits and crashes. A ``hang`` reply writes ``hanging`` there and then blocks (until a
-``release`` file appears there, or at most a minute), to keep a run in progress.
+``release`` file appears there, or at most a minute), to keep a run in progress; then it fails,
+or answers its ``then`` text.
 """
 
 from __future__ import annotations
@@ -59,7 +60,9 @@ def main() -> int:
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline and not (state_file.parent / "release").exists():
             time.sleep(0.1)
-        return 1
+        if reply.get("then") is None:
+            return 1
+        reply = {"kind": "text", "text": reply["then"]}
     if reply["kind"] == "text":
         if flavor == "codex":
             # `codex exec ... --output-last-message <file>` writes the final message there.

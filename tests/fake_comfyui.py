@@ -36,8 +36,11 @@ from vidpipe.assembly import find_tool
 #: What a scripted job does. ``success`` is the default when the script has run out.
 #: ``error``/``oom``: an ``execution_error``; ``hang``: runs until interrupted; ``lost``: vanishes
 #: (as after a server restart); ``reject``: ``/prompt`` answers 400; ``interrupted``: someone
-#: pressed cancel in ComfyUI; ``no_output``: succeeds without saving anything.
-OUTCOMES = ("success", "error", "oom", "hang", "lost", "reject", "interrupted", "no_output")
+#: pressed cancel in ComfyUI; ``no_output``: succeeds without saving anything; ``hold``: runs
+#: until :meth:`FakeComfyUI.release` (then succeeds) or until interrupted.
+OUTCOMES = (
+    "success", "error", "oom", "hang", "lost", "reject", "interrupted", "no_output", "hold"
+)  # fmt: skip
 
 Graph = dict[str, dict[str, Any]]
 
@@ -175,6 +178,7 @@ class FakeComfyUI:
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._released = threading.Event()
 
     # ------------------------------------------------------------------------------ control
 
@@ -195,6 +199,10 @@ class FakeComfyUI:
         """The outcomes of the next submitted jobs, in order."""
         assert set(outcomes) <= set(OUTCOMES), outcomes
         self._script.extend(outcomes)
+
+    def release(self) -> None:
+        """Let ``hold`` jobs finish (successfully)."""
+        self._released.set()
 
     @property
     def running(self) -> list[Job]:
@@ -246,9 +254,10 @@ class FakeComfyUI:
                 if job.outcome == "lost":
                     job.state = "gone"
                     return {}
-                if job.outcome == "hang" or job.polls <= self.polls_to_finish:
+                held = job.outcome == "hold" and not self._released.is_set()
+                if job.outcome == "hang" or held or job.polls <= self.polls_to_finish:
                     return {}
-                self._finish(job, job.outcome)
+                self._finish(job, "success" if job.outcome == "hold" else job.outcome)
             return {prompt_id: job.history}
 
     def _finish(self, job: Job, outcome: str) -> None:

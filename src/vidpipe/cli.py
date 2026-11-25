@@ -16,6 +16,7 @@ from vidpipe.estimate import format_report
 from vidpipe.gates import EXIT_PAUSED, Approver, GateError
 from vidpipe.project import Project, ProjectError
 from vidpipe.stages import STAGE_NAMES, StageError
+from vidpipe.stop import EXIT_STOPPED, request_stop
 from vidpipe.translate import report_lines
 
 
@@ -57,6 +58,15 @@ def _parser() -> argparse.ArgumentParser:
     approve = sub.add_parser("approve", help="approve what a gated stage produced, so runs resume")
     approve.add_argument("project", type=Path, help="project directory")
     approve.add_argument("gates", nargs="+", metavar="GATE", help="stage the gate follows")
+    stop = sub.add_parser(
+        "stop", help="ask the run in progress to stop after the artifact it is working on"
+    )
+    stop.add_argument("project", type=Path, help="project directory")
+    stop.add_argument(
+        "--now",
+        action="store_true",
+        help="stop now: cancel the ComfyUI job in progress and discard that one artifact",
+    )
     ui = sub.add_parser("ui", help="watch a project in the browser (needs the 'ui' extra)")
     ui.add_argument("project", type=Path, help="project directory")
     ui.add_argument(
@@ -124,6 +134,9 @@ def _report(result: pipeline.RunResult, project: Path) -> int:
     if any(record.stage == "translation" for record in result.manifest.stages):
         for warning in _drift_warnings(project):
             print(warning, file=sys.stderr)
+    if result.stopped:
+        print(f"\nstopped as asked; finished work is kept. Resume with: vidpipe run {project}")
+        return EXIT_STOPPED
     if result.paused_at is None:
         return 0
     gate = result.paused_at
@@ -175,6 +188,15 @@ def main(argv: list[str] | None = None) -> int:
             for problem in the_plan.problems:
                 print(f"error: {problem}", file=sys.stderr)
             return 0 if the_plan.ok else 1
+        if args.command == "stop":
+            request = request_stop(args.project, now=args.now)
+            how = (
+                "cancels the ComfyUI job in progress and stops"
+                if request.now
+                else "stops after the artifact in progress"
+            )
+            print(f"stop requested: run {request.run_id} {how}")
+            return 0
         if args.command == "approve":
             pipeline.approve(args.project, args.gates)
             print("approved", ", ".join(args.gates))
