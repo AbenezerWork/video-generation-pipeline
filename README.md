@@ -35,3 +35,24 @@ A project is a directory with `brief.md` and `vidpipe.yaml`; artifacts go to `bu
 3. Select it per stage in `vidpipe.yaml` (`providers: {narration: my-tts}`, or
    `{name: my-tts, options: {...}}` to pass constructor options).
 4. It is picked up by `tests/conformance/test_providers.py` automatically and must pass the shared suite.
+
+### Text providers (script, storyboard)
+
+`script` and `storyboard` use CLI text providers: `gemini-cli`, `claude-cli`, `codex-cli` (each also
+takes `options: {model:, timeout_s:, command:}`). Each CLI runs non-interactively in an empty
+temporary directory with agent tools disabled; its reply is checked against the stage's Pydantic
+model and re-prompted with the error up to twice. Check each vendor's current terms for automated
+CLI use, and log in to each CLI yourself beforehand (vidpipe never handles credentials).
+
+A stage can list a fallback chain; the next provider is tried on failure, rate limit or exhausted
+re-prompts (default for `script` and `storyboard`: Gemini, then Claude):
+
+```yaml
+providers:
+  script: [gemini-cli, claude-cli]          # or [{name: gemini-cli, options: {model: ...}}, codex-cli]
+  storyboard: claude-cli
+```
+
+Tests drive the adapters through fake `gemini`/`claude`/`codex` executables on PATH
+(`tests/fake_cli.py`, fixture `fake_clis`); `fake-text` keeps the offline pipeline fast. To run the
+real CLIs through the conformance suite: `uv run pytest -m integration -k text`.

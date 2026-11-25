@@ -8,7 +8,7 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] A fake CLI executable emitting canned and malformed output exercises extraction and retry
-- [ ] The fallback chain moves to the next provider on failure or rate limit
-- [ ] Storyboard shots each carry a motion_type from the allowed vocabulary
-- [ ] Adapters pass the text conformance suite
+- [x] A fake CLI executable emitting canned and malformed output exercises extraction and retry
+- [x] The fallback chain moves to the next provider on failure or rate limit
+- [x] Storyboard shots each carry a motion_type from the allowed vocabulary
+- [x] Adapters pass the text conformance suite (fake executables in CI; real Claude CLI verified under `integration`; Gemini and Codex real runs pending login)
