@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** done (branch feat/vidpipe-ui-01)
+**Status:** resolved
 
 Spec: `.scratch/vidpipe-ui/spec.md`
 
