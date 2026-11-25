@@ -289,7 +289,8 @@ async function start() {
   const summary = await response.json();
   stages = summary.stages;
   document.getElementById("project-name").textContent = summary.name;
-  document.title = `Run · ${summary.name} · vidpipe`;
+  const view = document.querySelector("#view-tabs [aria-selected=true]")?.textContent.trim() ?? "Run";
+  document.title = `${view} · ${summary.name} · vidpipe`;
   buildRail();
   update(summary.run, { speak: false });
   if (!selected) select(stages[0].stage);

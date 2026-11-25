@@ -11,8 +11,11 @@
     <link rel="stylesheet" href="/static/tokens.css" />
     <link rel="stylesheet" href="/static/console.css" />
     <link rel="stylesheet" href="/static/run.css" />
+    <link rel="stylesheet" href="/static/config.css" />
     <script type="module" src="/static/theme.js"></script>
+    <script type="module" src="/static/views.js"></script>
     <script type="module" src="/static/run.js"></script>
+    <script type="module" src="/static/config.js"></script>
   </head>
   <body>
     <header class="masthead">
@@ -20,7 +23,10 @@
         <strong>vidpipe</strong>
         <h1 id="project-name">Project</h1>
       </div>
-      <!-- Views: the Run and Config tabs go here (Config view, ticket 09). -->
+      <div class="view-tabs" id="view-tabs" role="tablist" aria-label="Views" focusgroup="tablist nomemory">
+        <button type="button" class="btn btn-quiet" role="tab" id="tab-run" data-view="run" aria-controls="view-run" aria-selected="true" focusgroupstart>Run</button>
+        <button type="button" class="btn btn-quiet" role="tab" id="tab-config" data-view="config" aria-controls="view-config" aria-selected="false">Config</button>
+      </div>
       <div class="run-summary" id="run-summary">
         <span class="status" data-status="waiting" id="run-status">
           <span class="status-mark" aria-hidden="true"></span><span class="status-text">Loading</span>
@@ -41,31 +47,56 @@
       </button>
     </header>
 
-    <main class="run-view">
-      <h2 class="visually-hidden" id="rail-title">Stages</h2>
-      <div
-        class="rail"
-        id="rail"
-        role="tablist"
-        aria-labelledby="rail-title"
-        aria-orientation="vertical"
-        focusgroup="tablist nomemory"
-      ></div>
+    <main class="views">
+      <div class="run-view view" id="view-run" role="tabpanel" aria-labelledby="tab-run">
+        <h2 class="visually-hidden" id="rail-title">Stages</h2>
+        <div
+          class="rail"
+          id="rail"
+          role="tablist"
+          aria-labelledby="rail-title"
+          aria-orientation="vertical"
+          focusgroup="tablist nomemory"
+        ></div>
 
-      <section class="stage-detail" id="stage-detail" role="tabpanel" tabindex="0">
-        <div class="stage-detail-inner">
-          <p class="label phase-label" id="detail-phase"></p>
-          <h2 id="detail-title">Stage</h2>
-          <dl class="facts">
-            <div><dt class="label">Status</dt><dd id="detail-status"></dd></div>
-            <div><dt class="label">Provider</dt><dd class="numeral" id="detail-provider"></dd></div>
-            <div><dt class="label">Progress</dt><dd class="numeral" id="detail-progress"></dd></div>
-            <div><dt class="label">Time</dt><dd class="numeral" id="detail-time"></dd></div>
-          </dl>
-          <p class="muted" id="detail-note"></p>
-          <!-- Stage outputs, timing and logs go here (ticket 07); gate review and redo (08). -->
+        <section class="stage-detail" id="stage-detail" role="tabpanel" tabindex="0">
+          <div class="stage-detail-inner">
+            <p class="label phase-label" id="detail-phase"></p>
+            <h2 id="detail-title">Stage</h2>
+            <dl class="facts">
+              <div><dt class="label">Status</dt><dd id="detail-status"></dd></div>
+              <div><dt class="label">Provider</dt><dd class="numeral" id="detail-provider"></dd></div>
+              <div><dt class="label">Progress</dt><dd class="numeral" id="detail-progress"></dd></div>
+              <div><dt class="label">Time</dt><dd class="numeral" id="detail-time"></dd></div>
+            </dl>
+            <p class="muted" id="detail-note"></p>
+            <!-- Stage outputs, timing and logs go here (ticket 07); gate review and redo (08). -->
+          </div>
+        </section>
+      </div>
+
+      <div class="config-view view" id="view-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+        <div class="config-head">
+          <h2 id="config-title">Project config</h2>
+          <p class="muted">Edit settings to preview the resulting YAML. Changes stay in this tab.</p>
+          <a class="preview-jump" href="#config-check">Jump to validation and YAML</a>
         </div>
-      </section>
+        <form class="config-form" id="config-form" aria-labelledby="config-title">
+          <p class="muted" id="config-loading">Loading the project config…</p>
+        </form>
+        <aside class="config-side" aria-labelledby="yaml-title">
+          <div class="config-check panel" id="config-check" tabindex="-1">
+            <p class="status" data-status="waiting" id="config-status">
+              <span class="status-mark" aria-hidden="true"></span><span class="status-text">Checking</span>
+            </p>
+            <ul class="config-problems" id="config-problems" aria-label="Problems"></ul>
+          </div>
+          <details class="panel yaml-view" open>
+            <summary id="yaml-title">YAML preview</summary>
+            <pre class="well numeral" id="config-yaml" tabindex="0" aria-labelledby="yaml-title"></pre>
+          </details>
+        </aside>
+      </div>
     </main>
 
     <template id="stage-tab">
@@ -88,5 +119,6 @@
     </template>
 
     <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+    <div id="config-announcer" class="visually-hidden" role="status" aria-atomic="true"></div>
   </body>
 </html>

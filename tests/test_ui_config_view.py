@@ -208,6 +208,20 @@ def test_readiness_can_be_checked_for_a_config_not_yet_saved(
     )
 
 
+def test_readiness_uses_provider_options_even_with_an_unrelated_validation_error(
+    ui: UiServer, project: Path, tmp_path: Path
+) -> None:
+    command = (tmp_path / "custom-gemini").as_posix()
+    draft = document(project)
+    draft["width"] = "wide"
+    draft["providers"]["script"] = {"name": "gemini-cli", "options": {"command": command}}
+
+    script = stages_of(post(ui, "/api/providers/check", {"document": draft}))["script"]
+
+    assert script["selected"] == "gemini-cli"
+    assert command in choices_of(script)["gemini-cli"]["readiness"]["fix"]
+
+
 # ------------------------------------------------------------------------------ validation
 
 
@@ -250,6 +264,7 @@ def test_the_config_is_served_with_its_schema_and_current_yaml(ui: UiServer, pro
         ({"subtitles": {"burn_in": True, "colour": "red"}}, "subtitles.colour"),
         ({"gates": ["scripts"]}, "gates"),
         ({"providers": {"narration": "nobody-tts"}}, "providers.narration"),
+        ({"providers": {"script": [12, "fake-text"]}}, "providers.script"),
         (
             {"providers": {"keyframes": {"name": "comfyui-keyframer", "options": {"x": 1}}}},
             "providers.keyframes",
@@ -338,3 +353,31 @@ def test_the_yaml_view_keeps_comments_and_order_and_writes_nothing(
     keys = [line.split(":")[0] for line in rendered.splitlines() if line[:1].isalpha()]
     assert keys == ["languages", "visuals", "output_name", "providers", "gates", "width"]
     assert (project / "vidpipe.yaml").read_text(encoding="utf-8") == COMMENTED
+
+
+def test_preview_preserves_scalar_types_with_the_cli_yaml_loader(
+    ui: UiServer, project: Path
+) -> None:
+    draft = document(project)
+    draft["output_name"] = "on"
+    draft["subtitles"] = {"fonts": {"no": "yes"}}
+    draft["mix"] = {"music_level": 1e-5}
+
+    check = post(ui, "/api/config/validate", {"document": draft}).json()
+
+    assert check["ok"] is True
+    assert yaml.safe_load(check["yaml"]) == draft
+
+
+def test_editing_one_aliased_provider_keeps_the_other_provider(ui: UiServer, project: Path) -> None:
+    config = COMMENTED.replace(
+        "script: fake-text", "script: &text {name: fake-text, options: {}}"
+    ).replace("storyboard: fake-text", "storyboard: *text")
+    (project / "vidpipe.yaml").write_text(config, encoding="utf-8")
+    draft = document(project)
+    draft["providers"]["script"] = {"name": "gemini-cli", "options": {}}
+
+    check = post(ui, "/api/config/validate", {"document": draft}).json()
+
+    assert check["ok"] is True
+    assert yaml.safe_load(check["yaml"]) == draft

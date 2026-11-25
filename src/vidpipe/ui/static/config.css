@@ -1,0 +1,231 @@
+/* Project config layout. Controls, status marks and panels come from console.css. */
+
+.view[hidden] {
+  display: none;
+}
+
+.view-tabs {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.view-tabs [aria-selected="true"] {
+  background-color: var(--color-selected);
+  border-block-end-color: var(--color-accent);
+}
+
+.config-view {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  align-items: start;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.config-head {
+  grid-column: 1 / -1;
+}
+
+.config-head h2 {
+  font-size: var(--text-2xl);
+  margin-block-end: var(--space-2);
+}
+
+.preview-jump {
+  display: none;
+}
+
+.config-form,
+.config-side,
+.config-section,
+.section-grid,
+.options-body,
+.provider-body,
+.chain,
+.chain-list,
+.pairs-rows {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--space-3);
+}
+
+.config-form,
+.config-side {
+  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.config-section,
+.config-form fieldset,
+.yaml-view pre,
+.config-problems,
+.chain-list {
+  margin: 0;
+}
+
+.section-title {
+  padding-inline: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+}
+
+.section-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+.choice-group,
+.pairs {
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-columns,
+.pairs {
+  grid-column: 1 / -1;
+}
+
+.choice,
+.field-check {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.field-check .field-hint,
+.field-check .field-error {
+  flex-basis: 100%;
+}
+
+.section-note,
+.chain-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.provider-stage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  border-block-start: var(--border-width) solid var(--color-line);
+  padding-block: var(--space-3);
+}
+
+.provider-stage .phase-stripe {
+  block-size: var(--control-height);
+}
+
+.readiness {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.readiness-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.readiness-fix {
+  color: var(--color-text-muted);
+}
+
+.config-view summary {
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+
+.yaml-view summary {
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}
+
+.options-body,
+.yaml-view pre,
+.config-problems:not(:empty) {
+  margin-block-start: var(--space-3);
+}
+
+.provider-options:empty,
+.readiness:empty,
+.config-form .field-error:empty,
+.config-problems:empty {
+  display: none;
+}
+
+.chain {
+  padding-inline-start: var(--space-3);
+  border-inline-start: var(--border-width) solid var(--color-line-strong);
+}
+
+.chain-list,
+.config-problems {
+  padding-inline-start: var(--space-5);
+}
+
+.chain-tools {
+  padding-block: var(--space-1);
+}
+
+.pairs-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.pairs-add,
+.chain > button {
+  justify-self: start;
+}
+
+.problem-link {
+  color: var(--color-accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.config-problems {
+  overflow-wrap: anywhere;
+}
+
+.yaml-view pre {
+  min-inline-size: 0;
+  max-block-size: 55dvb;
+  overflow: auto;
+}
+
+@media (width >= 64rem) {
+  .config-side {
+    position: sticky;
+    inset-block-start: var(--space-4);
+    max-block-size: calc(100dvb - var(--space-6));
+    overflow: auto;
+  }
+}
+
+@media (width < 48rem) {
+  .config-view {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding-inline: var(--space-4);
+  }
+
+  .preview-jump {
+    display: inline-block;
+    margin-block-start: var(--space-2);
+  }
+
+  .pairs-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

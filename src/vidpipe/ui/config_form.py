@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +23,8 @@ from pydantic import ValidationError
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
+from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.representer import RoundTripRepresenter
 
 from vidpipe.chain import build_provider
 from vidpipe.config import CONFIG_FILENAME, STAGE_KINDS, ProjectConfig
@@ -139,8 +142,36 @@ def _provider_problems(project_dir: Path, config: ProjectConfig) -> list[ConfigP
 # ------------------------------------------------------------------------------ the YAML
 
 
+class _CliYamlRepresenter(RoundTripRepresenter):
+    """Keep scalar types compatible with PyYAML, the CLI's reader."""
+
+
+def _represent_string(representer: RoundTripRepresenter, value: str) -> ScalarNode:
+    plain = yaml.SafeLoader.yaml_implicit_resolvers.get(value[:1], ())
+    style = "'" if any(pattern.match(value) for _, pattern in plain) else None
+    return representer.represent_scalar(  # pyright: ignore[reportUnknownMemberType]
+        "tag:yaml.org,2002:str", value, style=style
+    )
+
+
+_CliYamlRepresenter.add_representer(str, _represent_string)  # pyright: ignore[reportUnknownMemberType]
+
+
+def _represent_float(representer: RoundTripRepresenter, value: float) -> ScalarNode:
+    scalar = representer.represent_float(value)  # pyright: ignore[reportUnknownMemberType]
+    spelling = cast(str, scalar.value)  # pyright: ignore[reportUnknownMemberType]
+    # PyYAML needs a decimal point in the mantissa of scientific notation.
+    if "e" in spelling and "." not in spelling:
+        scalar.value = spelling.replace("e", ".0e", 1)
+    return scalar
+
+
+_CliYamlRepresenter.add_representer(float, _represent_float)  # pyright: ignore[reportUnknownMemberType]
+
+
 def _round_trip() -> YAML:
     rt = YAML()
+    rt.Representer = _CliYamlRepresenter
     rt.preserve_quotes = True
     rt.width = 4096  # never fold a long value onto a second line
     return rt
@@ -183,10 +214,15 @@ def _merge(target: CommentedMap, new: dict[str, Any]) -> None:
         old: Any = mapping.get(key)
         if key not in mapping:
             target[key] = value
-        elif isinstance(old, CommentedMap) and isinstance(value, dict):
-            _merge(old, cast(dict[str, Any], value))
         elif _same(old, value):
             continue  # keep the file's own spelling (quotes, flow style)
+        elif isinstance(old, CommentedMap) and isinstance(value, dict):
+            if old.anchor.value is not None:  # pyright: ignore[reportUnknownMemberType]
+                # An alias elsewhere may still refer to the original mapping.
+                old = deepcopy(old)
+                old.yaml_set_anchor(None)  # pyright: ignore[reportUnknownMemberType]
+                target[key] = old
+            _merge(old, cast(dict[str, Any], value))
         elif isinstance(old, CommentedSeq) and isinstance(value, list):
             flow: Any = cast(Any, old).fa.flow_style()
             seq: Any = CommentedSeq(cast(list[Any], value))

@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from vidpipe.config import ProjectConfig
 from vidpipe.ui.config_form import check_config, config_schema, read_document
 from vidpipe.ui.context import ui_context
 from vidpipe.ui.provider_choices import provider_choices
@@ -52,6 +53,7 @@ def _view(request: Request) -> dict[str, Any]:
         "document": document,
         "problem": problem,
         "schema": config_schema(),
+        "defaults": ProjectConfig.model_validate({"providers": {}}).model_dump(mode="json"),
         "check": check.to_json() if check is not None else None,
     }
 
