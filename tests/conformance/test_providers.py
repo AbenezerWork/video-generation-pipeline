@@ -19,14 +19,13 @@ from vidpipe.registry import default_registry
 
 
 def _params() -> list[pytest.ParameterSet]:
-    return [
-        pytest.param(
-            cls,
-            id=f"{cls.kind.value}:{cls.name}",
-            marks=[] if cls.fake else [pytest.mark.integration],
-        )
-        for cls in default_registry().classes()
-    ]
+    items: list[pytest.ParameterSet] = []
+    for cls in default_registry().classes():
+        marks = [] if cls.fake else [pytest.mark.integration]
+        if cls.name == "comfyui-i2v":
+            marks.append(pytest.mark.needs_ffmpeg)
+        items.append(pytest.param(cls, id=f"{cls.kind.value}:{cls.name}", marks=marks))
+    return items
 
 
 @pytest.mark.parametrize("provider_class", _params())

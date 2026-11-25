@@ -40,6 +40,7 @@ from vidpipe.bible import (
 )
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import (
+    MOTION_DESCRIPTIONS,
     GenerationError,
     GenerationRecord,
     ImageToVideoProvider,
@@ -192,14 +193,6 @@ def _item(ctx: StageContext, shot_id: int | None, path: Path) -> MediaItem:
 
 def _write_index(ctx: StageContext, name: str, items: list[MediaItem]) -> list[str]:
     return [ctx.project.write_model(name, MediaIndex(items=items)), *(i.path for i in items)]
-
-
-#: What each motion type means to the storyboarding model (the vocabulary is the MotionType enum).
-MOTION_DESCRIPTIONS: dict[MotionType, str] = {
-    MotionType.PUSH_IN: "the camera slowly pushes in towards the subject",
-    MotionType.PAN: "the camera slowly pans sideways across the scene",
-    MotionType.AMBIENT: "the camera is still; only gentle motion in the scene (wind, steam, light)",
-}
 
 
 def _ask[M: BaseModel](
@@ -655,17 +648,20 @@ class VideoStage(Stage):
                 def make(
                     shot: Shot = shot, image: Path = image, key: str = key, seconds: float = seconds
                 ) -> Made:
-                    result = provider.animate(
-                        ImageToVideoRequest(
-                            image=image,
-                            prompt=shot.visual,
-                            motion_type=shot.motion_type,
-                            duration_s=seconds,
-                            seed=ctx.shot_seed(shot.id),
-                            output_path=ctx.project.artifact_path(f"{key}.mp4"),
-                        )
+                    request = ImageToVideoRequest(
+                        image=image,
+                        prompt=shot.visual,
+                        motion_type=shot.motion_type,
+                        duration_s=seconds,
+                        seed=ctx.shot_seed(shot.id),
+                        output_path=ctx.project.artifact_path(f"{key}.mp4"),
                     )
-                    return Made([result.path], data={"duration_s": result.duration_s})
+                    result = _generate(
+                        f"video for shot {shot.id}", lambda: provider.animate(request)
+                    )
+                    return _recorded(
+                        result.path, result.record, seed=request.seed, duration_s=result.duration_s
+                    )
 
                 made = ctx.produce(
                     key,

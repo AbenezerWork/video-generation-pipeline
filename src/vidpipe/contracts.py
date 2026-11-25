@@ -43,6 +43,13 @@ class MotionType(StrEnum):
     AMBIENT = "ambient"
 
 
+MOTION_DESCRIPTIONS: dict[MotionType, str] = {
+    MotionType.PUSH_IN: "the camera slowly pushes in towards the subject",
+    MotionType.PAN: "the camera slowly pans sideways across the scene",
+    MotionType.AMBIENT: "the camera is still; only gentle motion in the scene (wind, steam, light)",
+}
+
+
 class UnsupportedRequest(Exception):
     """A request needs something the provider's capabilities do not declare."""
 
@@ -255,6 +262,7 @@ class ImageToVideoRequest(Request):
 class ImageToVideoResult(BaseModel):
     path: Path
     duration_s: float
+    record: GenerationRecord = Field(default_factory=GenerationRecord)
 
 
 # ------------------------------------------------------------------------------------- music

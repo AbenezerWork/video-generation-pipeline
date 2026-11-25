@@ -205,6 +205,41 @@ that also received the protagonist's picture by default, which the model left ou
 pictures and a shot drawn from both; bottom: a shot before and after `redo`, and a two-reference
 shot showing the duplicated-character defect).
 
+## Image-to-video on ComfyUI
+
+Set `providers.video` to `comfyui-i2v` to animate each keyframe with Wan 2.2 TI2V 5B
+Q5_K_M. The provider uses the fit plan's duration and the storyboard's motion
+(`pan`, `push_in`, or `ambient`). It saves H.264 MP4 clips at 24 fps, rounded up
+to the next whole frame, with a default size of 640x352. Put `ffprobe` on PATH
+so vidpipe can verify each clip's duration before recording the artifact.
+
+| Needed | Pinned |
+|---|---|
+| ComfyUI | 0.46.3 |
+| ComfyUI-GGUF | `6ea2651e7df66d7585f6ffee804b20e92fb38b8a`, gguf 0.19.0 |
+| `unet/` | `Wan2.2-TI2V-5B-Q5_K_M.gguf` |
+| `text_encoders/` | `umt5_xxl_fp8_e4m3fn_scaled.safetensors` |
+| `vae/` | `wan2.2_vae.safetensors` |
+
+```yaml
+providers:
+  video: comfyui-i2v
+  # For a larger output:
+  # video: {name: comfyui-i2v, options: {settings: {width: 832, height: 480}}}
+```
+
+The video size is set by the workflow, independently of the keyframe and
+assembly dimensions. Jobs run sequentially. If ComfyUI runs out of memory at
+the default size, the workflow retries once at 512x288 and keeps the planned
+duration. The ledger records each clip's measured duration and ComfyUI
+execution time, including failed attempts that preceded success. At 640x352
+on an RTX 4060 Laptop GPU with 8 GB VRAM, the three-shot run took about 37
+seconds of ComfyUI execution per second of video.
+
+With the models installed and ComfyUI idle, run the video integration tests
+with `uv run pytest -m integration -k "comfyui-i2v or wan_animates"`. The
+pipeline test also uses the FLUX keyframe models listed above.
+
 ## Adding a ComfyUI model or provider
 
 **Another model for an existing provider needs no Python:** export the workflow in API format, write
@@ -218,7 +253,7 @@ providers:
 `vidpipe plan` checks that every mapped node input exists, and takes capabilities and cost from the
 mapping. A workflow shipped with vidpipe goes in `workflows/` and is selected by name.
 
-**Another contract (video, music)** needs a small provider class on
+**Another contract** needs a small provider class on
 `vidpipe.comfy.provider.ComfyProvider`, which supplies options, URL handling, fingerprinting,
 uploads, retries, the step-down, cancellation and memory release:
 
