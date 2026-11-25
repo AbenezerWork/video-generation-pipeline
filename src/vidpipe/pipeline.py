@@ -58,7 +58,9 @@ class RunResult:
     paused_at: str | None = None
 
 
-def _label(stage: str, selection: ProviderSelection | None) -> str | None:
+def provider_label(stage: str, selection: ProviderSelection | None) -> str | None:
+    """The provider a stage uses, as ``plan``, the manifest and the run state name it (``None``
+    for stages without a provider)."""
     kind = STAGE_KINDS.get(stage)
     return describe(kind, selection) if kind is not None and selection is not None else None
 
@@ -118,7 +120,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, _label(stage.name, selection)))
+        planned.append(PlannedStage(stage.name, provider_label(stage.name, selection)))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -209,7 +211,7 @@ def _run(
     state = RunStatePublisher(
         project,
         origin=origin,
-        stages=[(name, _label(name, project.config.providers.get(name))) for name in names],
+        stages=[(name, provider_label(name, project.config.providers.get(name))) for name in names],
         until=until,
         command=command,
         shot=shot,
@@ -270,7 +272,7 @@ def _run_stages(
         manifest.stages.append(
             StageRecord(
                 stage=stage,
-                provider=_label(stage, selection),
+                provider=provider_label(stage, selection),
                 outputs=outputs,
                 generated=ctx.generated,
                 reused=ctx.reused,
