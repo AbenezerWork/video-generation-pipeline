@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,7 +11,7 @@ from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.chain import build_provider, describe
 from vidpipe.config import STAGE_KINDS, ProviderSelection
-from vidpipe.contracts import MusicProvider, ProjectContext, Provider
+from vidpipe.contracts import Cancelled, MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper
 from vidpipe.lock import writer_lock
@@ -20,6 +20,7 @@ from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
 from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
+from vidpipe.stop import RunStopped, StopWatcher
 
 
 class PlanError(Exception):
@@ -56,6 +57,8 @@ class RunResult:
     manifest: Manifest
     #: The gate the run stopped at, waiting for approval; `None` when it ran to the end.
     paused_at: str | None = None
+    #: The run ended early because a stop was asked for (``vidpipe.stop``).
+    stopped: bool = False
 
 
 def provider_label(stage: str, selection: ProviderSelection | None) -> str | None:
@@ -74,10 +77,16 @@ def _selected_stages(until: str | None) -> list[str]:
 
 
 def _build_context(
-    project: Project, registry: Registry, assembler: Assembler, problems: list[str]
+    project: Project,
+    registry: Registry,
+    assembler: Assembler,
+    problems: list[str],
+    stop_now: Callable[[], bool] | None = None,
 ) -> StageContext:
     providers: dict[str, Provider[Any]] = {}
-    about = ProjectContext(root=project.root, comfyui_url=project.config.comfyui.url)
+    about = ProjectContext(
+        root=project.root, comfyui_url=project.config.comfyui.url, stop_now=stop_now
+    )
     for stage, selection in project.config.providers.items():
         kind = STAGE_KINDS.get(stage)
         if kind is None:
@@ -216,8 +225,11 @@ def _run(
         command=command,
         shot=shot,
     )
+    watcher = StopWatcher(project.build, state)
     try:
-        result = _run_stages(project, state, until, registry, assembler, auto, approve, approver)
+        result = _run_stages(
+            project, state, watcher, until, registry, assembler, auto, approve, approver
+        )
     except PlanError as exc:
         state.fail("; ".join(exc.problems))
         raise
@@ -227,13 +239,17 @@ def _run(
     except Exception as exc:
         state.fail(str(exc) or type(exc).__name__)
         raise
-    state.finish(paused_at=result.paused_at)
+    finally:
+        watcher.close()
+    if not result.stopped:
+        state.finish(paused_at=result.paused_at)
     return result
 
 
 def _run_stages(
     project: Project,
     state: RunStatePublisher,
+    watcher: StopWatcher,
     until: str | None,
     registry: Registry | None,
     assembler: Assembler | None,
@@ -247,7 +263,11 @@ def _run_stages(
         raise PlanError([*the_plan.problems, *problems])
 
     ctx = _build_context(
-        project, registry or default_registry(), assembler or FfmpegAssembler(), []
+        project,
+        registry or default_registry(),
+        assembler or FfmpegAssembler(),
+        [],
+        stop_now=watcher.now_requested,
     )
     keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
@@ -257,13 +277,30 @@ def _run_stages(
     # Totals known up front (from an earlier run's files); each is worked out again as its
     # stage begins, from what the stages before it wrote.
     state.totals({s.name: _artifact_count(s, ctx) for s in selected})
-    ctx.on_artifact = lambda: state.artifact(ctx.generated, ctx.reused)
+
+    def after_artifact() -> None:
+        state.artifact(ctx.generated, ctx.reused)
+        watcher.check()  # a stop ends the run here, between artifacts
+
+    ctx.on_artifact = after_artifact
     for index, stage_obj in enumerate(selected):
         stage = stage_obj.name
+        try:
+            watcher.check()
+        except RunStopped:
+            state.stop()
+            return RunResult(plan=the_plan, manifest=manifest, stopped=True)
         ctx.begin(stage)
         state.begin_stage(stage, _artifact_count(stage_obj, ctx))
         try:
             outputs = stage_obj.run(ctx)
+        except (RunStopped, Cancelled) as exc:
+            if isinstance(exc, Cancelled) and not watcher.now_requested():
+                raise  # not ours to treat as a stop
+            # The artifact in progress was finished (stop) or dropped (stop now); every other
+            # artifact is in the ledger, so the next run picks up from here.
+            state.stop(ctx.generated, ctx.reused)
+            return RunResult(plan=the_plan, manifest=manifest, stopped=True)
         finally:
             # One model resident at a time: the stage's provider lets go (also after a failure).
             if used := ctx.providers.get(stage):

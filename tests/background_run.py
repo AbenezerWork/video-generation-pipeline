@@ -15,10 +15,16 @@ class Writer:
     """A ``vidpipe run`` in its own process, blocked inside the script stage's CLI."""
 
     def __init__(
-        self, project: Path, fake_clis: FakeClis, *, env: dict[str, str] | None = None
+        self,
+        project: Path,
+        fake_clis: FakeClis,
+        *,
+        env: dict[str, str] | None = None,
+        then: str | None = None,
     ) -> None:
+        """``then``: the script the CLI answers once released (by default it fails)."""
         self.fake_clis = fake_clis
-        fake_clis.hang("gemini")
+        fake_clis.hang("gemini", then)
         self.process = subprocess.Popen(
             [sys.executable, "-m", "vidpipe", "run", str(project), "--until", "script"],
             stdout=subprocess.DEVNULL,
