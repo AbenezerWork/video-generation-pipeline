@@ -453,7 +453,7 @@ music, a `SubtitleTrack` and the `MixSettings`.
 ## Development
 
 - `uv run pytest` runs the fast suite on fake providers. Three seams: the pipeline run through
-  the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`) and the per-contract provider conformance suite
+  the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`), the per-contract provider conformance suite
   (`tests/conformance/`), and the UI's HTTP API (`tests/test_ui_run_view.py`, a real server on a free
   port watching CLI runs; skipped without the `ui` extra). ComfyUI providers are tested against an in-process fake server
   (`tests/fake_comfyui.py`, fixture `comfy`); `uv run pytest -m integration -k comfy` runs them on a
