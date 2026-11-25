@@ -8,7 +8,7 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] Running the CLI on a sample project produces a playable video, verified with ffprobe
+- [x] Running the CLI on a sample project produces a playable video, verified with ffprobe
 - [x] Every contract has a fake provider that passes its shared conformance suite
 - [x] Swapping a provider in YAML changes which provider runs, with no code change
 - [x] Plan-time capability check rejects an unsupported request before generation

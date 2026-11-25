@@ -10,3 +10,12 @@ providers:
   keyframes: fake-keyframer
   video: fake-i2v
   music: fake-music
+# Optional (shown with their defaults); see "Assembly, ducking and subtitles" in the README.
+# subtitles:
+#   burn_in: true
+#   fonts_dir: null              # default: ./fonts if it exists, else the fonts bundled with vidpipe
+#   fonts: {am: Noto Sans Ethiopic}
+#   font_size: 20                # libass units: the video's height is 288
+# mix:
+#   music_level: 0.4             # music gain while nobody speaks
+#   duck_ratio: 8                # how hard narration pushes the music down

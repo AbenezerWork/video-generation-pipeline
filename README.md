@@ -91,6 +91,50 @@ narration length), `clips` (how that render plays each clip: `speed`, `source_s`
 shown) and `segments` (`text`, `start_s`/`end_s` in the render, `clip`: subtitle cues).
 `render_seconds` has each language's total.
 
+## Assembly, ducking and subtitles
+
+`vidpipe run` ends with the assembly stage: for each language it writes `out/<output_name>_<lang>.mp4`
+(`demo_en.mp4`, `demo_am.mp4`) and the sidecar `out/<output_name>_<lang>.srt`, and each render stays
+within the 90 s limit (fit-planning refuses longer plans, and assembly checks again).
+
+- **Video.** The clips of each shot play back to back at the speeds in `fit_plan.json`
+  (`languages[lang].clips`: `speed`, `source_s`, `seconds`), then the shot is padded (last frame) or
+  cut to exactly its narration's length. A shot with several clips (continuation clips, ticket 12) is
+  handled the same way; today only clip 0 is generated.
+- **Audio.** The shots' narration is joined, and the music sits under it at `mix.music_level` and is
+  pushed down by a sidechain compressor keyed on the narration (`mix.duck_ratio`; threshold -30 dB,
+  attack 20 ms, release 400 ms), so the music drops while someone speaks and swells back in the gaps.
+- **Subtitles.** One cue per fit-plan segment (`segments[].text/start_s/end_s`, offset to the shot's
+  place in the render). The SRT is written whether or not it is burned in; `subtitles.burn_in: false`
+  keeps only the sidecar. Burning uses ffmpeg's `subtitles` filter (libass) with the fonts folder given
+  as `fontsdir`; the filter text escapes Windows drive colons and any `' [ ] , ;` in paths
+  (`vidpipe.subtitles.escape_filter_value`).
+
+```yaml
+subtitles:
+  burn_in: true
+  fonts_dir: fonts                   # relative to the project dir (or absolute). Default: ./fonts if
+                                     # it exists, else the fonts bundled with vidpipe (assets/fonts)
+  fonts: {am: Noto Sans Ethiopic}    # font family per language; others use the system default font
+  font_size: 20                      # libass units: the video's height is 288, so it scales with it
+mix:
+  music_level: 0.4
+  duck_ratio: 8
+```
+
+**Fonts.** Noto Sans Ethiopic (Regular and Bold, SIL OFL 1.1) is bundled in `assets/fonts/` with its
+licence (`OFL.txt`); the licence allows redistributing the unmodified fonts. `vidpipe plan` (and so
+`run`) reports a missing fonts folder, or a folder without the font a language needs, before anything
+is generated; with `burn_in: false` no font is needed. Add a language by listing its font family
+under `subtitles.fonts` and putting the font file in the fonts folder.
+
+**ffmpeg.** Assembly needs `ffmpeg` and `ffprobe` on `PATH`, built with libass (the `subtitles`
+filter) and with `sidechaincompress`; `vidpipe plan` says which is missing
+(`FfmpegAssembler.problems()`, which the future `doctor` can call too). The assembler interface is
+`Assembler.problems()` and `Assembler.assemble(AssemblyJob)` (`vidpipe.assembly`): the job carries per
+language the shots (`ShotSegment`: narration, length, `ClipPlay` list), the music, a `SubtitleTrack`
+and the `MixSettings`.
+
 ## Development
 
 - `uv run pytest` runs the fast suite on fake providers. Two seams only: the pipeline run through

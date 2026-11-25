@@ -21,7 +21,15 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel
 
 from vidpipe.artifacts import ArtifactStore, Inputs, Made, Produced
-from vidpipe.assembly import Assembler, AssemblyJob, LanguageRender, ShotSegment
+from vidpipe.assembly import (
+    Assembler,
+    AssemblyJob,
+    ClipPlay,
+    LanguageRender,
+    MixSettings,
+    ShotSegment,
+    SubtitleTrack,
+)
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import (
     ImageToVideoProvider,
@@ -54,6 +62,7 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
+from vidpipe.subtitles import Cue, font_files, font_problems, resolve_fonts_dir, write_srt
 from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
 from vidpipe.translate import TextTranslator, TranslationError, review_path, translate_script
 
@@ -595,77 +604,149 @@ class MusicStage(Stage):
 
 
 class AssemblyStage(Stage):
+    """Mixes, subtitles and renders one video per language (``out/<output_name>_<lang>.mp4``), plus
+    each language's sidecar ``out/<output_name>_<lang>.srt``."""
+
     name = "assembly"
 
     def problems(self, ctx: StageContext) -> list[str]:
-        return ctx.assembler.problems()
+        config = ctx.project.config
+        return [
+            *ctx.assembler.problems(),
+            *font_problems(config.subtitles, ctx.languages, ctx.project.root),
+        ]
 
     def run(self, ctx: StageContext) -> list[str]:
         project = ctx.project
-        plan = {s.shot_id: s for s in project.read_model("fit_plan.json", FitPlan).shots}
+        config = project.config
+        plan = project.read_model("fit_plan.json", FitPlan)
         narration = project.read_model("narration.json", Narration)
         video = project.read_model("video.json", MediaIndex)
         music_item = project.read_model("music.json", MediaIndex).items[0]
-        renders: list[LanguageRender] = []
-        for lang in ctx.languages:
-            segments = [
-                ShotSegment(
-                    shot_id=shot.id,
-                    video=project.build
-                    / video.for_shot(shot.id, plan[shot.id].languages[lang].visual_set),
-                    narration=project.build
-                    / next(
-                        c.path
-                        for c in narration.clips
-                        if c.shot_id == shot.id and c.language == lang
-                    ),
-                    seconds=plan[shot.id].languages[lang].seconds,
-                    speed=plan[shot.id].languages[lang].clips[0].speed,
-                )
-                for shot in project.read_model("storyboard.json", Storyboard).shots
-            ]
-            output = project.out / f"{project.config.output_name}_{lang}.mp4"
-            renders.append(
-                LanguageRender(
-                    language=lang,
-                    output=output,
-                    segments=segments,
-                    music=project.build / music_item.path,
-                )
-            )
-        config = project.config
+        shots = {s.shot_id: s for s in plan.shots}
+        storyboard = project.read_model("storyboard.json", Storyboard)
         outputs: list[str] = []
-        for render in renders:
-
-            def make(render: LanguageRender = render) -> Made:
-                job = AssemblyJob(
-                    renders=[render], width=config.width, height=config.height, fps=config.fps
+        for lang in ctx.languages:
+            if (seconds := plan.render_seconds[lang]) > plan.limits.max_render_s:
+                raise StageError(
+                    f"the {lang} render would last {seconds:.1f} s; the limit is "
+                    f"{plan.limits.max_render_s:g} s (shorten the narration and plan again)"
                 )
-                return Made(ctx.assembler.assemble(job))
-
-            made = ctx.produce(
-                f"assembly/{render.language}",
-                inputs=Inputs(
-                    files=[
-                        *(s.video for s in render.segments),
-                        *(s.narration for s in render.segments),
-                        *([render.music] if render.music else []),
-                    ],
-                    values={
-                        "seconds": [s.seconds for s in render.segments],
-                        "speeds": [s.speed for s in render.segments],
-                    },
-                ),
-                parameters={
-                    "language": render.language,
-                    "width": config.width,
-                    "height": config.height,
-                    "fps": config.fps,
-                },
-                make=make,
+            segments: list[ShotSegment] = []
+            cues: list[Cue] = []
+            offset = 0.0
+            for shot in storyboard.shots:
+                fit = shots[shot.id].languages[lang]
+                segments.append(
+                    ShotSegment(
+                        shot_id=shot.id,
+                        narration=project.build
+                        / next(
+                            c.path
+                            for c in narration.clips
+                            if c.shot_id == shot.id and c.language == lang
+                        ),
+                        seconds=fit.seconds,
+                        clips=[
+                            ClipPlay(
+                                video=project.build
+                                / video.for_clip(shot.id, fit.visual_set, use.clip),
+                                speed=use.speed,
+                                source_s=use.source_s,
+                                seconds=use.seconds,
+                            )
+                            for use in fit.clips
+                        ],
+                    )
+                )
+                cues += [
+                    Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s)
+                    for s in fit.segments
+                ]
+                offset += fit.seconds
+            stem = f"{config.output_name}_{lang}"
+            outputs += self._render(
+                ctx, lang, segments, cues, project.build / music_item.path, stem
             )
-            outputs += [p.relative_to(project.root).as_posix() for p in made.paths]
         return outputs
+
+    def _render(
+        self,
+        ctx: StageContext,
+        lang: str,
+        segments: list[ShotSegment],
+        cues: list[Cue],
+        music: Path,
+        stem: str,
+    ) -> list[str]:
+        project = ctx.project
+        config = project.config
+        subtitles = config.subtitles
+        font = subtitles.fonts.get(lang)
+        fonts_dir = resolve_fonts_dir(project.root, subtitles)
+        fonts = font_files(fonts_dir, font) if font and fonts_dir.is_dir() else []
+        track = SubtitleTrack(
+            srt=project.out / f"{stem}.srt",
+            burn_in=subtitles.burn_in,
+            fonts_dir=fonts_dir if font else None,
+            font=font,
+            font_size=subtitles.font_size,
+        )
+        render = LanguageRender(
+            language=lang,
+            output=project.out / f"{stem}.mp4",
+            segments=segments,
+            music=music,
+            subtitles=track,
+        )
+
+        def make() -> Made:
+            write_srt(track.srt, cues)
+            job = AssemblyJob(
+                renders=[render],
+                width=config.width,
+                height=config.height,
+                fps=config.fps,
+                mix=MixSettings(
+                    music_level=config.mix.music_level, duck_ratio=config.mix.duck_ratio
+                ),
+            )
+            return Made([*ctx.assembler.assemble(job), track.srt])
+
+        made = ctx.produce(
+            f"assembly/{lang}",
+            inputs=Inputs(
+                files=[
+                    *(clip.video for s in segments for clip in s.clips),
+                    *(s.narration for s in segments),
+                    music,
+                ],
+                values={
+                    # Fonts may live outside the project (the bundled ones do): hash them here.
+                    "fonts": {
+                        f.name: ctx.store.hash_path(f) for f in (fonts if subtitles.burn_in else [])
+                    },
+                    "clips": [
+                        [(c.speed, c.source_s, c.seconds) for c in s.clips] for s in segments
+                    ],
+                    "seconds": [s.seconds for s in segments],
+                    "cues": cues,
+                },
+            ),
+            parameters={
+                "language": lang,
+                "width": config.width,
+                "height": config.height,
+                "fps": config.fps,
+                "burn_in": subtitles.burn_in,
+                "font": font if subtitles.burn_in else None,
+                "font_size": subtitles.font_size,
+                "music_level": config.mix.music_level,
+                "duck_ratio": config.mix.duck_ratio,
+            },
+            make=make,
+        )
+        return [p.relative_to(project.root).as_posix() for p in made.paths]
 
 
 STAGES: list[Stage] = [

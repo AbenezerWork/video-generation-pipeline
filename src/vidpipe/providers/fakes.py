@@ -164,11 +164,18 @@ class _FakeTTS(TTSProvider):
     languages: frozenset[str] = LANGUAGES
 
     def __init__(
-        self, *, seconds_per_char: float = 0.05, max_seconds: float = 4.0, **options: Any
+        self,
+        *,
+        seconds_per_char: float = 0.05,
+        max_seconds: float = 4.0,
+        tail_silence_s: float = 0.0,
+        **options: Any,
     ) -> None:
         super().__init__(**options)
         self.seconds_per_char = seconds_per_char
         self.max_seconds = max_seconds
+        #: Silence after the speech, like a real clip's trailing pause (the clip lasts longer).
+        self.tail_silence_s = tail_silence_s
         self.capabilities = TTSCapabilities(
             languages=self.languages, seconds_per_char=seconds_per_char
         )
@@ -180,8 +187,13 @@ class _FakeTTS(TTSProvider):
             self.max_seconds, max(1.0, round(len(request.text) * self.seconds_per_char, 2))
         )
         path = request.output_path.with_suffix(".wav")
-        write_wav(path, duration, 180 + stable_int(request.language, request.voice) % 120)
-        return TTSResult(path=path, duration_s=duration)
+        write_wav(
+            path,
+            duration,
+            180 + stable_int(request.language, request.voice) % 120,
+            silence_s=self.tail_silence_s,
+        )
+        return TTSResult(path=path, duration_s=duration + self.tail_silence_s)
 
 
 @register

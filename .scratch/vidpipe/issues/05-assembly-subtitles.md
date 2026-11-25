@@ -8,6 +8,6 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] ffprobe shows expected duration, video and audio tracks for each render
-- [ ] Music level drops under narration
-- [ ] SRT files match narration timing; Amharic glyphs render in the burned-in subtitles
+- [x] ffprobe shows expected duration, video and audio tracks for each render
+- [x] Music level drops under narration
+- [x] SRT files match narration timing; Amharic glyphs render in the burned-in subtitles
