@@ -104,6 +104,13 @@ class StageRecord(BaseModel):
     stage: str
     provider: str | None
     outputs: list[str]
+    #: Artifacts generated this run vs reused because their inputs were unchanged.
+    generated: int = 0
+    reused: int = 0
+
+    @property
+    def skipped(self) -> bool:
+        return self.generated == 0
 
 
 class Manifest(BaseModel):
