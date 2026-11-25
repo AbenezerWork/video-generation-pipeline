@@ -3,6 +3,7 @@
 
 import { watchRings } from "/static/console.js";
 import { showStageDetail } from "/static/detail.js";
+import { initRunNotifications } from "/static/notifications.js";
 
 const rail = document.getElementById("rail");
 const detail = document.getElementById("stage-detail");
@@ -362,11 +363,14 @@ async function start() {
   if (!selected) select(stages[0].stage);
 
   const connection = document.getElementById("connection");
+  const notify = initRunNotifications(summary.name);
   const events = new EventSource("/api/events");
   let first = true;
   events.addEventListener("run", (event) => {
     connection.hidden = true;
+    const before = run;
     update(JSON.parse(event.data), { speak: !first });
+    notify(before, run);
     first = false;
   });
   events.addEventListener("error", () => {
