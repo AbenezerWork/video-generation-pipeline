@@ -9,8 +9,14 @@ Routes (actions, answered with JSON):
 - ``POST /api/run/stop`` and ``POST /api/run/stop-now``: :func:`vidpipe.stop.request_stop`.
   Both accept an optional ``run_id`` to target a specific run. ``202`` with ``run_id`` and ``now``;
   ``409`` when the target run is no longer in progress.
+- ``POST /api/gates/<stage>/approve`` with ``{"run_id": <paused run ID>}``: approve
+  the gate and resume with the same stage limit. ``202`` with the resumed run's details.
+- ``POST /api/gates/<stage>/reject`` with the same body: leave the run paused and return
+  ``200`` with review next steps. Both decisions return ``409`` for a stale gate.
+- ``POST /api/shots/<n>/redo``: re-roll the shot and run through the assemblies, honoring gates.
+  ``202`` with the new run's details.
 
-Each run is a separate process running the normal CLI (``python -m vidpipe run``), with
+Each run is a separate process running the normal CLI (``python -m vidpipe``), with
 ``VIDPIPE_RUN_ORIGIN=ui``, fully detached from the server so it survives the browser closing and
 the server quitting (Ctrl+C included):
 
@@ -49,7 +55,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from vidpipe import pipeline
+from vidpipe.gates import STALE_GATE_MESSAGE, GateError, require_paused_gate
 from vidpipe.lock import RunInProgress, describe_holder, writer_lock
+from vidpipe.project import ProjectError
 from vidpipe.runstate import ACTIVE, ORIGIN_ENV, RUN_ID_ENV, Origin, new_run_id, read_run_state
 from vidpipe.stages import STAGE_NAMES
 from vidpipe.stop import NoRunInProgress, request_stop
@@ -72,7 +81,7 @@ class StartRefused(Exception):
 
 
 class RunLauncher:
-    """Starts detached ``vidpipe run`` processes for one project, one at a time."""
+    """Starts detached CLI runs for one project, one at a time."""
 
     def __init__(self, project_dir: Path) -> None:
         self.project_dir = project_dir
@@ -81,6 +90,21 @@ class RunLauncher:
         self._run_id: str | None = None
 
     def start(self, until: str | None) -> dict[str, Any]:
+        scope = ["--until", until] if until else []
+        return self._launch(["run", *scope])
+
+    def approve(self, run_id: str, stage: str) -> dict[str, Any]:
+        return self._launch(
+            ["run", "--resume-gate", run_id, stage],
+            gate=(run_id, stage),
+        )
+
+    def redo(self, shot: int) -> dict[str, Any]:
+        return self._launch(["redo", "shot", str(shot)])
+
+    def _launch(
+        self, args: list[str], *, gate: tuple[str, str] | None = None
+    ) -> dict[str, Any]:
         if not self._lock.acquire(blocking=False):
             holder = describe_holder(self.project_dir / "build")
             raise RunInProgress(self.project_dir, holder or "starting from the UI")
@@ -91,6 +115,8 @@ class RunLauncher:
                     state = read_run_state(self.project_dir)
                     if state is None or state.run_id != self._run_id:
                         raise RunInProgress(self.project_dir, "starting from the UI")
+                if gate is not None:
+                    require_paused_gate(self.project_dir, *gate)
             run_id = new_run_id()
             relative = ui_log_path(run_id)
             path = self.project_dir / relative
@@ -98,10 +124,9 @@ class RunLauncher:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("x", encoding="utf-8") as log:
                     stamp = datetime.now().astimezone().isoformat(timespec="seconds")
-                    scope = f" --until {until}" if until else ""
-                    log.write(f"# vidpipe run{scope}, started from the UI at {stamp}\n")
+                    log.write(f"# vidpipe {' '.join(args)}, started from the UI at {stamp}\n")
                     log.flush()
-                    self._process = process = _spawn(self.project_dir, run_id, until, log)
+                    self._process = process = _spawn(self.project_dir, run_id, args, log)
                     self._run_id = run_id
             except OSError as exc:
                 raise StartRefused(f"could not launch vidpipe run: {exc}", 500) from exc
@@ -131,6 +156,8 @@ class RunLauncher:
         if "a run is in progress" in last:  # another run took the lock first
             holder = describe_holder(self.project_dir / "build")
             raise StartRefused(last.removeprefix("error: "), 409, holder)
+        if last == f"error: {STALE_GATE_MESSAGE}":
+            raise StartRefused(STALE_GATE_MESSAGE, 409)
         raise StartRefused(last.removeprefix("error: ") or "the run exited on start", 500)
 
 
@@ -143,11 +170,9 @@ def _last_line(path: Path) -> str:
 
 
 def _spawn(
-    project_dir: Path, run_id: str, until: str | None, log: TextIO
+    project_dir: Path, run_id: str, args: list[str], log: TextIO
 ) -> subprocess.Popen[bytes]:
-    command = [sys.executable, "-m", "vidpipe", "run", str(project_dir)]
-    if until:
-        command += ["--until", until]
+    command = [sys.executable, "-m", "vidpipe", *args, str(project_dir)]
     env = {
         **os.environ,
         ORIGIN_ENV: Origin.UI.value,
@@ -231,15 +256,69 @@ async def start(request: Request) -> JSONResponse:
     if until is not None and (not isinstance(until, str) or until not in STAGE_NAMES):
         return _error(f"until must be one of: {', '.join(STAGE_NAMES)}", 400)
     launcher: RunLauncher = request.app.state.run_launcher
+    return await _launch_action(launcher.start, until)
+
+
+async def _launch_action(launch: Callable[..., dict[str, Any]], *args: Any) -> JSONResponse:
     try:
-        started = await run_in_threadpool(launcher.start, until)
+        started = await run_in_threadpool(launch, *args)
     except RunInProgress as exc:
         return _error(str(exc), 409, holder=exc.holder)
+    except GateError as exc:
+        return _error(str(exc), 409)
     except StartRefused as exc:
         return _error(str(exc), exc.status, holder=exc.holder)
     except OSError as exc:
         return _error(f"could not start the run: {exc}", 500)
     return JSONResponse(started, status_code=202, headers=NO_STORE)
+
+
+@same_origin_only
+async def decide_gate(request: Request) -> JSONResponse:
+    decision: str = request.path_params["decision"]
+    stage: str = request.path_params["stage"]
+    if decision not in ("approve", "reject"):
+        return _error("unknown gate decision", 404)
+    if stage not in STAGE_NAMES:
+        return _error("unknown stage", 404)
+    body = await _body(request)
+    run_id = body.get("run_id") if body is not None else None
+    if not isinstance(run_id, str) or not run_id:
+        return _error("run_id must be a non-empty string", 400)
+    if decision == "approve":
+        launcher: RunLauncher = request.app.state.run_launcher
+        return await _launch_action(launcher.approve, run_id, stage)
+
+    try:
+        project_dir = ui_context(request).project_dir
+        await run_in_threadpool(pipeline.reject_gate, project_dir, run_id, stage)
+    except RunInProgress as exc:
+        return _error(str(exc), 409, holder=exc.holder)
+    except (GateError, ProjectError) as exc:
+        return _error(str(exc), 409)
+    except OSError as exc:
+        return _error(f"could not reject the gate: {exc}", 500)
+    return JSONResponse(
+        {
+            "run_id": run_id,
+            "status": "paused",
+            "next_steps": [
+                "Edit the project config in vidpipe.yaml. Open Config to preview settings.",
+                "Open Keyframes or Video and choose Redo shot for an existing output.",
+                "Edit the project files, then start another run to review the updated outputs.",
+            ],
+        },
+        headers=NO_STORE,
+    )
+
+
+@same_origin_only
+async def redo_shot(request: Request) -> JSONResponse:
+    shot: int = request.path_params["shot"]
+    if shot < 1:
+        return _error("shot must be a positive integer", 400)
+    launcher: RunLauncher = request.app.state.run_launcher
+    return await _launch_action(launcher.redo, shot)
 
 
 async def _stop(request: Request, *, now: bool) -> JSONResponse:
@@ -276,6 +355,8 @@ def routes() -> list[Route]:
         Route("/api/run/start", start, methods=["POST"]),
         Route("/api/run/stop", stop, methods=["POST"]),
         Route("/api/run/stop-now", stop_now, methods=["POST"]),
+        Route("/api/gates/{stage}/{decision}", decide_gate, methods=["POST"]),
+        Route("/api/shots/{shot:int}/redo", redo_shot, methods=["POST"]),
     ]
 
 

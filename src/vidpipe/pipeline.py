@@ -13,7 +13,7 @@ from vidpipe.chain import build_provider, describe
 from vidpipe.config import STAGE_KINDS, ProviderSelection
 from vidpipe.contracts import Cancelled, MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
-from vidpipe.gates import Approver, GateError, GateKeeper
+from vidpipe.gates import Approver, GateError, GateKeeper, require_paused_gate
 from vidpipe.lock import writer_lock
 from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
@@ -168,6 +168,7 @@ def run(
     approve: Sequence[str] = (),
     approver: Approver | None = None,
     origin: Origin | str | None = None,
+    resume_gate: tuple[str, str] | None = None,
 ) -> RunResult:
     """Run the stage graph (up to ``until``). Capability problems abort before any generation.
 
@@ -180,9 +181,18 @@ def run(
     is in progress it raises ``RunInProgress`` before doing anything. Throughout, it publishes its
     run state (``vidpipe.runstate``) in ``build/run_state.json``; ``origin`` (``cli`` or ``ui``,
     default ``$VIDPIPE_RUN_ORIGIN``, else ``cli``) records who started it.
+
+    ``resume_gate`` identifies a paused run and its gate (run ID, stage). It approves the
+    existing outputs and resumes with that run's stage limit under the same writer lock.
     """
     who = _origin(origin)
-    with writer_lock(Project(project_dir).root):
+    project = Project(project_dir)
+    with writer_lock(project.root):
+        if resume_gate is not None:
+            run_id, stage = resume_gate
+            paused = require_paused_gate(project.root, run_id, stage)
+            GateKeeper(project, ArtifactStore(project)).approve(stage)
+            until = paused.until
         return _run(
             project_dir,
             until=until,
@@ -348,6 +358,14 @@ def approve(project_dir: Path, gates: Sequence[str]) -> None:
             if gate not in STAGE_NAMES:
                 raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
             keeper.approve(gate)
+
+
+def reject_gate(project_dir: Path, run_id: str, stage: str) -> None:
+    """Leave the specified run paused and clear any approval for its gate."""
+    with writer_lock(project_dir):
+        require_paused_gate(project_dir, run_id, stage)
+        project = Project(project_dir)
+        GateKeeper(project, ArtifactStore(project)).reject(stage)
 
 
 def redo(

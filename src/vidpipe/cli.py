@@ -38,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run the stage graph on a project directory")
     run.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     _add_run_options(run)
+    run.add_argument("--resume-gate", nargs=2, metavar=("RUN_ID", "STAGE"), help=argparse.SUPPRESS)
     plan = sub.add_parser("plan", help="show the plan and check capabilities; generates nothing")
     plan.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     plan.add_argument("--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)")
@@ -212,12 +213,14 @@ def main(argv: list[str] | None = None) -> int:
                 approver=approver,
             )
         else:
+            resume_gate = (args.resume_gate[0], args.resume_gate[1]) if args.resume_gate else None
             result = pipeline.run(
                 args.project,
                 until=args.until,
                 auto=args.auto,
                 approve=args.approve,
                 approver=approver,
+                resume_gate=resume_gate,
             )
         return _report(result, args.project)
     except pipeline.PlanError as exc:
