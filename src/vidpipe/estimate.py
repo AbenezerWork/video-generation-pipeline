@@ -15,7 +15,6 @@ Nothing here calls a provider's generation method or writes to the project.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -174,7 +173,7 @@ def _estimate(
         calls, seconds = fit.clip_count, fit.clip_seconds
         detail = f"{_plural(calls, 'clip')}, {seconds:g} s of video"
     elif stage == "music" and fit is not None:
-        calls, seconds = 1, float(math.ceil(fit.total_seconds))
+        calls, seconds = 1, float(fit.music_seconds)
         detail = f"{seconds:g} s of music"
     else:
         return estimate

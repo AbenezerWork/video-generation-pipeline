@@ -205,6 +205,36 @@ that also received the protagonist's picture by default, which the model left ou
 pictures and a shot drawn from both; bottom: a shot before and after `redo`, and a two-reference
 shot showing the duplicated-character defect).
 
+## Music on ComfyUI
+
+Set `providers.music` in `vidpipe.yaml` to generate an instrumental score with ACE-Step 1.5 Turbo.
+The bundled workflow uses ComfyUI 0.46.3 core nodes and
+`models/checkpoints/ace_step_1.5_turbo_aio.safetensors`. The project configuration selects the
+provider and can override its tempo and key.
+
+```yaml
+providers:
+  music:
+    name: comfyui-music
+    options:
+      settings: {bpm: 90, keyscale: E minor}
+```
+
+`vidpipe run PROJECT --until music` writes `build/music/music.flac` and indexes it in
+`build/music.json`. The soundtrack covers the longest language render, rounded up to a whole
+second. Assembly trims the same score to each render and ducks it under the narration. The ledger
+records the measured duration, ComfyUI execution time and any retry. On out-of-memory, the
+bundled workflow retries with smaller decode tiles and the requested duration intact.
+
+For a hosted ComfyUI instance with the same checkpoint, set `options.url` on the music provider to
+the instance's address. This is a manual switch. To use another music backend, register a
+`MusicProvider` and select it by name in the same YAML field. The sample selects `fake-music`
+for GPU-free runs.
+
+The separate `SongProvider.sing(SongRequest(...))` contract takes lyrics and a vocal language and
+returns a mixed audio file. `fake-song` returns a deterministic WAV tone for conformance tests.
+The project stage graph uses the instrumental music contract for assembly.
+
 ## Adding a ComfyUI model or provider
 
 **Another model for an existing provider needs no Python:** export the workflow in API format, write
@@ -218,7 +248,7 @@ providers:
 `vidpipe plan` checks that every mapped node input exists, and takes capabilities and cost from the
 mapping. A workflow shipped with vidpipe goes in `workflows/` and is selected by name.
 
-**Another contract (video, music)** needs a small provider class on
+**A new workflow-backed contract** needs a small provider class on
 `vidpipe.comfy.provider.ComfyProvider`, which supplies options, URL handling, fingerprinting,
 uploads, retries, the step-down, cancellation and memory release:
 
@@ -285,7 +315,9 @@ and the `MixSettings`.
   the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`) and the per-contract provider conformance suite
   (`tests/conformance/`). ComfyUI providers are tested against an in-process fake server
   (`tests/fake_comfyui.py`, fixture `comfy`); `uv run pytest -m integration -k comfy` runs them on a
-  real ComfyUI at 127.0.0.1:8188 with the models above (under a minute of GPU time).
+  real ComfyUI at 127.0.0.1:8188 with the models above. With the ACE-Step checkpoint installed,
+  `uv run pytest -m integration -k 'comfyui_music or comfyui-music'` runs just the music tests,
+  including a 90-second score.
 - Tests that need real `ffmpeg`/`ffprobe` carry `@pytest.mark.needs_ffmpeg`: they skip cleanly when the
   binaries are absent and run automatically once they are on `PATH`.
 - Real-provider tests (ComfyUI, CLIs, edge-tts) carry `@pytest.mark.integration` and only run with

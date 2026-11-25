@@ -261,7 +261,14 @@ class ImageToVideoResult(BaseModel):
 
 
 class MusicCapabilities(Capabilities):
-    max_seconds: float = 120.0
+    max_seconds: float = Field(default=120.0, gt=0)
+    min_seconds: float = Field(default=0.0, ge=0)
+
+    def duration_problem(self, seconds: float) -> str | None:
+        if seconds > 0 and self.min_seconds <= seconds <= self.max_seconds:
+            return None
+        lower = f"at least {self.min_seconds:g} s" if self.min_seconds > 0 else "greater than 0 s"
+        return f"music duration {seconds:g} s must be {lower} and at most {self.max_seconds:g} s"
 
 
 class MusicRequest(Request):
@@ -274,6 +281,7 @@ class MusicRequest(Request):
 class MusicResult(BaseModel):
     path: Path
     duration_s: float
+    record: GenerationRecord = Field(default_factory=GenerationRecord)
 
 
 # -------------------------------------------------------------------------------------- song
@@ -285,6 +293,8 @@ class SongCapabilities(Capabilities):
 
 
 class SongRequest(Request):
+    """A song prompt and the lyrics and language for its vocal performance."""
+
     prompt: str
     lyrics: str
     language: str = "en"
@@ -294,6 +304,8 @@ class SongRequest(Request):
 
 
 class SongResult(BaseModel):
+    """One audio mix containing the song and its vocals."""
+
     path: Path
     duration_s: float
 

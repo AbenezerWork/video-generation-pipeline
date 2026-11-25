@@ -286,8 +286,8 @@ class FakeMusic(MusicProvider):
     cost = CostModel(unit=CostUnit.OUTPUT_SECOND, gpu_minutes=0.05)  # per second of music
 
     def compose(self, request: MusicRequest) -> MusicResult:
-        if request.duration_s > self.capabilities.max_seconds:
-            raise UnsupportedRequest(f"duration {request.duration_s}s")
+        if problem := self.capabilities.duration_problem(request.duration_s):
+            raise UnsupportedRequest(problem)
         path = request.output_path.with_suffix(".wav")
         write_wav(path, request.duration_s, 110 + stable_int(request.prompt, request.seed) % 60)
         return MusicResult(path=path, duration_s=request.duration_s)
@@ -295,6 +295,8 @@ class FakeMusic(MusicProvider):
 
 @register
 class FakeSong(SongProvider):
+    """Stand-in for a vocal mix. It encodes the lyrics as a deterministic test tone."""
+
     name = "fake-song"
     fake = True
     capabilities = SongCapabilities(max_seconds=120.0, vocal_languages=frozenset({"en"}))

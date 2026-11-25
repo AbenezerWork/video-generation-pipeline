@@ -1,8 +1,8 @@
 """Pure-Python audio duration, so narration timing needs neither ffprobe nor ffmpeg.
 
 ``audio_duration_s`` reads the length straight from the file: WAV via the stdlib ``wave`` module,
-MP3 by walking the frame headers (what edge-tts returns). It sums real frame lengths, so it is exact
-for CBR and VBR alike and does not rely on service-reported word or sentence boundaries.
+MP3 by walking the frame headers (what edge-tts returns), and FLAC from its STREAMINFO metadata
+(what ComfyUI's audio export returns).
 """
 
 from __future__ import annotations
@@ -26,12 +26,29 @@ def audio_duration_s(path: Path) -> float:
         return _wav_duration_s(path)
     if suffix == ".mp3":
         return _mp3_duration_s(path.read_bytes())
+    if suffix == ".flac":
+        return _flac_duration_s(path)
     raise AudioFormatError(f"cannot measure the duration of {path.name!r} ({suffix} audio)")
 
 
 def _wav_duration_s(path: Path) -> float:
     with wave.open(str(path), "rb") as wav:
         return wav.getnframes() / wav.getframerate()
+
+
+def _flac_duration_s(path: Path) -> float:
+    with path.open("rb") as audio:
+        header = audio.read(42)
+    # The mandatory first metadata block is STREAMINFO (type 0, length 34). Its packed
+    # format field contains the 20-bit sample rate and the 36-bit total sample count.
+    if len(header) != 42 or header[:4] != b"fLaC" or header[4] & 0x7F or header[5:8] != b"\0\0\x22":
+        raise AudioFormatError("no FLAC STREAMINFO block found")
+    stream_info = int.from_bytes(header[18:26], "big")
+    rate = stream_info >> 44
+    samples = stream_info & ((1 << 36) - 1)
+    if not rate or not samples:
+        raise AudioFormatError("FLAC STREAMINFO does not report a sample rate and length")
+    return samples / rate
 
 
 def _id3v2_size(data: bytes) -> int:

@@ -11,7 +11,7 @@ from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.chain import build_provider, describe
 from vidpipe.config import STAGE_KINDS, ProviderSelection
-from vidpipe.contracts import ProjectContext, Provider
+from vidpipe.contracts import MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper
 from vidpipe.models import Manifest, StageRecord, Storyboard
@@ -135,6 +135,13 @@ def plan(
         report = build_report(project, ctx.providers, [p.name for p in planned])
         if report.fit is not None:
             problems += [f"fit-planning: {p}" for p in report.fit.problems]
+            music = ctx.providers.get("music")
+            if (
+                "music" in names
+                and isinstance(music, MusicProvider)
+                and (problem := music.capabilities.duration_problem(report.fit.music_seconds))
+            ):
+                problems.append(f"music: {problem}")
     return Plan(stages=planned, problems=problems, gates=list(project.config.gates), report=report)
 
 

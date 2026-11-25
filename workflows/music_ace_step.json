@@ -1,0 +1,70 @@
+{
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {"ckpt_name": "ace_step_1.5_turbo_aio.safetensors"}
+  },
+  "text": {
+    "class_type": "TextEncodeAceStepAudio1.5",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "tags": "instrumental",
+      "lyrics": "[Instrumental]",
+      "seed": 0,
+      "bpm": 90,
+      "duration": 12.0,
+      "timesignature": "4",
+      "language": "unknown",
+      "keyscale": "E minor",
+      "generate_audio_codes": false,
+      "cfg_scale": 2.0,
+      "temperature": 0.85,
+      "top_p": 0.9,
+      "top_k": 0,
+      "min_p": 0.0
+    }
+  },
+  "shift": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {"model": ["checkpoint", 0], "shift": 3.0}
+  },
+  "negative": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {"conditioning": ["text", 0]}
+  },
+  "latent": {
+    "class_type": "EmptyAceStep1.5LatentAudio",
+    "inputs": {"seconds": 12.0, "batch_size": 1}
+  },
+  "sample": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["shift", 0],
+      "positive": ["text", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["latent", 0],
+      "seed": 0,
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecodeAudioTiled",
+    "inputs": {
+      "samples": ["sample", 0],
+      "vae": ["checkpoint", 2],
+      "tile_size": 512,
+      "overlap": 64
+    }
+  },
+  "save": {
+    "class_type": "SaveAudioAdvanced",
+    "inputs": {
+      "audio": ["decode", 0],
+      "filename_prefix": "vidpipe/music",
+      "format": "flac"
+    }
+  }
+}

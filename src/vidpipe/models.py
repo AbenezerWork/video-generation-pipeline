@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 
 from pydantic import BaseModel, Field
@@ -204,6 +205,11 @@ class FitPlan(BaseModel):
     def total_seconds(self) -> float:
         """The longest render: what music must cover."""
         return max(self.render_seconds.values(), default=0.0)
+
+    @property
+    def music_seconds(self) -> int:
+        """Round up so small timing changes can reuse the soundtrack."""
+        return math.ceil(self.total_seconds)
 
     @property
     def clip_count(self) -> int:

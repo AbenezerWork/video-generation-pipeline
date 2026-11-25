@@ -34,6 +34,7 @@ from vidpipe.contracts import (
     TTSRequest,
     UnsupportedRequest,
 )
+from vidpipe.providers._audio import audio_duration_s
 from vidpipe.providers._media import png_size, write_png
 
 UNSUPPORTED_LANGUAGE = "zz-unsupported"
@@ -181,7 +182,8 @@ def check_music(provider: MusicProvider, tmp_path: Path) -> None:
     out = tmp_path / "music"
     result = provider.compose(MusicRequest(prompt="warm acoustic", duration_s=2.0, output_path=out))
     _same_place(out, result.path)
-    assert result.duration_s == pytest.approx(2.0, abs=0.25)
+    assert 2.0 <= result.duration_s <= 2.25
+    assert audio_duration_s(result.path) == pytest.approx(result.duration_s, abs=0.001)
     with pytest.raises(UnsupportedRequest):
         provider.compose(
             MusicRequest(
@@ -205,6 +207,8 @@ def check_song(provider: SongProvider, tmp_path: Path) -> None:
         )
     )
     _same_place(out, result.path)
+    assert result.duration_s == pytest.approx(2.0, abs=0.25)
+    assert audio_duration_s(result.path) == pytest.approx(result.duration_s, abs=0.25)
     with pytest.raises(UnsupportedRequest):
         provider.sing(
             SongRequest(
@@ -213,6 +217,16 @@ def check_song(provider: SongProvider, tmp_path: Path) -> None:
                 language=UNSUPPORTED_LANGUAGE,
                 duration_s=2.0,
                 output_path=tmp_path / "bad",
+            )
+        )
+    with pytest.raises(UnsupportedRequest):
+        provider.sing(
+            SongRequest(
+                prompt="folk ballad",
+                lyrics="la la la",
+                language=language,
+                duration_s=provider.capabilities.max_seconds + 1,
+                output_path=tmp_path / "long",
             )
         )
 

@@ -11,7 +11,6 @@ up to date generates nothing and reports itself skipped.
 
 from __future__ import annotations
 
-import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -690,23 +689,29 @@ class MusicStage(Stage):
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("music", MusicProvider)
         brief = ctx.project.read_model("brief.json", Brief)
-        # Whole seconds: the render is trimmed to each language, and a small narration edit must
-        # not regenerate the music.
-        total = float(math.ceil(ctx.project.read_model("fit_plan.json", FitPlan).total_seconds))
+        total = float(ctx.project.read_model("fit_plan.json", FitPlan).music_seconds)
+        if problem := provider.capabilities.duration_problem(total):
+            raise StageError(problem)
         prompt = f"Instrumental score for: {brief.title}"
+        seed = 0
 
         def make() -> Made:
             out = ctx.project.artifact_path("music/music.wav")
-            result = provider.compose(
-                MusicRequest(prompt=prompt, duration_s=total, output_path=out)
+            request = MusicRequest(prompt=prompt, duration_s=total, seed=seed, output_path=out)
+            result = _generate("music", lambda: provider.compose(request))
+            if not result.duration_s >= total:
+                raise StageError(
+                    f"music: provider returned {result.duration_s:g} s for a {total:g} s score"
+                )
+            return _recorded(
+                result.path, result.record, seed=request.seed, duration_s=result.duration_s
             )
-            return Made([result.path])
 
         made = ctx.produce(
             "music",
             inputs=Inputs(values={"prompt": prompt}),
             parameters={"duration_s": total},
-            seed=0,
+            seed=seed,
             make=make,
         )
         return _write_index(ctx, "music.json", [_item(ctx, None, made.paths[0])])

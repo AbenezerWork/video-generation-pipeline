@@ -1,0 +1,25 @@
+name: music_ace_step
+variants:
+  - {images: 0, workflow: music_ace_step.json}
+fields:
+  prompt: [text.inputs.tags]
+  seed: [text.inputs.seed, sample.inputs.seed]
+  seconds: [text.inputs.duration, latent.inputs.seconds]
+  bpm: [text.inputs.bpm]
+  keyscale: [text.inputs.keyscale]
+  decode_tile_size: [decode.inputs.tile_size]
+  filename_prefix: [save.inputs.filename_prefix]
+outputs: {node: save, key: audio}
+settings: {bpm: 90, keyscale: E minor, decode_tile_size: 512}
+oom_step_down:
+  - set: {decode_tile_size: 256}
+timeout_s: 900
+capabilities:
+  min_seconds: 1
+  max_seconds: 120
+cost:
+  unit: output_second
+  gpu_minutes: 0.01  # Planning estimate pending a benchmark on the target GPU.
+requires:
+  comfyui: "0.46.3"
+  models: [checkpoints/ace_step_1.5_turbo_aio.safetensors]

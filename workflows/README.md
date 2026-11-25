@@ -1,4 +1,6 @@
-# Keyframe workflows (ComfyUI, API format)
+# ComfyUI workflows (API format)
+
+## Keyframes
 
 Decision and measurements: [`docs/adr/0001-keyframe-model.md`](../docs/adr/0001-keyframe-model.md).
 
@@ -13,6 +15,27 @@ Three variants of one graph: FLUX.2 [klein] 4B fp8 (distilled, 4 steps) with nat
 Load a file as JSON, set the fields below, and `POST` it as `{"prompt": <json>}`. The provider can strip the `_meta` keys; ComfyUI ignores them.
 
 vidpipe does this from `keyframe_flux2_klein_4b.mapping.yaml`, the machine-readable form of the table below.
+
+## Instrumental music
+
+`music_ace_step.json` and `music_ace_step.mapping.yaml` use the ACE-Step 1.5 Turbo all-in-one
+checkpoint and core ComfyUI 0.46.3 nodes. The graph is based on ComfyUI's
+`audio_ace_step_1_5_checkpoint` template with audio-code generation disabled, tiled VAE decoding
+and FLAC export. The lyrics field is fixed to the model's instrumental tag.
+[ACE-Step tutorial](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/Tutorial.md)
+
+| Value | Node inputs |
+|---|---|
+| Prompt | `text.inputs.tags` |
+| Duration | `text.inputs.duration`, `latent.inputs.seconds` |
+| Seed | `text.inputs.seed`, `sample.inputs.seed` |
+| Decode tile size | `decode.inputs.tile_size` |
+| Filename prefix | `save.inputs.filename_prefix` |
+
+The save node reports FLAC files under `outputs.save.audio` in ComfyUI history. The single
+out-of-memory step reduces the decode tile size from 512 to 256 while leaving the audio length
+intact. The cost of 0.01 GPU minutes per second of output is a planning estimate pending an
+8 GB benchmark.
 
 ## Mapping files
 

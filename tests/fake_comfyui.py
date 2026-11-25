@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
+import subprocess
 import threading
 import uuid
 import zlib
@@ -25,6 +26,8 @@ from dataclasses import dataclass, field
 from email.parser import BytesParser
 from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
@@ -103,9 +106,39 @@ def _save_image(job: Job, uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
     return "images", ".png", png(width, height, colour, json.dumps(job.graph))
 
 
+def _save_audio(job: Job, _uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
+    seconds = next(
+        node["inputs"]["seconds"]
+        for node in job.graph.values()
+        if node["class_type"] == "EmptyAceStep1.5LatentAudio"
+    )
+    frequency = 110 + job.identity({})[0]
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "music.flac"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"sine=frequency={frequency}:sample_rate=48000",
+                "-t",
+                str(seconds),
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        audio = path.read_bytes()
+    return "audio", ".flac", audio
+
+
 #: Output node class -> what it writes.
 WRITERS: dict[str, Callable[[Job, dict[str, bytes]], tuple[str, str, bytes]]] = {
     "SaveImage": _save_image,
+    "SaveAudioAdvanced": _save_audio,
 }
 
 
