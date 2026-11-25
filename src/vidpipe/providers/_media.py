@@ -53,7 +53,15 @@ def png_size(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def write_wav(path: Path, duration_s: float, frequency: float, amplitude: float = 0.3) -> None:
+def write_wav(
+    path: Path,
+    duration_s: float,
+    frequency: float,
+    amplitude: float = 0.3,
+    *,
+    silence_s: float = 0.0,
+) -> None:
+    """A sine tone of ``duration_s``, then ``silence_s`` of silence."""
     frames = round(duration_s * SAMPLE_RATE)
     samples = (
         int(amplitude * 32767 * math.sin(2 * math.pi * frequency * i / SAMPLE_RATE))
@@ -64,6 +72,7 @@ def write_wav(path: Path, duration_s: float, frequency: float, amplitude: float 
         out.setsampwidth(2)
         out.setframerate(SAMPLE_RATE)
         out.writeframes(b"".join(struct.pack("<h", s) for s in samples))
+        out.writeframes(b"\x00\x00" * round(silence_s * SAMPLE_RATE))
 
 
 def write_y4m(path: Path, width: int, height: int, frames: int, base: tuple[int, int, int]) -> None:

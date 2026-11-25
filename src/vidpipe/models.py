@@ -77,6 +77,8 @@ class MediaItem(BaseModel):
     shot_id: int | None = None
     #: Which visual set a clip belongs to (see ``VisualSet.id``); ``None`` for other media.
     visual_set: str | None = None
+    #: Which clip of the shot this is (0 is the first; later ones are continuation clips).
+    clip: int = 0
     path: str  # relative to build/
 
 
@@ -86,10 +88,16 @@ class MediaIndex(BaseModel):
     items: list[MediaItem]
 
     def for_shot(self, shot_id: int, visual_set: str | None = None) -> str:
+        """The shot's first clip."""
+        return self.for_clip(shot_id, visual_set, 0)
+
+    def for_clip(self, shot_id: int, visual_set: str | None, clip: int) -> str:
         return next(
             i.path
             for i in self.items
-            if i.shot_id == shot_id and (visual_set is None or i.visual_set == visual_set)
+            if i.shot_id == shot_id
+            and i.clip == clip
+            and (visual_set is None or i.visual_set == visual_set)
         )
 
 
