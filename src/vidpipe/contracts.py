@@ -58,6 +58,14 @@ class GenerationError(Exception):
     """The provider could not produce the asset; the stage fails (completed artifacts are kept)."""
 
 
+class Cancelled(Exception):  # noqa: N818 (not an error: the run asked for it)
+    """The run asked the provider to drop the artifact in progress (stop now).
+
+    Not a :class:`GenerationError`: nothing failed, so nothing is retried and the stage does not
+    fail. A provider raises it after cleaning up (a ComfyUI job is taken out of the queue).
+    """
+
+
 class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -69,6 +77,9 @@ class ProjectContext(Frozen):
     root: Path
     #: ``comfyui.url`` from ``vidpipe.yaml``.
     comfyui_url: str | None = None
+    #: True once the run is asked to stop now. A provider that can drop a long job polls it while
+    #: it waits and then raises :class:`Cancelled`; one that cannot just finishes the artifact.
+    stop_now: Callable[[], bool] | None = Field(default=None, exclude=True)
 
 
 class GenerationRecord(BaseModel):
