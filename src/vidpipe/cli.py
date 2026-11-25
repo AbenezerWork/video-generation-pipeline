@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -66,7 +67,31 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="stop now: cancel the ComfyUI job in progress and discard that one artifact",
     )
+    ui = sub.add_parser("ui", help="watch a project in the browser (needs the 'ui' extra)")
+    ui.add_argument("project", type=Path, help="project directory")
+    ui.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="address to listen on (default: 127.0.0.1, this machine only); any other address "
+        "opens the UI to the network and requires the token printed at startup",
+    )
+    ui.add_argument("--port", type=int, default=8765, help="port to listen on (default: 8765)")
     return parser
+
+
+def _serve_ui(project: Path, host: str, port: int) -> int:
+    try:
+        from vidpipe.ui.server import serve
+    except ImportError as exc:
+        print(
+            f"error: vidpipe ui needs the optional 'ui' extra ({exc.name} is missing): "
+            "pip install 'vidpipe[ui]', or uv sync --extra ui",
+            file=sys.stderr,
+        )
+        return 1
+    with contextlib.suppress(KeyboardInterrupt):
+        serve(project, host=host, port=port)
+    return 0
 
 
 def _utf8_output() -> None:
@@ -126,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
     _utf8_output()
     args = _parser().parse_args(argv)
     try:
+        if args.command == "ui":
+            return _serve_ui(args.project, args.host, args.port)
         if args.command == "doctor":
             from vidpipe.doctor import check_environment
 
