@@ -8,8 +8,8 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] Both videos are 90 s or shorter and play with all tracks
-- [ ] The run is resumable and one shot can be re-rolled
+- [x] Both videos are 90 s or shorter and play with all tracks
+- [x] The run is resumable and one shot can be re-rolled
 - [ ] Swapping one provider through config works on the real pipeline
 
 ## Comments
@@ -39,7 +39,13 @@ The separate back-translation model flagged wording in the Amharic draft. Lines
 3 and 4 were corrected in the live translation before its narration was generated.
 The updated review still records smaller wording differences.
 
-The shared tracker is already downloading the ACE-Step checkpoint. After the
-video run exits and `doctor` sees the verified checkpoint, resume the same project
-with the full run in the example instructions. Verify both exports, then exercise
-the single-shot redo and retry the cross-adapter swap when a second CLI is available.
+The resumed run reused all 11 Wan clips, generated the real ACE-Step score, and
+assembled both MP4s with matching SRT sidecars. FFprobe measured 41.583 s for
+English and 49.625 s for Amharic. Both files contain H.264 and mixed AAC and
+decoded in full with FFmpeg's error checks enabled. A sampled Amharic frame
+showed burned-in Ethiopic text.
+
+An unchanged full rerun skipped every stage and preserved the ledger and both
+MP4 hashes. Redoing shot 2 changed only its keyframe and video ledger records
+and the two assembly records. Both rerendered files passed the full decode.
+The cross-adapter swap remains to be verified.
