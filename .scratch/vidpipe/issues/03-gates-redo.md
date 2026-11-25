@@ -8,6 +8,6 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] Gates pause and resume on approval; the gate set is configurable
-- [ ] `--auto` runs end to end without pausing
-- [ ] Redo of one shot leaves other shots' artifacts unchanged
+- [x] Gates pause and resume on approval; the gate set is configurable
+- [x] `--auto` runs end to end without pausing
+- [x] Redo of one shot leaves other shots' artifacts unchanged
