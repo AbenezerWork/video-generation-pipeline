@@ -8,6 +8,6 @@
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] Keyframes generated for every storyboard shot using bible references
-- [ ] Retries with new seeds are recorded in the artifact
-- [ ] Provider passes the keyframer conformance suite under the integration marker
+- [x] Keyframes generated for every storyboard shot using bible references
+- [x] Retries with new seeds are recorded in the artifact
+- [x] Provider passes the keyframer conformance suite under the integration marker

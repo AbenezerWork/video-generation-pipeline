@@ -10,6 +10,12 @@ providers:
   keyframes: fake-keyframer
   video: fake-i2v
   music: fake-music
+# Real keyframes on a running ComfyUI (README, "Keyframes on ComfyUI"): set
+# `keyframes: comfyui-keyframer` above, and a size the model draws:
+# width: 832
+# height: 480
+# comfyui:
+#   url: http://127.0.0.1:8188   # the default
 # Optional (shown with their defaults); see "Assembly, ducking and subtitles" in the README.
 # subtitles:
 #   burn_in: true

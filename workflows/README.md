@@ -12,6 +12,30 @@ Three variants of one graph: FLUX.2 [klein] 4B fp8 (distilled, 4 steps) with nat
 
 Load a file as JSON, set the fields below, and `POST` it as `{"prompt": <json>}`. The provider can strip the `_meta` keys; ComfyUI ignores them.
 
+vidpipe does this from `keyframe_flux2_klein_4b.mapping.yaml`, the machine-readable form of the table below.
+
+## Mapping files
+
+`<name>.mapping.yaml` describes one model: which workflow to run, what to write into it, where the result comes out. `vidpipe.comfy.workflow` loads and checks it. A new model for an existing provider is a workflow plus a mapping, with no Python. Unknown keys are errors.
+
+| Key | Meaning |
+|---|---|
+| `name` | The model's name. |
+| `variants` | List of `{images: N, workflow: file.json}`: the API-format workflow for N input images (path relative to the mapping). |
+| `images` | `<node>.inputs.<input>` for input image 1, 2, ...: gets the name `POST /upload/image` returned. |
+| `fields` | Value name → list of node inputs it is written to. A node a variant lacks is skipped for that variant. Each listed input must exist in some variant, and the provider's required values in every variant. |
+| `outputs` | `{node: save, key: images}`: where `/history` lists the result files (`key` defaults to `images`, which video saves use too; audio saves use `audio`). |
+| `settings` | Default values for fields; a project overrides them with `options: {settings: {...}}`. |
+| `oom_step_down` | Ordered list; each entry is `{set: {field: lower value, ...}}` or `{smaller_size: [[w, h], ...]}`. See below. |
+| `timeout_s` | Limit per job, queueing included (default 600). |
+| `capabilities` | The contract's capability fields (keyframer: `min_width`, `min_height`, `max_width`, `max_height`, `max_pixels`, `width_multiple`, `height_multiple`; the reference count comes from `variants`). |
+| `cost` | `{unit: call or output_second, gpu_minutes: ...}`, used by `vidpipe plan`. |
+| `requires` | `{comfyui: version, custom_nodes: [...], models: [folder/file, ...]}`: what must be installed. |
+
+Values a provider writes: `seed`, `filename_prefix` (map it to the save node, so each job's output is a new file), and its own (keyframer: `prompt`, `width`, `height`).
+
+Editing a workflow, `images`, `fields`, `outputs` or `settings` regenerates the artifacts made with the mapping; editing capabilities, cost, timeout or the ladder does not.
+
 ## Field mapping
 
 Node ids are stable names. Fields are `<node id>.inputs.<input>`.
@@ -44,10 +68,12 @@ Output sizes, in order (all multiples of 16, 16:9):
 | sharper | 1024x576, then 1280x720 | ~7.4 s, ~9.2 s |
 | smaller | 640x352 | ~5.7 s |
 
-No OOM, hang or crash occurred in about 60 runs, up to 1280x720 with three 1 MP references. The ladder below is precautionary and has **not** been exercised as a recovery path. If a job fails with an out-of-memory error:
+No OOM, hang or crash occurred in about 60 runs, up to 1280x720 with three 1 MP references. The ladder is precautionary: it has been exercised only against the fake ComfyUI server in the tests, **never** by a real out-of-memory error.
 
-1. `POST /free` with `{"unload_models": true, "free_memory": true}`, then retry the same job once with a new seed.
-2. Reference size 0.5 → 0.25 MP.
-3. Drop the second (location) reference and put the location in the prompt text.
-4. Output size down one step (832x480 → 640x352).
-5. Give up and record the fallback in the artifact. Flux Kontext GGUF and SDXL + IP-Adapter were queued as model fallbacks but were not downloaded or tested.
+What vidpipe does when a job fails with an out-of-memory error (`vidpipe.comfy.jobs`):
+
+1. `POST /free` with `{"unload_models": true, "free_memory": true}`.
+2. Apply **one** step-down: the first `oom_step_down` entry that lowers something for this job (a `set` entry applies when it raises nothing and lowers at least one value; `smaller_size` picks the largest listed size that is no wider, no taller and smaller). For these mappings: reference size 0.5 → 0.25 MP; with no reference, or already at 0.25, the output size down one step (832x480 → 640x352).
+3. Retry with a new seed (this attempt does not count against the 2 ordinary retries). A second out-of-memory error, or no applicable entry, fails the job. The step-down is recorded in the artifact's `fallback`.
+
+Not implemented from the spike's suggested ladder: dropping the second reference (only one step is ever applied, so it would never be reached with the default settings). Flux Kontext GGUF and SDXL + IP-Adapter were queued as model fallbacks but were not downloaded or tested.
