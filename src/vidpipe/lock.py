@@ -10,7 +10,7 @@ Projects on network drives are unsupported: their file locks are not reliable.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def describe_holder(build: Path) -> str | None:
 
 
 @contextmanager
-def writer_lock(root: Path) -> Iterator[None]:
+def writer_lock(root: Path) -> Generator[None]:
     """Hold the project's one-writer lock for the ``with`` block, or raise :class:`RunInProgress`.
 
     Fails fast: a second writer never waits for the first. Not re-entrant across calls; take it
@@ -53,7 +53,9 @@ def writer_lock(root: Path) -> Iterator[None]:
     build = root / "build"
     build.mkdir(parents=True, exist_ok=True)
     # No soft (marker-file) fallback: a marker outlives a killed process, an OS lock does not.
-    lock = FileLock(build / LOCK_FILENAME, timeout=0, fallback_to_soft=False, preserve_lock_file=True)
+    lock = FileLock(
+        build / LOCK_FILENAME, timeout=0, fallback_to_soft=False, preserve_lock_file=True
+    )
     try:
         lock.acquire()
     except Timeout:

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import MakeProject, ffprobe
+from tests.conftest import MakeProject, ffprobe, nothing_generated
 from vidpipe.cli import main
 
 
@@ -111,7 +111,7 @@ def test_unsupported_request_is_rejected_at_plan_time_before_any_generation(
     assert run_cli("run", str(project), "--until", "music") == 1
 
     assert "narration" in capsys.readouterr().err
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_plan_reports_the_same_problem_without_generating(

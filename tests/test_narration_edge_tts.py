@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from tests.conftest import MakeProject
+from tests.conftest import MakeProject, nothing_generated
 from vidpipe.cli import main
 
 EDGE = {"narration": "edge-tts"}
@@ -25,7 +25,7 @@ def test_plan_accepts_edge_tts_for_english_and_amharic(
     assert main(["plan", str(project), "--until", "narration"]) == 0
 
     assert "edge-tts" in capsys.readouterr().out
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_plan_rejects_a_language_edge_tts_is_not_configured_for(

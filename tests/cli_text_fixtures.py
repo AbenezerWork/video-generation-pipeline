@@ -61,7 +61,7 @@ class FakeClis:
         self._queue(binary, [{"kind": "fail", "stderr": stderr, "exit": exit_code}])
 
     def hang(self, binary: str) -> None:
-        """Queue a reply that blocks until :meth:`release`, so the run calling it stays in progress."""
+        """Queue a reply that blocks until :meth:`release`, keeping the calling run in progress."""
         self._queue(binary, [{"kind": "hang"}])
 
     @property
