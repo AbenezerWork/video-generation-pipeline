@@ -48,7 +48,7 @@ class ProviderSelection(BaseModel):
         return " > ".join([self.name, *(f.name for f in self.fallback)])
 
 
-#: What ``script`` and ``storyboard`` use when ``vidpipe.yaml`` does not choose a provider.
+#: What ``script``, ``storyboard`` and ``translation`` use when ``vidpipe.yaml`` names no provider.
 DEFAULT_TEXT_CHAIN = ["gemini-cli", "claude-cli"]
 
 
@@ -74,7 +74,8 @@ class ProjectConfig(BaseModel):
     width: int = 160
     height: int = 90
     fps: int = 8
-    #: Missing ``script`` and ``storyboard`` entries default to ``DEFAULT_TEXT_CHAIN``.
+    #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
+    #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
 
     @field_validator("providers", mode="before")
@@ -82,7 +83,7 @@ class ProjectConfig(BaseModel):
     def _default_text_chains(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
-        defaults = {stage: DEFAULT_TEXT_CHAIN for stage in ("script", "storyboard")}
+        defaults = {stage: DEFAULT_TEXT_CHAIN for stage in ("script", "storyboard", "translation")}
         return {**defaults, **cast(dict[str, Any], value)}
 
     @field_validator("providers")

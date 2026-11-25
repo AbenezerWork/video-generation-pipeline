@@ -124,8 +124,9 @@ class FallbackTextProvider(TextProvider):
         )
         #: ``(provider name, error)`` for every provider that failed, across all calls.
         self.failures: list[tuple[str, str]] = []
-        #: Name of the provider that answered the most recent call.
+        #: Name of the provider that answered the most recent call, and its position in the chain.
         self.last_used: str | None = None
+        self.last_index: int | None = None
 
     @property
     def name(self) -> str:  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -138,7 +139,7 @@ class FallbackTextProvider(TextProvider):
 
     def complete(self, request: TextRequest) -> TextResponse:
         errors: list[str] = []
-        for provider in self.providers:
+        for index, provider in enumerate(self.providers):
             try:
                 response = provider.complete(request)
             except (TextProviderError, UnsupportedRequest) as exc:
@@ -146,6 +147,7 @@ class FallbackTextProvider(TextProvider):
                 errors.append(f"{provider.name}: {exc}")
                 continue
             self.last_used = provider.name
+            self.last_index = index
             return response
         raise AllProvidersFailed("; ".join(errors))
 

@@ -32,6 +32,8 @@ def main() -> int:
     state_file = Path(os.environ["VIDPIPE_FAKE_CLI_DIR"]) / f"{flavor}.json"
     state: dict[str, Any] = json.loads(state_file.read_text(encoding="utf-8"))
     cwd = Path.cwd()
+    # The adapters send UTF-8 (Amharic prompts); a Windows pipe would otherwise read cp1252.
+    cast(Any, sys.stdin).reconfigure(encoding="utf-8")
     state["calls"].append(
         {
             "argv": args,

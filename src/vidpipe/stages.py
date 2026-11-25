@@ -34,7 +34,6 @@ from vidpipe.contracts import (
     Provider,
     TextProvider,
     TranslationProvider,
-    TranslationRequest,
     TTSProvider,
     TTSRequest,
 )
@@ -55,6 +54,7 @@ from vidpipe.models import (
 )
 from vidpipe.project import Project
 from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
+from vidpipe.translate import TextTranslator, TranslationError, review_path, translate_script
 
 P = TypeVar("P", bound=Provider[Any])
 
@@ -256,26 +256,12 @@ class TranslationStage(Stage):
         for lang in self._targets(ctx):
 
             def make(lang: str = lang) -> Made:
-                response = provider.translate(
-                    TranslationRequest(
-                        texts=[line.text for line in script.lines],
-                        source_language=script.language,
-                        target_language=lang,
-                    )
-                )
-                if len(response.texts) != len(script.lines):
-                    raise StageError(
-                        f"translation into {lang!r} returned the wrong number of lines"
-                    )
-                translated = Script(
-                    language=lang,
-                    title=script.title,
-                    lines=[
-                        ScriptLine(id=line.id, text=text)
-                        for line, text in zip(script.lines, response.texts, strict=True)
-                    ],
-                )
-                return Made([ctx.project.write_model(f"translation/{lang}.json", translated)])
+                try:
+                    done = translate_script(provider, script, lang)
+                except TranslationError as exc:
+                    raise StageError(str(exc)) from exc
+                path = ctx.project.write_model(f"translation/{lang}.json", done.script)
+                return Made([path], data=done.data, fallback=done.fallback)
 
             made = ctx.produce(
                 f"translation/{lang}",
@@ -284,7 +270,53 @@ class TranslationStage(Stage):
                 make=make,
             )
             outputs += _rels(ctx, made)
+            if isinstance(provider, TextTranslator):
+                outputs += self._review(ctx, provider, script, lang, made.data)
         return outputs
+
+    def _review(
+        self,
+        ctx: StageContext,
+        provider: TextTranslator,
+        script: Script,
+        lang: str,
+        translator: dict[str, Any],
+    ) -> list[str]:
+        """Back-translation check of ``lang``'s translation, re-run when the translated text (a
+        hand edit, say) or the translator changes. Flags land in ``translation/<lang>.review.json``.
+        """
+
+        def make() -> Made:
+            try:
+                reviewed = provider.review(
+                    script,
+                    ctx.script(lang),
+                    translator=translator.get("translator", provider.name),
+                    translator_fingerprint=translator.get("translator_fingerprint"),
+                )
+            except TranslationError as exc:
+                raise StageError(str(exc)) from exc
+            path = ctx.project.write_model(review_path(lang), reviewed.review)
+            return Made(
+                [path],
+                data={
+                    "drifted": [line.id for line in reviewed.review.drifted],
+                    "same_model": reviewed.review.same_model,
+                    "checker": reviewed.review.checker,
+                    "translator": reviewed.review.translator,
+                },
+                fallback=reviewed.fallback,
+            )
+
+        made = ctx.produce(
+            f"translation/{lang}/review",
+            inputs=Inputs(
+                files=["script.json", f"translation/{lang}.json"], values={"translator": translator}
+            ),
+            parameters={"source_language": script.language, "target_language": lang},
+            make=make,
+        )
+        return _rels(ctx, made)
 
 
 class StoryboardStage(Stage):

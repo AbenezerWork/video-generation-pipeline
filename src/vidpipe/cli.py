@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from vidpipe import pipeline
 from vidpipe.assembly import AssemblyError
-from vidpipe.project import ProjectError
+from vidpipe.project import Project, ProjectError
 from vidpipe.stages import STAGE_NAMES, StageError
+from vidpipe.translate import report_lines
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -25,7 +27,20 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _utf8_output() -> None:
+    """Print Unicode (Ge'ez narration, say) whatever the console's code page is.
+
+    A Windows console prints Unicode fine, but redirected output (a pipe, a file) falls back to
+    the locale code page (cp1252), which cannot hold Ge'ez and would crash the command with
+    ``UnicodeEncodeError``. Files vidpipe writes are always UTF-8, so output is made UTF-8 too.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream.encoding.lower().replace("-", "") != "utf8" and hasattr(stream, "reconfigure"):
+            cast(Any, stream).reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_output()
     args = _parser().parse_args(argv)
     try:
         if args.command == "plan":
@@ -39,6 +54,9 @@ def main(argv: list[str] | None = None) -> int:
         for record in result.manifest.stages:
             status = "skipped" if record.skipped else f"ran ({record.generated} generated)"
             print(f"{record.stage:<14}{record.provider or '-':<26}{status}")
+        if any(record.stage == "translation" for record in result.manifest.stages):
+            for warning in report_lines(Project(args.project)):
+                print(warning, file=sys.stderr)
         return 0
     except pipeline.PlanError as exc:
         for problem in exc.problems:
