@@ -25,6 +25,9 @@ class ProviderSelection(BaseModel):
 
     name: str
     options: dict[str, Any] = Field(default_factory=dict)
+    #: Providers to fall back to, in order. Declared and validated only: nothing acts on it yet
+    #: (e.g. ``narration: {name: edge-tts, fallback: [mms-tts]}``).
+    fallback: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="before")
     @classmethod

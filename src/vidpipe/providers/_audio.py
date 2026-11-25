@@ -64,7 +64,7 @@ def _mp3_duration_s(data: bytes) -> float:
 
 
 def _parse_frame_header(header: int) -> tuple[int, int, int] | None:
-    """Return (frame length in bytes, samples per frame, sample rate) for an MPEG Layer III frame."""
+    """Return (frame length in bytes, samples per frame, sample rate) of an MPEG Layer III frame."""
     if header >> 21 != 0x7FF:
         return None
     version = (header >> 19) & 0b11  # 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5, 1 = reserved

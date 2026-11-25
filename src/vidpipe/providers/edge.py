@@ -25,7 +25,13 @@ import aiohttp
 import edge_tts
 from edge_tts.exceptions import EdgeTTSException
 
-from vidpipe.contracts import TTSCapabilities, TTSProvider, TTSRequest, TTSResult, UnsupportedRequest
+from vidpipe.contracts import (
+    TTSCapabilities,
+    TTSProvider,
+    TTSRequest,
+    TTSResult,
+    UnsupportedRequest,
+)
 from vidpipe.providers._audio import audio_duration_s
 from vidpipe.registry import register
 
