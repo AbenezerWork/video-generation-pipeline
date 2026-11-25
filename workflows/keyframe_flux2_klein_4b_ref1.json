@@ -1,0 +1,247 @@
+{
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux-2-klein-4b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Load diffusion model (flux-2-klein-4b-fp8)"
+    }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Load text encoder (qwen_3_4b, type flux2)"
+    }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "Load VAE (flux2-vae)"
+    }
+  },
+  "text": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "PROMPT",
+      "clip": [
+        "clip",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt (positive)"
+    }
+  },
+  "neg0": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "text",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negative = zeroed positive"
+    }
+  },
+  "ref1_load": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "character_ref.png"
+    },
+    "_meta": {
+      "title": "Reference image 1"
+    }
+  },
+  "ref1_scale": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "ref1_load",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 0.5,
+      "resolution_steps": 16
+    },
+    "_meta": {
+      "title": "Reference 1 scale (megapixels)"
+    }
+  },
+  "ref1_enc": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "ref1_scale",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Reference 1 VAE encode"
+    }
+  },
+  "ref1_pos": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "text",
+        0
+      ],
+      "latent": [
+        "ref1_enc",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Reference 1 latent (positive)"
+    }
+  },
+  "ref1_neg": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "neg0",
+        0
+      ],
+      "latent": [
+        "ref1_enc",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Reference 1 latent (negative)"
+    }
+  },
+  "guider": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "model": [
+        "unet",
+        0
+      ],
+      "positive": [
+        "ref1_pos",
+        0
+      ],
+      "negative": [
+        "ref1_neg",
+        0
+      ],
+      "cfg": 1.0
+    },
+    "_meta": {
+      "title": "CFG guider (cfg 1.0, distilled)"
+    }
+  },
+  "sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler (euler)"
+    }
+  },
+  "sched": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 4,
+      "width": 832,
+      "height": 480
+    },
+    "_meta": {
+      "title": "Scheduler (steps, width, height)"
+    }
+  },
+  "noise": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "latent": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty latent (width, height)"
+    }
+  },
+  "sample": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "noise",
+        0
+      ],
+      "guider": [
+        "guider",
+        0
+      ],
+      "sampler": [
+        "sampler",
+        0
+      ],
+      "sigmas": [
+        "sched",
+        0
+      ],
+      "latent_image": [
+        "latent",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sampler custom advanced"
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "sample",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE decode"
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "decode",
+        0
+      ],
+      "filename_prefix": "vidpipe/keyframe"
+    },
+    "_meta": {
+      "title": "Save keyframe"
+    }
+  }
+}

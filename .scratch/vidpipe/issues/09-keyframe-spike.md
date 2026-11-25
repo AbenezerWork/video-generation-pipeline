@@ -4,10 +4,12 @@
 
 **Blocked by:** None (needs ComfyUI installed)
 
-**Status:** ready-for-human
+**Status:** resolved
 
 Spec: `.scratch/vidpipe/spec.md`
 
-- [ ] Decision record states chosen model, workflow, resolution, time per keyframe and VRAM
-- [ ] Workflow JSON saved for ticket 10
-- [ ] Notes on character consistency across at least 3 shots
+- [x] Decision record states chosen model, workflow, resolution, time per keyframe and VRAM
+- [x] Workflow JSON saved for ticket 10
+- [x] Notes on character consistency across at least 3 shots
+
+Decision: FLUX.2 [klein] 4B fp8 with reference images, see `docs/adr/0001-keyframe-model.md`; workflow files and field mapping in `workflows/`.
