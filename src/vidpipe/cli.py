@@ -35,6 +35,15 @@ def _parser() -> argparse.ArgumentParser:
     plan = sub.add_parser("plan", help="show the plan and check capabilities; generates nothing")
     plan.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     plan.add_argument("--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)")
+    redo = sub.add_parser(
+        "redo", help="re-roll one shot with a new seed and regenerate what follows"
+    )
+    redo.add_argument("what", choices=["shot"])
+    redo.add_argument("number", type=int, help="shot id from the storyboard")
+    redo.add_argument(
+        "project", type=Path, nargs="?", default=Path("."), help="project directory (default: .)"
+    )
+    _add_run_options(redo)
     approve = sub.add_parser("approve", help="approve what a gated stage produced, so runs resume")
     approve.add_argument("project", type=Path, help="project directory")
     approve.add_argument("gates", nargs="+", metavar="GATE", help="stage the gate follows")
@@ -83,13 +92,24 @@ def main(argv: list[str] | None = None) -> int:
             pipeline.approve(args.project, args.gates)
             print("approved", ", ".join(args.gates))
             return 0
-        result = pipeline.run(
-            args.project,
-            until=args.until,
-            auto=args.auto,
-            approve=args.approve,
-            approver=_interactive_approver(),
-        )
+        approver = _interactive_approver()
+        if args.command == "redo":
+            result = pipeline.redo(
+                args.project,
+                shot=args.number,
+                until=args.until,
+                auto=args.auto,
+                approve=args.approve,
+                approver=approver,
+            )
+        else:
+            result = pipeline.run(
+                args.project,
+                until=args.until,
+                auto=args.auto,
+                approve=args.approve,
+                approver=approver,
+            )
         return _report(result, args.project)
     except pipeline.PlanError as exc:
         for problem in exc.problems:

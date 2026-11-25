@@ -105,6 +105,9 @@ class StageContext:
             self.generated += 1
         return produced
 
+    def shot_seed(self, shot_id: int) -> int:
+        return self.store.shot_seed(shot_id)
+
     def provider(self, stage: str, expected: type[P]) -> P:
         provider = self.providers.get(stage)
         if provider is None:
@@ -393,7 +396,7 @@ class KeyframesStage(Stage):
                         prompt=shot.visual,
                         width=config.width,
                         height=config.height,
-                        seed=shot.id,
+                        seed=ctx.shot_seed(shot.id),
                         output_path=ctx.project.artifact_path(f"{key}.png"),
                     )
                 )
@@ -403,7 +406,7 @@ class KeyframesStage(Stage):
                 key,
                 inputs=Inputs(values={"prompt": shot.visual}),
                 parameters={"width": config.width, "height": config.height},
-                seed=shot.id,
+                seed=ctx.shot_seed(shot.id),
                 make=make,
             )
             items.append(_item(ctx, shot.id, made.paths[0]))
@@ -432,7 +435,7 @@ class VideoStage(Stage):
                         prompt=shot.visual,
                         motion_type=shot.motion_type,
                         duration_s=seconds,
-                        seed=shot.id,
+                        seed=ctx.shot_seed(shot.id),
                         output_path=ctx.project.artifact_path(f"{key}.mp4"),
                     )
                 )
@@ -442,7 +445,7 @@ class VideoStage(Stage):
                 key,
                 inputs=Inputs(files=[image], values={"prompt": shot.visual}),
                 parameters={"motion_type": shot.motion_type.value, "duration_s": seconds},
-                seed=shot.id,
+                seed=ctx.shot_seed(shot.id),
                 make=make,
             )
             items.append(_item(ctx, shot.id, made.paths[0]))

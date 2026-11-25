@@ -14,7 +14,7 @@ from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import Provider
 from vidpipe.gates import Approver, GateError, GateKeeper
-from vidpipe.models import Manifest, StageRecord
+from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.stages import STAGE_NAMES, STAGES, StageContext, StageError
@@ -183,3 +183,44 @@ def approve(project_dir: Path, gates: Sequence[str]) -> None:
         if gate not in STAGE_NAMES:
             raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
         keeper.approve(gate)
+
+
+def redo(
+    project_dir: Path,
+    *,
+    shot: int,
+    until: str | None = None,
+    registry: Registry | None = None,
+    assembler: Assembler | None = None,
+    auto: bool = False,
+    approve: Sequence[str] = (),
+    approver: Approver | None = None,
+) -> RunResult:
+    """Re-roll one shot (``vidpipe redo shot N``): new seed, then a normal run.
+
+    The shot's re-roll count goes up in the ledger, which changes the seed (and so the input hash)
+    of its keyframe and video, and the new video file changes what the assemblies read. A normal
+    run then regenerates exactly those; every other shot's artifacts keep their records. Gates
+    still apply: the new keyframe is shown at the keyframes gate again before it is animated.
+    """
+    project = Project(project_dir)
+    if not (project.build / "storyboard.json").is_file():
+        raise PlanError(["nothing to redo: run the storyboard stage first"])
+    storyboard = project.read_model("storyboard.json", Storyboard)
+    if shot not in {s.id for s in storyboard.shots}:
+        known = ", ".join(str(s.id) for s in storyboard.shots)
+        raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
+    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+    if not the_plan.ok:
+        raise PlanError(the_plan.problems)
+
+    ArtifactStore(project).reroll_shot(shot)
+    return run(
+        project_dir,
+        until=until,
+        registry=registry,
+        assembler=assembler,
+        auto=auto,
+        approve=approve,
+        approver=approver,
+    )
