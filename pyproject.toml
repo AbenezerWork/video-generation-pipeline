@@ -20,6 +20,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/vidpipe"]
 
+# Ship the bundled fonts (and their licence) inside the package: `vidpipe.subtitles` finds them there.
+[tool.hatch.build.targets.wheel.force-include]
+"assets/fonts" = "vidpipe/_fonts"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not integration'"

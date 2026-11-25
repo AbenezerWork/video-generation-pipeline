@@ -68,6 +68,37 @@ STAGE_KINDS: dict[str, ProviderKind] = {
 }
 
 
+#: The font burned-in Amharic subtitles use (it is bundled with vidpipe, see ``assets/fonts``).
+GEEZ_FONT = "Noto Sans Ethiopic"
+
+
+class SubtitleConfig(BaseModel):
+    """Subtitles: a sidecar ``.srt`` per language, burned in unless ``burn_in`` is off."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    burn_in: bool = True
+    #: Folder of font files libass may use, relative to the project directory (or absolute). Unset:
+    #: the project's own ``fonts/`` folder if it has one, else the fonts bundled with vidpipe.
+    fonts_dir: str | None = None
+    #: Font family per language. A language not listed uses the system default font (fine for Latin
+    #: script); Amharic needs Ethiopic glyphs, so it gets the bundled Noto Sans Ethiopic.
+    fonts: dict[str, str] = Field(default_factory=lambda: {"am": GEEZ_FONT})
+    #: Text size in libass script units, where the video's height is 288 (so it scales with it).
+    font_size: int = Field(default=20, gt=0)
+
+
+class MixConfig(BaseModel):
+    """The soundtrack: music sits at ``music_level`` and ducks under narration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Music gain (1.0 is the music provider's own level) while nobody is speaking.
+    music_level: float = Field(default=0.4, gt=0, le=2)
+    #: How hard narration pushes the music down (a sidechain compressor's ratio: higher is deeper).
+    duck_ratio: float = Field(default=8.0, ge=1, le=20)
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -80,6 +111,8 @@ class ProjectConfig(BaseModel):
     fps: int = 8
     #: Stages after which the run pauses for approval (see `vidpipe.gates`); `[]` for none.
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
+    subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
+    mix: MixConfig = Field(default_factory=MixConfig)
     #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
     #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
