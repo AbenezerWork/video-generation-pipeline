@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tests.conftest import MakeProject
 from tests.recording import Recorder, RecordingRegistry
@@ -18,6 +19,8 @@ from vidpipe import pipeline
 from vidpipe.assembly import Assembler, AssemblyJob
 from vidpipe.cli import main
 from vidpipe.contracts import ProviderKind
+from vidpipe.providers.fakes import FakeTTS
+from vidpipe.registry import Registry, default_registry
 
 
 def run_stages(capsys: pytest.CaptureFixture[str], *args: str) -> dict[str, str]:
@@ -274,3 +277,43 @@ def test_changing_one_languages_narration_only_rerenders_that_language(
     assert assembler.rendered == ["am"]
     assert "assembly" in ran_stages(result)
     assert (project / "out" / "demo_en.mp4").read_bytes() == b"en:3"
+
+
+class VoicePackTTS(FakeTTS):
+    """Like edge-tts: takes its options as constructor arguments instead of keeping them."""
+
+    name = "fake-tts-voice-pack"
+
+    def __init__(self, *, voice_pack: str = "v1") -> None:
+        super().__init__()
+        self.voice_pack = voice_pack
+
+
+def test_changing_a_providers_configured_options_regenerates_what_it_made(
+    make_project: MakeProject,
+) -> None:
+    registry = Registry()
+    for cls in default_registry().classes():
+        registry.register(cls)
+    registry.register(VoicePackTTS)
+
+    def narrate_with(project: Path, voice_pack: str) -> Recorder:
+        config = yaml.safe_load((project / "vidpipe.yaml").read_text(encoding="utf-8"))
+        config["providers"]["narration"] = {
+            "name": VoicePackTTS.name,
+            "options": {"voice_pack": voice_pack},
+        }
+        text: str = yaml.safe_dump(config)  # pyright: ignore[reportUnknownMemberType]
+        (project / "vidpipe.yaml").write_text(text, encoding="utf-8")
+        recorder = Recorder()
+        pipeline.run(project, until="music", registry=RecordingRegistry(recorder, registry))
+        return recorder
+
+    project = make_project()
+    assert len(narrate_with(project, "v1").of(ProviderKind.TTS)) == 6
+    assert narrate_with(project, "v1").of(ProviderKind.TTS) == []
+
+    # Every clip, in both languages, is made again under the new option.
+    assert len(narrate_with(project, "v2").of(ProviderKind.TTS)) == 6
+    ledger = read_json(project / "build" / "ledger.json")["artifacts"]
+    assert ledger["narration/en/shot_01"]["provider_options"] == {"voice_pack": "v2"}

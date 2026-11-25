@@ -21,7 +21,7 @@ hashes what each artifact depends on and regenerates it only when that changed, 
 skips finished work and resumes a run that was killed (the ledger is saved after every artifact).
 
 - Inputs are hashed by *content*: upstream files, plain values (prompts, text), the provider's
-  `fingerprint()` (name and options), parameters and seed. A regenerated upstream file that comes out
+  `fingerprint()` and the options configured for it in `vidpipe.yaml`, parameters and seed. A regenerated upstream file that comes out
   identical invalidates nothing downstream.
 - Hand edits work: edit `build/script.json` (or a translation) and only the artifacts that read it are
   redone. An artifact whose own inputs are unchanged is never overwritten.

@@ -88,10 +88,12 @@ class StageContext:
         seed: int | None = None,
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
+        selection = self.project.config.providers.get(self.stage)
         produced = self.store.produce(
             key,
             stage=self.stage,
             provider=self.providers.get(self.stage),
+            options=selection.options if selection else None,
             inputs=inputs,
             make=make,
             parameters=parameters,

@@ -229,6 +229,7 @@ class ArtifactStore:
         *,
         stage: str,
         provider: Provider[Any] | None,
+        options: Mapping[str, Any],
         inputs: Mapping[str, str],
         parameters: Mapping[str, Any],
         seed: int | None,
@@ -238,6 +239,7 @@ class ArtifactStore:
                 "ledger": LEDGER_VERSION,
                 "stage": stage,
                 "provider": provider.fingerprint() if provider else None,
+                "options": options,
                 "inputs": inputs,
                 "parameters": parameters,
                 "seed": seed,
@@ -252,14 +254,25 @@ class ArtifactStore:
         provider: Provider[Any] | None,
         inputs: Inputs,
         make: Callable[[], Made],
+        options: Mapping[str, Any] | None = None,
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
     ) -> Produced:
-        """Return the artifact ``key``, generating it with ``make`` only when its inputs changed."""
+        """Return the artifact ``key``, generating it with ``make`` only when its inputs changed.
+
+        ``options`` are the provider options from the project config: they are hashed and recorded
+        (a provider may consume them in its constructor, so ``provider.options`` is not enough).
+        """
         params = dict(parameters or {})
+        configured = dict(options or {})
         mapped = self.input_map(inputs)
         wanted = self.input_hash(
-            stage=stage, provider=provider, inputs=mapped, parameters=params, seed=seed
+            stage=stage,
+            provider=provider,
+            options=configured,
+            inputs=mapped,
+            parameters=params,
+            seed=seed,
         )
         existing = self.record(key)
         if (
@@ -282,7 +295,7 @@ class ArtifactStore:
             input_hash=wanted,
             inputs=mapped,
             provider=provider.name if provider else None,
-            provider_options=dict(provider.options) if provider else {},
+            provider_options=configured if provider else {},
             parameters=params,
             seed=seed,
             gpu_seconds=(
