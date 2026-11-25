@@ -1,7 +1,8 @@
-"""The UI's HTTP API for tests: a real uvicorn on a free port, and a stdlib client for it.
+"""The UI's HTTP API for tests: a real server on a free port, and a stdlib client for it.
 
-The server runs ``vidpipe.ui.create_app`` in a background thread; requests go over a real socket,
-so the SSE stream behaves as it does for a browser.
+:class:`UiServer` runs ``vidpipe.ui.create_app`` on uvicorn in a background thread;
+:class:`UiProcess` runs the ``vidpipe ui`` command itself. Requests go over a real socket, so the
+SSE stream behaves as it does for a browser.
 """
 
 from __future__ import annotations
@@ -9,10 +10,12 @@ from __future__ import annotations
 import http.client
 import json
 import socket
+import subprocess
+import sys
 import threading
 import time
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,16 +47,33 @@ class Event:
     id: str | None = None
 
 
-@dataclass
-class UiServer:
-    """``vidpipe ui`` serving ``project`` on ``127.0.0.1:port`` until :meth:`stop`."""
+class UiClient:
+    """Requests to a UI listening on ``127.0.0.1:port``."""
 
-    project: Path
-    token: str | None = None
-    port: int = field(default_factory=free_port)
+    port: int
 
-    def __post_init__(self) -> None:
-        app = create_app(self.project, token=self.token, poll_interval=0.05)
+    def get(self, path: str, headers: dict[str, str] | None = None) -> Response:
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.request("GET", path, headers=headers or {})
+            reply = conn.getresponse()
+            headers_ = {k.lower(): v for k, v in reply.getheaders()}
+            return Response(reply.status, headers_, reply.read())
+        finally:
+            conn.close()
+
+    def events(
+        self, path: str = "/api/events", headers: dict[str, str] | None = None
+    ) -> EventStream:
+        return EventStream(self.port, path, headers or {})
+
+
+class UiServer(UiClient):
+    """``create_app(project)`` served in this process on ``127.0.0.1:port`` until :meth:`stop`."""
+
+    def __init__(self, project: Path) -> None:
+        self.port = free_port()
+        app = create_app(project, poll_interval=0.05)
         config = uvicorn.Config(
             app, host="127.0.0.1", port=self.port, log_level="warning", timeout_graceful_shutdown=1
         )
@@ -70,17 +90,46 @@ class UiServer:
         self.server.should_exit = True
         self.thread.join(timeout=10)
 
-    def get(self, path: str, headers: dict[str, str] | None = None) -> Response:
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        try:
-            conn.request("GET", path, headers=headers or {})
-            reply = conn.getresponse()
-            return Response(reply.status, {k.lower(): v for k, v in reply.getheaders()}, reply.read())
-        finally:
-            conn.close()
 
-    def events(self, path: str = "/api/events", headers: dict[str, str] | None = None) -> EventStream:
-        return EventStream(self.port, path, headers or {})
+class UiProcess(UiClient):
+    """``vidpipe ui <project> <args>`` in its own process, as a creator starts it.
+
+    ``output`` holds what it printed up to the line saying it is listening.
+    """
+
+    def __init__(self, project: Path, *args: str) -> None:
+        self.port = free_port()
+        self.process = subprocess.Popen(
+            [sys.executable, "-u", "-m", "vidpipe", "ui", str(project), "--port", str(self.port)]
+            + list(args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+        )
+        assert self.process.stdout is not None
+        self.output: list[str] = []
+        for line in self.process.stdout:
+            self.output.append(line.rstrip("\n"))
+            if "Press Ctrl+C" in line:  # the end of the banner
+                break
+        else:
+            raise AssertionError("vidpipe ui exited:\n" + "\n".join(self.output))
+        deadline = time.monotonic() + 10
+        while True:  # the banner comes just before uvicorn binds the port
+            try:
+                socket.create_connection(("127.0.0.1", self.port), timeout=1).close()
+                break
+            except OSError:
+                assert self.process.poll() is None, "vidpipe ui exited on start"
+                assert time.monotonic() < deadline, "vidpipe ui never started listening"
+                time.sleep(0.05)
+
+    def stop(self) -> None:
+        self.process.kill()
+        self.process.wait()
+        if self.process.stdout:
+            self.process.stdout.close()
 
 
 class EventStream:
@@ -116,7 +165,7 @@ class EventStream:
             else:
                 fields[name] = value
 
-    def until(self, predicate: Any, timeout: float = 60) -> Iterator[Event]:
+    def until(self, predicate: Callable[[Event], bool], timeout: float = 60) -> Iterator[Event]:
         """Events up to and including the first one ``predicate`` accepts."""
         deadline = time.monotonic() + timeout
         while True:

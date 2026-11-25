@@ -37,8 +37,8 @@ def create_app(
 
     ``token``: when set, every request must carry it (see :mod:`vidpipe.ui.access`); ``vidpipe ui``
     sets one whenever it listens beyond this machine. ``allowed_hosts``: the ``Host`` headers
-    accepted (``vidpipe ui`` passes the loopback names when bound locally, so a web page cannot reach
-    the UI by rebinding its own domain name to 127.0.0.1).
+    accepted (``vidpipe ui`` passes the loopback names when bound locally, so a web page cannot
+    reach the UI by rebinding its own domain name to 127.0.0.1).
     """
     routes: list[BaseRoute] = [
         *pages.routes(),
