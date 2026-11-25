@@ -104,9 +104,13 @@ audio {
   min-inline-size: 0;
 
   & img,
+  & video {
+    display: block;
+  }
+
+  & img,
   & video,
   & .media-unplayable {
-    display: block;
     inline-size: 100%;
     block-size: auto;
     /* Space is kept before the media loads, so nothing moves while reading. */
@@ -178,7 +182,7 @@ audio {
   & thead th {
     position: sticky;
     inset-block-start: 0;
-    z-index: 1;
+    z-index: var(--layer-raised);
     background-color: var(--color-raised);
     font-family: var(--font-ui);
     font-size: var(--text-2xs);
@@ -196,6 +200,8 @@ audio {
 }
 
 .review-table {
+  overflow-wrap: anywhere;
+
   & td:nth-of-type(2) {
     font-size: var(--text-md);
   }
@@ -206,8 +212,13 @@ audio {
   }
 
   & tr[data-drift] > th {
-    box-shadow: inset 3px 0 0 var(--color-status-paused);
+    border-inline-start: var(--space-1) solid var(--color-status-paused);
   }
+}
+
+.review-cell-label,
+.review-line-label {
+  display: none;
 }
 
 .drift-flag {
@@ -235,45 +246,34 @@ audio {
 
 /* Narrow: each review line becomes a card, each cell labelled by its column. */
 @container (width < 40rem) {
-  .review-table,
-  .review-table tbody,
-  .review-table tr,
-  .review-table th,
-  .review-table td {
+  .table-wrapper .review-table {
     display: block;
-  }
 
-  .review-table thead {
-    display: none;
-  }
+    & tbody,
+    & tr,
+    & th,
+    & td,
+    & caption,
+    & .review-cell-label {
+      display: block;
+    }
 
-  .review-table caption {
-    display: block;
-  }
+    & thead {
+      display: none;
+    }
 
-  .review-table tr {
-    border-block-start: var(--border-width) solid var(--color-line);
-  }
+    & tr {
+      border-block-start: var(--border-width) solid var(--color-line);
+    }
 
-  .review-table th,
-  .review-table td {
-    border: 0;
-    padding-block: var(--space-1);
-  }
+    & th,
+    & td {
+      border-block-start: 0;
+    }
 
-  .review-table tbody th::before {
-    content: "Line ";
-  }
-
-  .review-table td::before {
-    content: attr(data-label);
-    display: block;
-    font-family: var(--font-ui);
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-strong);
-    letter-spacing: var(--tracking-label);
-    text-transform: uppercase;
-    color: var(--color-text-muted);
+    & .review-line-label {
+      display: inline;
+    }
   }
 }
 
@@ -370,6 +370,6 @@ audio {
 
 @media (forced-colors: active) {
   .review-table tr[data-drift] > th {
-    border-inline-start: 3px solid CanvasText;
+    border-inline-start-color: CanvasText;
   }
 }

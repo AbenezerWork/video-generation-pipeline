@@ -91,6 +91,7 @@ def comfyui_status(project_dir: Path) -> dict[str, Any]:
                 )
             }
             for device in devices
+            if device.get("type") != "cpu"
         ],
     )
     return status

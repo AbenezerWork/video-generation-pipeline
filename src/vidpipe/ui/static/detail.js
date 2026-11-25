@@ -43,9 +43,8 @@ function seconds(value) {
   return `${Math.floor(whole / 60)} min ${String(whole % 60).padStart(2, "0")} s`;
 }
 
-function bytes(value) {
-  if (value == null) return "–";
-  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+function gibibytes(value) {
+  return `${(value / 1024 ** 3).toFixed(1)} GiB`;
 }
 
 function when(iso) {
@@ -263,6 +262,15 @@ function storyboard(data) {
   );
 }
 
+function reviewCell(label, ...children) {
+  return h(
+    "td",
+    { role: "cell" },
+    h("span", { class: "label review-cell-label" }, label),
+    ...children,
+  );
+}
+
 function translationTable(review) {
   const source = languageName(review.source_language);
   const target = languageName(review.language);
@@ -284,7 +292,7 @@ function translationTable(review) {
     },
     h(
       "table",
-      { class: "review-table" },
+      { class: "review-table", role: "table", "aria-labelledby": captionId },
       h("caption", { id: captionId, class: "muted" }, summary),
       h(
         "thead",
@@ -301,25 +309,28 @@ function translationTable(review) {
       ),
       h(
         "tbody",
-        {},
+        { role: "rowgroup" },
         review.lines.map((line) =>
           h(
             "tr",
-            { dataset: line.status === "drift" ? { drift: "" } : {} },
-            h("th", { scope: "row", class: "numeral" }, String(line.id)),
-            h("td", { "data-label": source, lang: review.source_language }, line.source),
-            h("td", { "data-label": target, lang: review.language }, line.translation),
+            { role: "row", dataset: line.status === "drift" ? { drift: "" } : {} },
+            h(
+              "th",
+              { scope: "row", role: "rowheader", class: "numeral" },
+              h("span", { class: "review-line-label" }, "Line "),
+              String(line.id),
+            ),
+            reviewCell(source, h("span", { lang: review.source_language }, line.source)),
+            reviewCell(target, h("span", { lang: review.language }, line.translation)),
             checked
-              ? h(
-                  "td",
-                  { "data-label": "Back-translation", lang: review.source_language },
-                  line.back_translation ?? "",
+              ? reviewCell(
+                  "Back-translation",
+                  h("span", { lang: review.source_language }, line.back_translation),
                 )
               : null,
             checked
-              ? h(
-                  "td",
-                  { "data-label": "Check" },
+              ? reviewCell(
+                  "Check",
                   line.status === "drift"
                     ? h(
                         "div",
@@ -445,11 +456,12 @@ async function loadOutputs(stage) {
     });
     if (!response.ok) throw new Error(`outputs: ${response.status}`);
     const body = await response.text();
-    if (stage !== current || body === lastBody) return; // unchanged: players keep playing
-    lastBody = body;
+    if (request.signal.aborted || body === lastBody) return; // leave unchanged players alone
     renderOutputs(JSON.parse(body));
+    lastBody = body;
   } catch (error) {
-    if (error.name === "AbortError") return;
+    if (request.signal.aborted) return;
+    lastBody = null;
     outputsBox.replaceChildren(empty(`The outputs could not be read (${error.message}).`));
   }
 }
@@ -490,7 +502,7 @@ function ledgerTable(records) {
         h(
           "tr",
           {},
-          ["Artifact", "Provider", "Seed", "GPU", "Time", "Generated"].map((t) =>
+          ["Artifact", "Provider", "Seed", "GPU time", "Wall time", "Generated"].map((t) =>
             h("th", { scope: "col" }, t),
           ),
         ),
@@ -548,9 +560,9 @@ function comfyui(status) {
               h(
                 "span",
                 { class: "numeral" },
-                d.vram_total == null
-                  ? "Memory not reported"
-                  : `${bytes(d.vram_total - (d.vram_free ?? 0))} of ${bytes(d.vram_total)} GPU memory in use`,
+                d.vram_total == null || d.vram_free == null
+                  ? "GPU memory usage not reported"
+                  : `${gibibytes(d.vram_total - d.vram_free)} of ${gibibytes(d.vram_total)} GPU memory in use`,
               ),
               h("p", { class: "faint" }, d.name ?? d.type ?? "GPU"),
             ),
@@ -575,12 +587,12 @@ async function loadDiagnostics() {
       box.setAttribute("aria-busy", "true");
       try {
         const data = await getJson(url, request.signal);
-        box.replaceChildren(...[render(data)].flat().filter(Boolean));
+        if (!request.signal.aborted) box.replaceChildren(...[render(data)].flat().filter(Boolean));
       } catch (error) {
-        if (error.name === "AbortError") return;
+        if (request.signal.aborted) return;
         box.replaceChildren(empty(`Could not be read (${error.message}).`));
       } finally {
-        box.removeAttribute("aria-busy");
+        if (request === diagnosticsRequest) box.removeAttribute("aria-busy");
       }
     }),
   );

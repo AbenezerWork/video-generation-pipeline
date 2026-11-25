@@ -287,7 +287,8 @@ def test_comfyui_queue_and_gpu_stats_come_from_the_projects_comfyui(
             "vram_free": 1_500_000_000,
             "torch_vram_total": 7_000_000_000,
             "torch_vram_free": 200_000_000,
-        }
+        },
+        {"name": "cpu", "type": "cpu", "vram_total": 16_000_000_000, "vram_free": 8_000_000_000},
     ]
     comfy.jobs += [
         Job("running-1", {}, None, "success", state="running"),
