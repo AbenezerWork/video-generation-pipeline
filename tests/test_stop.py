@@ -22,6 +22,7 @@ from tests.test_keyframes_bible import comfy_project, ledger
 from tests.test_one_writer import SCRIPT
 from tests.test_run_state import read_state, stages
 from vidpipe.cli import main
+from vidpipe.runstate import read_run_state
 
 EXIT_STOPPED = 4
 KEYFRAMES = ["keyframes/shot_01", "keyframes/shot_02", "keyframes/shot_03"]
@@ -51,6 +52,12 @@ class BackgroundRun:
         return self.code
 
 
+def stopping(project: Path) -> bool:
+    # Polled while the run rewrites the file: the public reader rides out a rename on Windows.
+    state = read_run_state(project)
+    return state is not None and state.status == "stopping"
+
+
 def keyframe_records(project: Path) -> list[str]:
     return sorted(key for key in ledger(project) if key.startswith("keyframes/"))
 
@@ -69,7 +76,7 @@ def test_a_stop_ends_the_run_after_the_keyframe_in_progress(
 
     assert main(["stop", str(project)]) == 0
 
-    wait_for(lambda: read_state(project)["status"] == "stopping", "the run to see the stop")
+    wait_for(lambda: stopping(project), "the run to see the stop")
     assert comfy.running == [comfy.jobs[1]]  # shot 2 is still being drawn
     comfy.release()
     assert run.join() == EXIT_STOPPED
@@ -91,7 +98,7 @@ def test_a_resumed_run_reuses_everything_finished_before_the_stop(
     run = BackgroundRun(project)
     wait_for(lambda: drawing_shot_2(comfy), "shot 2 to be drawing")
     assert main(["stop", str(project)]) == 0
-    wait_for(lambda: read_state(project)["status"] == "stopping", "the run to see the stop")
+    wait_for(lambda: stopping(project), "the run to see the stop")
     comfy.release()
     assert run.join() == EXIT_STOPPED
     records = ledger(project)
@@ -145,7 +152,7 @@ def test_stop_now_after_a_stop_cancels_the_job_the_stop_was_waiting_for(
     run = BackgroundRun(project)
     wait_for(lambda: drawing_shot_2(comfy), "shot 2 to be drawing")
     assert main(["stop", str(project)]) == 0
-    wait_for(lambda: read_state(project)["status"] == "stopping", "the run to see the stop")
+    wait_for(lambda: stopping(project), "the run to see the stop")
 
     assert main(["stop", str(project), "--now"]) == 0
 
@@ -162,7 +169,7 @@ def test_a_stop_reaches_a_run_in_another_process_holding_the_lock(
     writer = Writer(project, fake_clis, then=SCRIPT)
     try:
         assert main(["stop", str(project)]) == 0
-        wait_for(lambda: read_state(project)["status"] == "stopping", "the run to see the stop")
+        wait_for(lambda: stopping(project), "the run to see the stop")
     finally:
         writer.finish()
 
