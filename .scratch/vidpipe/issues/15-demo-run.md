@@ -4,13 +4,13 @@
 
 **Blocked by:** 05, 07, 08, 12, 13, 14
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Spec: `.scratch/vidpipe/spec.md`
 
 - [x] Both videos are 90 s or shorter and play with all tracks
 - [x] The run is resumable and one shot can be re-rolled
-- [ ] Swapping one provider through config works on the real pipeline
+- [x] Swapping one provider through config works on the real pipeline
 
 ## Comments
 
@@ -31,9 +31,7 @@ The live project is `%USERPROFILE%\.t3\vidpipe-demos\coffee-origin`. Keep its
   project. `video-run.exit` appears when the run finishes.
 - [x] Swapped the storyboard model from `gpt-6.2-sol` to `gpt-6.2-astra` via YAML
   in a sibling project. The real Codex CLI regenerated the storyboard, and the
-  script, translation and review retained their hashes. A cross-adapter swap
-  remains open. Claude was authenticated but rate-limited, and Gemini required
-  sign-in.
+  script, translation and review retained their hashes.
 
 The separate back-translation model flagged wording in the Amharic draft. Lines
 3 and 4 were corrected in the live translation before its narration was generated.
@@ -48,4 +46,7 @@ showed burned-in Ethiopic text.
 An unchanged full rerun skipped every stage and preserved the ledger and both
 MP4 hashes. Redoing shot 2 changed only its keyframe and video ledger records
 and the two assembly records. Both rerendered files passed the full decode.
-The cross-adapter swap remains to be verified.
+After the Claude quota reset, changing only the sibling project's storyboard
+provider from `codex-cli` to `claude-cli` regenerated the storyboard with the
+live Claude adapter. The brief, script, and translation stages were skipped,
+and every other ledger record was unchanged.
