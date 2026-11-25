@@ -116,6 +116,7 @@ def test_a_full_run_counts_one_render_per_language(make_project: MakeProject) ->
     assembly = stages(state)["assembly"]
     assert (assembly["status"], assembly["done"], assembly["total"]) == ("done", 2, 2)
 
+
 def test_a_run_that_reuses_everything_says_so_per_stage(make_project: MakeProject) -> None:
     project = make_project()
     assert main(["run", str(project), "--until", "music"]) == 0
