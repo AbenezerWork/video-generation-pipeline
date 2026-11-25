@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/static/tokens.css" />
     <link rel="stylesheet" href="/static/console.css" />
     <link rel="stylesheet" href="/static/run.css" />
+    <link rel="stylesheet" href="/static/detail.css" />
     <script type="module" src="/static/theme.js"></script>
     <script type="module" src="/static/run.js"></script>
   </head>
@@ -61,9 +62,29 @@
             <div><dt class="label">Provider</dt><dd class="numeral" id="detail-provider"></dd></div>
             <div><dt class="label">Progress</dt><dd class="numeral" id="detail-progress"></dd></div>
             <div><dt class="label">Time</dt><dd class="numeral" id="detail-time"></dd></div>
+            <div><dt class="label">GPU time</dt><dd class="numeral" id="detail-gpu">–</dd></div>
           </dl>
           <p class="muted" id="detail-note"></p>
-          <!-- Stage outputs, timing and logs go here (ticket 07); gate review and redo (08). -->
+          <!-- Gate review (approve, reject) and redo shot go here (ticket 08). -->
+          <div class="stage-outputs" id="detail-outputs"></div>
+          <p class="faint numeral" id="detail-ledger"></p>
+          <details class="diagnostics" id="diagnostics">
+            <summary>Logs and diagnostics</summary>
+            <div class="diagnostics-body">
+              <section class="output-section">
+                <h3 class="label">Ledger for this stage</h3>
+                <div id="diag-ledger"></div>
+              </section>
+              <section class="output-section">
+                <h3 class="label">Run log</h3>
+                <div id="diag-log"></div>
+              </section>
+              <section class="output-section">
+                <h3 class="label">ComfyUI queue and GPU</h3>
+                <div id="diag-comfyui"></div>
+              </section>
+            </div>
+          </details>
         </div>
       </section>
     </main>

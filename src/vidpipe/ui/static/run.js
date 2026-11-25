@@ -2,6 +2,7 @@
 // the one SSE stream (/api/events). Feature-detects newer APIs; no polyfills (AGENTS.md).
 
 import { watchRings } from "/static/console.js";
+import { showStageDetail } from "/static/detail.js";
 
 const rail = document.getElementById("rail");
 const detail = document.getElementById("stage-detail");
@@ -226,6 +227,7 @@ function renderDetail() {
   if (run && !progress) note = "This run stops before this stage.";
   else if (stage.gate) note = "The run pauses for approval after this stage.";
   document.getElementById("detail-note").textContent = note;
+  showStageDetail(stage.stage, progress);
 }
 
 // ---------------------------------------------------------------- announcements
