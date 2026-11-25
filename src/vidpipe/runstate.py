@@ -14,6 +14,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -140,6 +141,26 @@ def resolve_origin(origin: Origin | str | None = None) -> Origin:
         raise ValueError(message) from None
 
 
+def write_atomically(path: Path, data: bytes) -> None:
+    """Replace ``path`` with ``data`` via a temporary file, so a reader never sees half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as file:
+            file.write(data)
+        for attempt in range(100):
+            try:
+                os.replace(temp, path)
+                break
+            except PermissionError:  # Windows: a reader has the file open right now
+                if attempt == 99:
+                    raise
+                time.sleep(0.02)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temp)
+
+
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -224,62 +245,89 @@ class RunStatePublisher:
             stages=[StageProgress(stage=name, provider=provider) for name, provider in stages],
         )
         self._last_write = 0.0
+        self._lock = threading.RLock()
         self.write()
 
     # ------------------------------------------------------------------ what the runner reports
+    # A stop request is seen by a watcher thread (``vidpipe.stop``), so every change and write
+    # holds ``_lock``.
 
     def totals(self, totals: dict[str, int | None]) -> None:
         """Expected artifact counts of stages still waiting, as far as they are known (written
         with the next change)."""
-        for name, total in totals.items():
-            stage = self.state.stage(name)
-            if stage.status == StageStatus.WAITING:
-                stage.total = total
+        with self._lock:
+            for name, total in totals.items():
+                stage = self.state.stage(name)
+                if stage.status == StageStatus.WAITING:
+                    stage.total = total
 
     def begin_stage(self, name: str, total: int | None) -> None:
-        stage = self.state.stage(name)
-        stage.status, stage.started_at = StageStatus.RUNNING, _now()
-        stage.done = stage.generated = stage.reused = 0
-        if total is not None:
-            stage.total = total
-        self.state.current_stage = name
-        self.write()
+        with self._lock:
+            stage = self.state.stage(name)
+            stage.status, stage.started_at = StageStatus.RUNNING, _now()
+            stage.done = stage.generated = stage.reused = 0
+            if total is not None:
+                stage.total = total
+            self.state.current_stage = name
+            self.write()
 
     def artifact(self, generated: int, reused: int) -> None:
         """An artifact of the current stage finished; written at most every interval."""
-        if self.state.current_stage is None:
-            return
-        stage = self.state.stage(self.state.current_stage)
-        stage.generated, stage.reused, stage.done = generated, reused, generated + reused
-        if time.monotonic() - self._last_write >= PROGRESS_INTERVAL_S:
-            self.write()
+        with self._lock:
+            if self.state.current_stage is None:
+                return
+            stage = self.state.stage(self.state.current_stage)
+            stage.generated, stage.reused, stage.done = generated, reused, generated + reused
+            if time.monotonic() - self._last_write >= PROGRESS_INTERVAL_S:
+                self.write()
 
     def end_stage(self, name: str, generated: int, reused: int, *, paused: bool = False) -> None:
-        stage = self.state.stage(name)
-        stage.generated, stage.reused, stage.done = generated, reused, generated + reused
-        if stage.total is None or stage.total < stage.done:
-            stage.total = stage.done
-        if paused:
-            stage.status = StageStatus.PAUSED
-        elif generated == 0 and reused > 0:
-            stage.status = StageStatus.REUSED
-        else:
-            stage.status = StageStatus.DONE
-        stage.finished_at = _now()
-        self.write()
+        with self._lock:
+            stage = self.state.stage(name)
+            stage.generated, stage.reused, stage.done = generated, reused, generated + reused
+            if stage.total is None or stage.total < stage.done:
+                stage.total = stage.done
+            if paused:
+                stage.status = StageStatus.PAUSED
+            elif generated == 0 and reused > 0:
+                stage.status = StageStatus.REUSED
+            else:
+                stage.status = StageStatus.DONE
+            stage.finished_at = _now()
+            self.write()
+
+    def stopping(self) -> None:
+        """A stop was asked for: the run goes on to the end of the artifact in progress."""
+        with self._lock:
+            if self.state.status == RunStatus.RUNNING:
+                self.state.status = RunStatus.STOPPING
+                self.write()
 
     def finish(self, *, paused_at: str | None = None) -> None:
-        self.state.paused_at = paused_at
-        self._end(RunStatus.PAUSED if paused_at else RunStatus.FINISHED)
+        with self._lock:
+            self.state.paused_at = paused_at
+            self._end(RunStatus.PAUSED if paused_at else RunStatus.FINISHED)
+
+    def stop(self, generated: int = 0, reused: int = 0) -> None:
+        """The run stopped as asked; the stage in progress (if any) is marked stopped, with the
+        ``generated`` and ``reused`` artifacts it finished."""
+        with self._lock:
+            name = self.state.current_stage
+            if name is not None:
+                stage = self.state.stage(name)
+                stage.generated, stage.reused, stage.done = generated, reused, generated + reused
+                stage.status, stage.finished_at = StageStatus.STOPPED, _now()
+            self._end(RunStatus.STOPPED)
 
     def fail(self, message: str) -> None:
         """The run ended with an error; the stage in progress (if any) is marked failed."""
-        name = self.state.current_stage
-        if name is not None:
-            stage = self.state.stage(name)
-            stage.status, stage.finished_at = StageStatus.FAILED, _now()
-        self.state.error = RunError(stage=name, message=message)
-        self._end(RunStatus.FAILED)
+        with self._lock:
+            name = self.state.current_stage
+            if name is not None:
+                stage = self.state.stage(name)
+                stage.status, stage.finished_at = StageStatus.FAILED, _now()
+            self.state.error = RunError(stage=name, message=message)
+            self._end(RunStatus.FAILED)
 
     def _end(self, status: RunStatus) -> None:
         self.state.status = status
@@ -291,23 +339,8 @@ class RunStatePublisher:
 
     def write(self) -> None:
         """Replace the file with the current record, atomically."""
-        self.state.seq += 1
-        self.state.updated_at = _now()
-        data = self.state.model_dump_json(indent=2).encode("utf-8")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temp = tempfile.mkstemp(dir=self.path.parent, prefix=".run_state.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "wb") as file:
-                file.write(data)
-            for attempt in range(100):
-                try:
-                    os.replace(temp, self.path)
-                    break
-                except PermissionError:  # Windows: a reader has the file open right now
-                    if attempt == 99:
-                        raise
-                    time.sleep(0.02)
-        finally:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temp)
-        self._last_write = time.monotonic()
+        with self._lock:
+            self.state.seq += 1
+            self.state.updated_at = _now()
+            write_atomically(self.path, self.state.model_dump_json(indent=2).encode("utf-8"))
+            self._last_write = time.monotonic()
