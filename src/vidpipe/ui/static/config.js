@@ -3,13 +3,22 @@
 // document (the project config as vidpipe.yaml holds it: only the keys that are set), which the
 // server checks as the CLI would (POST /api/config/validate) and renders as the YAML saving would
 // write. Errors show on a field once the user has left it, and in the list beside
-// the YAML. Nothing is saved here.
+// the YAML. A valid draft is planned against the current ledger before it can be saved.
 
 const form = document.getElementById("config-form");
 const yamlView = document.getElementById("config-yaml");
 const statusChip = document.getElementById("config-status");
 const problemsList = document.getElementById("config-problems");
 const announcer = document.getElementById("config-announcer");
+const impactTotal = document.getElementById("config-impact-total");
+const impactStages = document.getElementById("config-impact-stages");
+const planProblems = document.getElementById("config-plan-problems");
+const saveButton = document.getElementById("config-save");
+const reloadButton = document.getElementById("config-reload");
+const actionMessage = document.getElementById("config-action-message");
+const pendingPanel = document.getElementById("config-pending");
+const pendingChip = document.getElementById("config-pending-chip");
+const restartButton = document.getElementById("config-restart");
 
 /** Labels and hints for the settings, by path; anything not listed is named from the schema. */
 const TEXT = {
@@ -74,6 +83,11 @@ let original = null; // the document as loaded
 let defaults = null;
 let providerStages = []; // from /api/providers
 let loaded = false;
+let revision = null;
+let currentHash = null;
+let run = null;
+let saving = false;
+let restarting = false;
 const errorTargets = new Map(); // setting path -> the control its errors show on
 const readinessViews = []; // Visible provider controls to update after a doctor check.
 const inputErrors = new Map();
@@ -664,10 +678,13 @@ function buildForm() {
 
 let validateTimer = 0;
 let validateSeq = 0;
+let previewedSeq = 0;
+let latestCheck = null;
 let readinessTimer = 0;
 let readinessSeq = 0;
 
 function changed(path) {
+  actionMessage.textContent = "";
   scheduleValidation();
   if (path[0] === "providers" || path[0] === "comfyui") checkReadiness();
 }
@@ -676,6 +693,7 @@ function scheduleValidation() {
   clearTimeout(validateTimer);
   const seq = ++validateSeq;
   showStatus("running", "Checking");
+  showImpact("Checking the edited config…");
   validateTimer = setTimeout(() => validate(seq), 200);
 }
 
@@ -685,16 +703,72 @@ async function post(url, body) {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${url}: ${response.status}`);
-  return response.json();
+  const result = await response.json();
+  if (!response.ok) {
+    throw Object.assign(new Error(result.error ?? `${url}: ${response.status}`), {
+      status: response.status,
+      result,
+    });
+  }
+  return result;
 }
 
 async function validate(seq) {
   try {
     const check = await post("/api/config/validate", { document: doc });
-    if (seq === validateSeq) applyCheck(check);
+    if (seq !== validateSeq) return;
+    latestCheck = check;
+    applyCheck(check);
+    if (!check.ok || inputErrors.size) {
+      showImpact("Fix the config problems to estimate the next run.");
+    } else if (dirty() || hasPending()) {
+      await previewImpact(seq);
+    } else {
+      showImpact("Edit the config to preview what will regenerate.");
+    }
+    if (seq === validateSeq) previewedSeq = seq;
   } catch (error) {
-    if (seq === validateSeq) showStatus("failed", `Cannot check: ${error.message}`);
+    if (seq === validateSeq) {
+      showStatus("failed", `Cannot check: ${error.message}`);
+      showImpact("The next run could not be estimated.");
+    }
+  }
+}
+
+function dirty() {
+  return JSON.stringify(doc) !== JSON.stringify(original);
+}
+
+function showImpact(message, stages = [], problems = []) {
+  impactTotal.textContent = message;
+  impactStages.replaceChildren(...stages.map((text) => el("li", { text })));
+  impactStages.hidden = !stages.length;
+  planProblems.replaceChildren(...problems.map((text) => el("li", { text })));
+  planProblems.hidden = !problems.length;
+}
+
+async function previewImpact(seq) {
+  showImpact("Estimating the next run…");
+  try {
+    const plan = await post("/api/config/plan", { document: doc });
+    if (seq !== validateSeq) return;
+    const impact = plan.regeneration;
+    const lines = impact.stages.map((stage) => {
+      const label = STAGE_LABELS[stage.stage] ?? stage.stage;
+      const verb = stage.possible ? "may regenerate" : "will regenerate";
+      const count = stage.artifacts === null
+        ? "unknown artifact count"
+        : `up to ${stage.artifacts} ${stage.artifacts === 1 ? "artifact" : "artifacts"}`;
+      const gpu = stage.gpu_minutes === null
+        ? "GPU time unknown"
+        : `${stage.gpu_minutes.toFixed(2)} GPU min`;
+      return `${label} ${verb} · ${count} · ${gpu}`;
+    });
+    const estimate = `${impact.gpu_minutes.toFixed(2)} GPU min`;
+    const total = impact.complete ? `Estimated GPU time is ${estimate}.` : `Known work is estimated at ${estimate}. Some work is still unknown.`;
+    showImpact(lines.length ? total : "All artifacts can be reused.", lines, plan.problems);
+  } catch (error) {
+    if (seq === validateSeq) showImpact(`Estimate unavailable. ${error.message}`);
   }
 }
 
@@ -805,12 +879,159 @@ form.addEventListener("focusout", ({ target }) => {
   touched.add(target);
   syncError(target, fieldErrors.get(target));
 });
-form.addEventListener("submit", (event) => event.preventDefault()); // saving is not here yet
+// ---------------------------------------------------------------- saving and pending changes
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (saving || doc === null || !reloadButton.hidden) return;
+  if (previewedSeq !== validateSeq) {
+    actionMessage.textContent = "Wait for the current config check before saving.";
+    return;
+  }
+  if (!latestCheck?.ok || inputErrors.size) {
+    actionMessage.textContent = "Fix the config problems before saving.";
+    document.getElementById("config-check").focus();
+    return;
+  }
+  if (!dirty()) {
+    actionMessage.textContent = "There are no unsaved changes.";
+    return;
+  }
+  saving = true;
+  saveButton.setAttribute("aria-disabled", "true");
+  actionMessage.textContent = "";
+  const submitted = clone(doc);
+  const seq = validateSeq;
+  try {
+    const saved = await post("/api/config/save", { document: submitted, revision });
+    original = submitted;
+    revision = saved.revision;
+    currentHash = saved.config_hash;
+    reloadButton.hidden = true;
+    if (seq === validateSeq) {
+      latestCheck = saved;
+      applyCheck(saved);
+    }
+    renderPending();
+    actionMessage.textContent = saved.pending_change
+      ? "Saved for the next run."
+      : "Project config saved.";
+  } catch (error) {
+    if (error.result?.errors && seq === validateSeq) {
+      latestCheck = error.result;
+      applyCheck(latestCheck);
+      document.getElementById("config-check").focus();
+    }
+    if (error.status === 409) reloadButton.hidden = false;
+    actionMessage.textContent = error.result?.error ?? "Could not save the project config.";
+  } finally {
+    saving = false;
+    saveButton.removeAttribute("aria-disabled");
+  }
+});
+
+const active = (state) => state?.status === "running" || state?.status === "stopping";
+
+function hasPending() {
+  return Boolean(currentHash && active(run) && run.config_hash !== currentHash);
+}
+
+function renderPending() {
+  const pending = hasPending();
+  pendingChip.hidden = !pending;
+  pendingPanel.hidden = !pending && !restarting;
+  restartButton.setAttribute("aria-disabled", String(restarting));
+}
+
+function refreshPendingEstimate() {
+  if (doc && hasPending() && !dirty() && !form.closest("[hidden]")) scheduleValidation();
+}
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function readRun() {
+  const response = await fetch("/api/run", { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Cannot read the run state.");
+  return response.json();
+}
+
+async function restartAfter(target) {
+  await post("/api/run/stop", { run_id: target.run_id });
+  let state;
+  do {
+    state = await readRun();
+    if (state?.run_id !== target.run_id) {
+      throw new Error("The run changed while waiting for the stop. Check the Run view.");
+    }
+    if (active(state)) await pause(750);
+  } while (active(state));
+  if (state.status === "failed") throw new Error("The run failed while stopping. Check the Run view.");
+
+  // The runner publishes its terminal status just before it releases the writer lock.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await post("/api/run/start", { until: target.until });
+      return;
+    } catch (error) {
+      if (error.status !== 409 || attempt === 7) throw error;
+      await pause(250);
+      if ((await readRun())?.run_id !== target.run_id) throw error;
+    }
+  }
+}
+
+restartButton.addEventListener("click", async () => {
+  if (restarting || !hasPending()) return;
+  restarting = true;
+  renderPending();
+  actionMessage.textContent = "Stopping after the current artifact. Keep this tab open until the next run starts.";
+  try {
+    await restartAfter(run);
+    actionMessage.textContent = "Restarted with the saved config.";
+  } catch (error) {
+    actionMessage.textContent = `Could not restart. ${error.message}`;
+  } finally {
+    restarting = false;
+    if (!hasPending() && document.activeElement === restartButton) {
+      document.getElementById("config-check").focus({ preventScroll: true });
+    }
+    renderPending();
+  }
+});
+
+document.addEventListener("vidpipe:run", ({ detail }) => {
+  const before = run;
+  run = detail;
+  renderPending();
+  if (before?.current_stage !== run?.current_stage) refreshPendingEstimate();
+});
+
+document.addEventListener("vidpipe:config", ({ detail }) => {
+  const before = currentHash;
+  currentHash = detail.config_hash;
+  if (doc && !saving && detail.revision && detail.revision !== revision) {
+    reloadButton.hidden = false;
+    actionMessage.textContent = "The project config changed on disk. Reload it to make further edits.";
+  }
+  renderPending();
+  if (before !== currentHash) refreshPendingEstimate();
+});
+
+reloadButton.addEventListener("click", load);
 
 // ---------------------------------------------------------------- loading
 
 async function load() {
   loaded = true;
+  doc = null;
+  saveButton.hidden = true;
+  reloadButton.hidden = true;
+  actionMessage.textContent = "";
+  clearTimeout(validateTimer);
+  const seq = ++validateSeq;
+  ++readinessSeq;
+  clearTimeout(readinessTimer);
+  inputErrors.clear();
   try {
     const [configReply, providersReply] = await Promise.all([
       fetch("/api/config", { headers: { Accept: "application/json" } }),
@@ -829,8 +1050,16 @@ async function load() {
     original = clone(config.document);
     doc = clone(config.document);
     defaults = config.defaults;
+    revision = config.revision;
+    currentHash = config.config_hash;
+    latestCheck = config.check;
+    previewedSeq = seq;
     buildForm();
-    applyCheck(config.check);
+    applyCheck(latestCheck);
+    saveButton.hidden = false;
+    renderPending();
+    if (hasPending()) scheduleValidation();
+    else showImpact("Edit the config to preview what will regenerate.");
   } catch (error) {
     loaded = false;
     const retry = el("button", { type: "button", class: "btn btn-quiet", text: "Retry" });
@@ -841,5 +1070,7 @@ async function load() {
 }
 
 document.addEventListener("vidpipe:view", (event) => {
-  if (event.detail === "config" && !loaded) load();
+  if (event.detail !== "config") return;
+  if (!loaded) load();
+  else refreshPendingEstimate();
 });

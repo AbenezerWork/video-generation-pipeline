@@ -4,12 +4,20 @@
 
 **Blocked by:** 02, 09
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Spec: `.scratch/vidpipe-ui/spec.md`
 
-- [ ] Saving keeps YAML comments and key order
-- [ ] Invalid configs cannot be saved
-- [ ] The change-cost summary matches `vidpipe plan` for the edited config
-- [ ] A save during a run is marked pending and the run keeps its original config hash
-- [ ] Stop and restart applies the pending change and reuses finished work
+- [x] Saving keeps YAML comments and key order
+- [x] Invalid configs cannot be saved
+- [x] The change-cost summary matches `vidpipe plan` for the edited config
+- [x] A save during a run is marked pending and the run keeps its original config hash
+- [x] Stop and restart applies the pending change and reuses finished work
+
+## Comments
+
+HTTP tests on fake projects verified the YAML preview and saved bytes, comment and key order
+preservation, invalid and stale saves, and parity with the CLI regeneration estimate. A blocked
+fake CLI run kept its original config hash through the stop. The restarted run used the saved
+provider and reused the finished brief. A headless Chromium smoke test exercised the Config tab
+through validation, preview, save, pending state and restart using ticket 06's run endpoints.

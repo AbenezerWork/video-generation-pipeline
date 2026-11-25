@@ -328,6 +328,7 @@ stopNowButton.addEventListener("click", () => runAction("stop-now", { run_id: ru
 function update(state, { speak }) {
   const before = run;
   run = state;
+  document.dispatchEvent(new CustomEvent("vidpipe:run", { detail: state }));
   if (speak) announce(transitions(before, state));
   for (const stage of stages) renderStage(stage);
   renderRunSummary();
@@ -347,10 +348,22 @@ function update(state, { speak }) {
   });
 }
 
-async function start() {
+async function readSummary() {
   const response = await fetch("/api/project", { headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`/api/project: ${response.status}`);
-  const summary = await response.json();
+  return response.json();
+}
+
+async function refreshConfig() {
+  const summary = await readSummary();
+  stages = summary.stages;
+  for (const stage of stages) renderStage(stage);
+  renderDetail();
+  document.dispatchEvent(new CustomEvent("vidpipe:config", { detail: summary }));
+}
+
+async function start() {
+  const summary = await readSummary();
   stages = summary.stages;
   for (const stage of stages) until.add(new Option(stage.label, stage.stage));
   controls.hidden = false;
@@ -359,6 +372,7 @@ async function start() {
   document.title = `${view} · ${summary.name} · vidpipe`;
   buildRail();
   update(summary.run, { speak: false });
+  document.dispatchEvent(new CustomEvent("vidpipe:config", { detail: summary }));
   if (!selected) select(stages[0].stage);
 
   const connection = document.getElementById("connection");
@@ -368,6 +382,12 @@ async function start() {
     connection.hidden = true;
     update(JSON.parse(event.data), { speak: !first });
     first = false;
+  });
+  // Also refresh on connection so an edit made while offline is picked up.
+  events.addEventListener("open", () => refreshConfig().catch(() => {}));
+  events.addEventListener("config", (event) => {
+    document.dispatchEvent(new CustomEvent("vidpipe:config", { detail: JSON.parse(event.data) }));
+    refreshConfig().catch(() => {});
   });
   events.addEventListener("error", () => {
     connection.hidden = events.readyState === EventSource.OPEN;

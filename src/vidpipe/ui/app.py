@@ -6,9 +6,9 @@ Route conventions (later features add a module with a ``routes()`` list and one 
 - ``/static/...``: the no-build front end in ``vidpipe/ui/static``.
 - ``GET /api/<thing>``: JSON reads (``project``, ``run``, ``config``, ``providers``,
   ``stages/<stage>/outputs``, ``logs``). Media files go under ``/media/...``.
-- ``POST /api/<thing>/<action>``: actions (``run/start``, ``run/stop``, ``run/stop-now``; later
-  ``gates/<stage>/approve``, ``shots/<n>/redo``, ``config/save``), answered with JSON.
-- ``GET /api/events``: the one SSE stream; event ``run`` carries the run state (later ``config``).
+- ``POST /api/<thing>/<action>``: actions such as ``run/start``, ``run/stop``, ``config/plan`` and
+  ``config/save``, answered with JSON.
+- ``GET /api/events``: the SSE stream, with ``run`` and ``config`` events.
 """
 
 from __future__ import annotations

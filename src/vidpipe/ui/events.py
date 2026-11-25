@@ -4,7 +4,8 @@ Event ``run``: the run state (README, "Run state") as JSON, or ``null`` before t
 run. One is sent on connect and then whenever the record changes: a new ``seq`` or ``run_id``, or a
 status that :func:`~vidpipe.runstate.read_run_state` worked out (a run whose process died reads as
 ``failed`` without the file changing). The event ``id`` is ``<run_id>:<seq>``. A comment line keeps
-idle connections open through proxies. Later the stream also carries ``config`` events.
+idle connections open through proxies. Event ``config`` carries the file revision and the
+effective config hash when the config changes on disk.
 """
 
 from __future__ import annotations
@@ -21,7 +22,9 @@ from starlette.requests import Request
 from starlette.responses import StreamingResponse
 from starlette.routing import BaseRoute, Route
 
+from vidpipe.config import CONFIG_FILENAME
 from vidpipe.runstate import RunState, read_run_state
+from vidpipe.ui.config_form import config_file_state
 from vidpipe.ui.context import ui_context
 from vidpipe.ui.summary import run_state_json
 
@@ -43,17 +46,31 @@ def _run_key(state: RunState | None) -> Hashable:
     return None if state is None else (state.run_id, state.seq, state.status)
 
 
+def _config_key(project_dir: Path) -> Hashable:
+    try:
+        stat = (project_dir / CONFIG_FILENAME).stat()
+    except OSError:
+        return None
+    return stat.st_ino, stat.st_size, stat.st_mtime_ns
+
+
 async def _stream(project_dir: Path, poll_interval: float) -> AsyncIterator[str]:
     yield f"retry: {RETRY_MS}\n\n"
-    last: Hashable = object()
+    last_run: Hashable = object()
+    last_config = await run_in_threadpool(_config_key, project_dir)
     quiet_since = time.monotonic()
     while True:
         state = await run_in_threadpool(read_run_state, project_dir)
         key = _run_key(state)
-        if key != last:
-            last = key
+        if key != last_run:
+            last_run = key
             event_id = None if state is None else f"{state.run_id}:{state.seq}"
             yield format_event("run", run_state_json(state), event_id)
+            quiet_since = time.monotonic()
+        config_key = await run_in_threadpool(_config_key, project_dir)
+        if config_key != last_config:
+            last_config = config_key
+            yield format_event("config", await run_in_threadpool(config_file_state, project_dir))
             quiet_since = time.monotonic()
         elif time.monotonic() - quiet_since >= KEEPALIVE_S:
             yield ": keepalive\n\n"

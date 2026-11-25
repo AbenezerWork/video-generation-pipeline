@@ -12,7 +12,7 @@ up to date generates nothing and reports itself skipped.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +117,7 @@ class StageContext:
         make: Callable[[], Made],
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
+        expected_outputs: Sequence[Path] = (),
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
         selection = self.project.config.providers.get(self.stage)
@@ -129,6 +130,7 @@ class StageContext:
             make=make,
             parameters=parameters,
             seed=seed,
+            expected_outputs=expected_outputs,
         )
         if produced.reused:
             self.reused += 1
@@ -915,6 +917,7 @@ class AssemblyStage(Stage):
                 "duck_ratio": config.mix.duck_ratio,
             },
             make=make,
+            expected_outputs=[render.output, track.srt],
         )
         return [p.relative_to(project.root).as_posix() for p in made.paths]
 

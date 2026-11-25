@@ -2,13 +2,14 @@
 
 The project config is read and validated as the CLI reads it, each stage's provider choices come
 with their doctor readiness and their options, and the YAML view shows what saving would write.
-Nothing here writes the project config: saving is a later feature.
 """
 
 from __future__ import annotations
 
+import contextlib
 import http.client
 import json
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,6 +21,8 @@ import yaml
 pytest.importorskip("starlette", reason="needs the optional ui extra")
 pytest.importorskip("uvicorn", reason="needs the optional ui extra")
 
+from tests.background_run import Writer  # noqa: E402
+from tests.cli_text_fixtures import FakeClis  # noqa: E402
 from tests.conftest import MakeProject  # noqa: E402
 from tests.fake_comfyui import FakeComfyUI  # noqa: E402
 from tests.ui_server import Response, UiServer  # noqa: E402
@@ -90,6 +93,165 @@ def choices_of(stage: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def document(project: Path) -> dict[str, Any]:
     return yaml.safe_load((project / "vidpipe.yaml").read_text(encoding="utf-8"))
+
+
+def test_save_writes_the_preview_and_preserves_comments_and_order(
+    project: Path, ui: UiServer
+) -> None:
+    path = project / "vidpipe.yaml"
+    path.write_text(COMMENTED, encoding="utf-8")
+    draft = document(project)
+    draft["output_name"] = "updated"
+    preview = post(ui, "/api/config/validate", {"document": draft}).json()["yaml"]
+
+    reply = post(ui, "/api/config/save", {"document": draft})
+
+    assert reply.status == 200, reply.body
+    assert not reply.json()["pending_change"]
+    actual = path.read_text(encoding="utf-8")
+    assert actual == preview
+    assert actual == COMMENTED.replace("output_name: demo", "output_name: updated")
+    assert document(project) == draft
+
+
+def test_reordering_a_yaml_list_keeps_comments_with_its_entries(
+    project: Path, ui: UiServer
+) -> None:
+    path = project / "vidpipe.yaml"
+    path.write_text(
+        COMMENTED.replace(
+            "languages: [en, am]",
+            "languages:\n  - en  # English voice\n  - am  # Amharic voice",
+        ),
+        encoding="utf-8",
+    )
+    draft = document(project)
+    draft["languages"] = ["am", "en"]
+    saved = ui.post("/api/config/save", {"document": draft})
+    assert saved.status == 200, saved.body
+    text = path.read_text(encoding="utf-8")
+    assert re.search(r"- am +# Amharic voice\n\s*- en +# English voice", text)
+
+
+def test_save_refuses_invalid_and_stale_documents(project: Path, ui: UiServer) -> None:
+    path = project / "vidpipe.yaml"
+    original = path.read_bytes()
+    config = ui.get("/api/config").json()
+    draft = config["document"]
+    draft["mix"] = {"music_level": 0}
+    reply = ui.post("/api/config/save", {"document": draft, "revision": config["revision"]})
+    assert reply.status == 422
+    assert reply.json()["errors"][0]["path"] == "mix.music_level"
+    assert path.read_bytes() == original
+
+    external = original + b"\n# changed on disk\n"
+    path.write_bytes(external)
+    del draft["mix"]
+    reply = ui.post("/api/config/save", {"document": draft, "revision": config["revision"]})
+    assert reply.status == 409
+    assert path.read_bytes() == external
+
+
+@pytest.mark.needs_ffmpeg
+def test_proposed_regeneration_matches_the_cli_plan(
+    project: Path, ui: UiServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["run", str(project)]) == 0
+    capsys.readouterr()
+    path = project / "vidpipe.yaml"
+    original = path.read_bytes()
+    ledger = project / "build" / "ledger.json"
+    original_ledger = ledger.read_bytes()
+    draft = document(project)
+    assert ui.post("/api/config/plan", {"document": draft}).json()["regeneration"]["stages"] == []
+
+    draft["width"] = 192
+    preview = ui.post("/api/config/plan", {"document": draft})
+    assert preview.status == 200, preview.body
+    assert path.read_bytes() == original
+    assert ledger.read_bytes() == original_ledger
+    impact = preview.json()["regeneration"]
+    assert [s["stage"] for s in impact["stages"]] == ["keyframes", "video", "assembly"]
+    assert impact["stages"][0]["artifacts"] == 3
+    assert impact["gpu_minutes"] > 0
+
+    original_size = document(project)
+    original_size["output_name"] = "renamed"
+    rename = ui.post("/api/config/plan", {"document": original_size}).json()["regeneration"]
+    assert rename == {
+        "stages": [{"stage": "assembly", "artifacts": 2, "gpu_minutes": 0.0, "possible": False}],
+        "gpu_minutes": 0.0,
+        "complete": True,
+    }
+
+    assert ui.post("/api/config/save", {"document": draft}).status == 200
+    assert main(["plan", str(project), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["regeneration"] == impact
+    assert ui.post("/api/config/save", {"document": original_size}).status == 200
+    assert main(["run", str(project)]) == 0
+    assert (project / "out" / "renamed_en.mp4").is_file()
+
+
+def test_save_during_a_run_is_pending_and_restart_reuses_finished_work(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    project = make_project(providers={"script": "gemini-cli"})
+    ui = UiServer(project)
+    writer = Writer(project, fake_clis, then=json.dumps({"lines": ["The original script."]}))
+    try:
+        with contextlib.closing(ui.events()) as stream:
+            before = stream.next().data
+            assert before["status"] == "running"
+            draft = document(project)
+            draft["providers"]["script"] = "fake-text"
+            saved = ui.post("/api/config/save", {"document": draft}).json()
+            assert saved["pending_change"]
+            assert saved["config_hash"] != before["config_hash"]
+            assert ui.get("/api/project").json()["pending_change"]
+            assert ui.get("/api/run").json()["config_hash"] == before["config_hash"]
+
+            assert stream.conn.sock is not None
+            stream.conn.sock.settimeout(10)
+            config_event = stream.next()
+            assert config_event.event == "config"
+            assert config_event.data == {
+                "revision": saved["revision"],
+                "config_hash": saved["config_hash"],
+            }
+
+            stopped = ui.post("/api/run/stop", {"run_id": before["run_id"]})
+            assert stopped.status == 202, stopped.body
+            writer.finish()
+            original = ui.get("/api/run").json()
+            assert original["status"] == "stopped"
+            assert original["config_hash"] == before["config_hash"]
+            assert document(project)["providers"]["script"] == "fake-text"
+            assert "The original script." in (project / "build" / "script.json").read_text(
+                encoding="utf-8"
+            )
+
+            started = ui.post("/api/run/start", {"until": before["until"]})
+            assert started.status == 202, started.body
+            run_id = started.json()["run_id"]
+            end = list(
+                stream.until(
+                    lambda event: (
+                        event.event == "run"
+                        and event.data["run_id"] == run_id
+                        and event.data["status"] == "finished"
+                    )
+                )
+            )[-1].data
+            assert end["config_hash"] == saved["config_hash"]
+            assert {s["stage"]: (s["status"], s["provider"]) for s in end["stages"]} == {
+                "brief": ("reused", None),
+                "script": ("done", "fake-text"),
+            }
+            assert len(fake_clis.calls("gemini")) == 1
+            assert not ui.get("/api/project").json()["pending_change"]
+    finally:
+        writer.finish()
+        ui.stop()
 
 
 # ------------------------------------------------------------------------------ providers
