@@ -139,11 +139,16 @@ from vidpipe.contracts import KeyframeRequest
 from vidpipe.providers.comfy_keyframer import ComfyKeyframer
 
 keyframer = ComfyKeyframer()
-keyframer.generate(KeyframeRequest(
-    prompt="Character reference sheet of one girl ... front view, side view and face, plain "
-           "light background. Warm hand-painted storybook illustration.",
-    width=1280, height=720, seed=1, output_path=Path("bible/aster.png"),
-))
+keyframer.generate(
+    KeyframeRequest(
+        prompt="Character reference sheet of one girl ... front view, side view and face, plain "
+        "light background. Warm hand-painted storybook illustration.",
+        width=1280,
+        height=720,
+        seed=1,
+        output_path=Path("bible/aster.png"),
+    )
+)
 keyframer.release()  # free ComfyUI's memory
 ```
 

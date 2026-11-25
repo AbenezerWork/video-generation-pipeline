@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -257,11 +257,20 @@ class WorkflowModel:
     def step_down(
         self, values: Mapping[str, Any], images: int
     ) -> tuple[dict[str, Any], str] | None:
-        """The first rung of the ladder that lowers something: ``(new values, description)``."""
+        """The first rung of the ladder that lowers something: ``(new values, description)``.
+
+        A rung naming a value this variant does not take as a number is passed over.
+        """
+
+        def numbers(*fields: str) -> dict[str, float] | None:
+            found = {f: self.value(f, values, images) for f in fields}
+            usable = all(isinstance(v, int | float) for v in found.values())
+            return cast(dict[str, float], found) if usable else None
+
         for step in self.spec.oom_step_down:
             if step.set is not None:
-                now = {field: self.value(field, values, images) for field in step.set}
-                if any(v is None or step.set[f] > v for f, v in now.items()):
+                now = numbers(*step.set)
+                if now is None or any(step.set[f] > v for f, v in now.items()):
                     continue
                 lowered = {f: step.set[f] for f, v in now.items() if step.set[f] < v}
                 if not lowered:
@@ -271,15 +280,17 @@ class WorkflowModel:
                     f"{f} {_number(now[f])} -> {_number(v)}" for f, v in changed.items()
                 )
                 return {**values, **changed}, note
-            width = self.value("width", values, images)
-            height = self.value("height", values, images)
+            size = numbers("width", "height")
+            if size is None:
+                continue
+            width, height = size["width"], size["height"]
             smaller = [
                 (w, h)
                 for w, h in step.smaller_size or ()
                 if w <= width and h <= height and w * h < width * height
             ]
             if smaller:
-                w, h = max(smaller, key=lambda size: size[0] * size[1])
-                note = f"size {width}x{height} -> {w}x{h}"
+                w, h = max(smaller, key=lambda s: s[0] * s[1])
+                note = f"size {_number(width)}x{_number(height)} -> {w}x{h}"
                 return {**values, "width": w, "height": h}, note
         return None
