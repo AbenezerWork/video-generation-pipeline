@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import Provider
+from vidpipe.estimate import PlanReport, build_report
 from vidpipe.models import Manifest, StageRecord
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
@@ -35,6 +36,8 @@ class PlannedStage:
 class Plan:
     stages: list[PlannedStage]
     problems: list[str] = field(default_factory=list[str])
+    #: Fit plan and cost estimates (only when asked for: ``plan(..., estimate=True)``).
+    report: PlanReport | None = None
 
     @property
     def ok(self) -> bool:
@@ -78,11 +81,15 @@ def plan(
     until: str | None = None,
     registry: Registry | None = None,
     assembler: Assembler | None = None,
+    estimate: bool = False,
 ) -> Plan:
     """Resolve providers and check capabilities for every stage up to ``until``.
 
     Nothing is generated. Problems are collected rather than raised, so ``vidpipe plan`` can
-    report them all.
+    report them all. With ``estimate`` the plan also carries the fit plan (segments, speed
+    factors, continuation clips) and the estimated GPU time and cost per stage, built from what is
+    on disk; fit problems (a render over 90 s, narration no clip can cover) are added to
+    ``problems``.
     """
     project = Project(project_dir)
     names = _selected_stages(until)
@@ -104,7 +111,12 @@ def plan(
             problems += [f"{stage.name}: {p}" for p in stage.problems(ctx)]
         except StageError as exc:
             problems.append(f"{stage.name}: {exc}")
-    return Plan(stages=planned, problems=problems)
+    report = None
+    if estimate:
+        report = build_report(project, ctx.providers, [p.name for p in planned])
+        if report.fit is not None:
+            problems += [f"fit-planning: {p}" for p in report.fit.problems]
+    return Plan(stages=planned, problems=problems, report=report)
 
 
 def run(
