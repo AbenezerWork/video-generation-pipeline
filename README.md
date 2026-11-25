@@ -90,3 +90,47 @@ Tests drive the adapters through fake `gemini`/`claude`/`codex` executables on P
 (`tests/fake_cli.py`, fixture `fake_clis`); `fake-text` keeps the offline pipeline fast. To run the
 real CLIs through the conformance suite: `uv run pytest -m integration -k text`. When a chain falls back,
 the artifact record in `build/ledger.json` says which provider failed and which answered.
+
+### Translation (English to Amharic) and the back-translation check
+
+`translation` is done by text providers through the same chain as `script` (default: Gemini CLI, then
+Claude CLI), or by a registered translation provider such as `fake-translation`:
+
+```yaml
+languages: [en, am]          # the first language is the script's; the others are translated
+providers:
+  translation: [gemini-cli, claude-cli]    # default; `translation: claude-cli` also works
+```
+
+The script goes out as numbered lines and comes back as the same lines (ids preserved, so narration
+and storyboard shots still line up). A reply that loses, invents or renumbers a line, or leaves a
+line without Ge'ez script, is re-prompted. Output: `build/translation/<lang>.json`.
+
+**Back-translation check.** After translating, a model translates the Amharic back to English
+*without seeing the source*, then compares that with the source line by line. The result is
+`build/translation/<lang>.review.json` (a `TranslationReview`) and the ledger artifact
+`translation/<lang>/review`:
+
+```json
+{"language": "am", "source_language": "en", "translator": "gemini-cli", "checker": "claude-cli",
+ "same_model": false,
+ "lines": [{"id": 2, "status": "drift", "source": "...", "translation": "...",
+            "back_translation": "...", "reason": "one-sentence reason"}]}
+```
+
+- The checker is never the translator when the chain has another provider: it is built from the other
+  members only, and the check fails (the translation is kept; the next run resumes at the check) if
+  they all fail. A chain with nobody else runs the check with the translator and records
+  `"same_model": true`. Members are "the same model" when name and options are equal.
+- Drifted lines are flagged `"status": "drift"` with a `reason`. They do not stop the run: `vidpipe run`
+  prints each one (with the English, Amharic and back-translation) to stderr, and the ledger record's
+  `data.drifted` lists their ids. `vidpipe.translate.drift_flags(project)` returns them as `DriftFlag`s
+  for a gate or report to show.
+- The check re-runs if the translated file is hand-edited, so fixing a flagged line clears its flag.
+  Translation providers that are not text chains (`fake-translation`) are not back-checked.
+
+**Unicode.** Every file vidpipe writes is UTF-8 (raw Ge'ez, not `\u12xx` escapes) and the CLI text
+adapters pipe UTF-8 both ways. A Windows console prints Ge'ez natively (needs a font with Ethiopic
+glyphs, e.g. Nirmala UI); *redirected* output used to fall back to cp1252 and crash, so `vidpipe`
+now switches stdout/stderr to UTF-8 when they are not already. Windows PowerShell 5.1 decodes piped
+native output with `[Console]::OutputEncoding`: set it to UTF-8 if you pipe vidpipe's output there.
