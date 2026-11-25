@@ -18,7 +18,8 @@ from vidpipe.lock import writer_lock
 from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
-from vidpipe.stages import STAGE_NAMES, STAGES, StageContext, StageError
+from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
+from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
 
 
 class PlanError(Exception):
@@ -155,6 +156,7 @@ def run(
     auto: bool = False,
     approve: Sequence[str] = (),
     approver: Approver | None = None,
+    origin: Origin | str | None = None,
 ) -> RunResult:
     """Run the stage graph (up to ``until``). Capability problems abort before any generation.
 
@@ -164,8 +166,11 @@ def run(
     was asked for holds nothing back, so it does not pause.
 
     The run holds the project's one-writer lock throughout (``vidpipe.lock``): while another run
-    is in progress it raises ``RunInProgress`` before doing anything.
+    is in progress it raises ``RunInProgress`` before doing anything. Throughout, it publishes its
+    run state (``vidpipe.runstate``) in ``build/run_state.json``; ``origin`` (``cli`` or ``ui``,
+    default ``$VIDPIPE_RUN_ORIGIN``, else ``cli``) records who started it.
     """
+    who = _origin(origin)
     with writer_lock(Project(project_dir).root):
         return _run(
             project_dir,
@@ -175,7 +180,15 @@ def run(
             auto=auto,
             approve=approve,
             approver=approver,
+            origin=who,
         )
+
+
+def _origin(origin: Origin | str | None) -> Origin:
+    try:
+        return resolve_origin(origin)
+    except ValueError as exc:
+        raise PlanError([str(exc)]) from None
 
 
 def _run(
@@ -187,13 +200,52 @@ def _run(
     auto: bool,
     approve: Sequence[str],
     approver: Approver | None,
+    origin: Origin,
+    command: str = "run",
+    shot: int | None = None,
 ) -> RunResult:
-    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+    project = Project(project_dir)
+    names = _selected_stages(until)
+    state = RunStatePublisher(
+        project,
+        origin=origin,
+        stages=[(name, _label(name, project.config.providers.get(name))) for name in names],
+        until=until,
+        command=command,
+        shot=shot,
+    )
+    try:
+        result = _run_stages(
+            project, state, until, registry, assembler, auto, approve, approver
+        )
+    except PlanError as exc:
+        state.fail("; ".join(exc.problems))
+        raise
+    except KeyboardInterrupt:
+        state.fail("interrupted")
+        raise
+    except Exception as exc:
+        state.fail(str(exc) or type(exc).__name__)
+        raise
+    state.finish(paused_at=result.paused_at)
+    return result
+
+
+def _run_stages(
+    project: Project,
+    state: RunStatePublisher,
+    until: str | None,
+    registry: Registry | None,
+    assembler: Assembler | None,
+    auto: bool,
+    approve: Sequence[str],
+    approver: Approver | None,
+) -> RunResult:
+    the_plan = plan(project.root, until=until, registry=registry, assembler=assembler)
     problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
     if not the_plan.ok or problems:
         raise PlanError([*the_plan.problems, *problems])
 
-    project = Project(project_dir)
     ctx = _build_context(
         project, registry or default_registry(), assembler or FfmpegAssembler(), []
     )
@@ -202,9 +254,14 @@ def _run(
     paused_at: str | None = None
     wanted = set(_selected_stages(until))
     selected = [s for s in STAGES if s.name in wanted]
+    # Totals known up front (from an earlier run's files); each is worked out again as its
+    # stage begins, from what the stages before it wrote.
+    state.totals({s.name: _artifact_count(s, ctx) for s in selected})
+    ctx.on_artifact = lambda: state.artifact(ctx.generated, ctx.reused)
     for index, stage_obj in enumerate(selected):
         stage = stage_obj.name
         ctx.begin(stage)
+        state.begin_stage(stage, _artifact_count(stage_obj, ctx))
         try:
             outputs = stage_obj.run(ctx)
         finally:
@@ -222,14 +279,24 @@ def _run(
             )
         )
         project.write_model("manifest.json", manifest)
-        if auto or stage not in project.config.gates or index == len(selected) - 1:
-            continue
-        if stage in approve:
+        gated = not auto and stage in project.config.gates and index < len(selected) - 1
+        if gated and stage in approve:
             keeper.approve(stage)
-        if not keeper.passes(stage, approver):
+        if gated and not keeper.passes(stage, approver):
             paused_at = stage
+        # What this stage wrote may settle the size of the stages after it (shots, clips).
+        state.totals({s.name: _artifact_count(s, ctx) for s in selected[index + 1 :]})
+        state.end_stage(stage, ctx.generated, ctx.reused, paused=paused_at is not None)
+        if paused_at is not None:
             break
     return RunResult(plan=the_plan, manifest=manifest, paused_at=paused_at)
+
+
+def _artifact_count(stage: Stage, ctx: StageContext) -> int | None:
+    try:
+        return stage.artifact_count(ctx)
+    except Exception:  # an earlier stage's output is not there yet: unknown for now
+        return None
 
 
 def approve(project_dir: Path, gates: Sequence[str]) -> None:
@@ -256,6 +323,7 @@ def redo(
     auto: bool = False,
     approve: Sequence[str] = (),
     approver: Approver | None = None,
+    origin: Origin | str | None = None,
 ) -> RunResult:
     """Re-roll one shot (``vidpipe redo shot N``): new seed, then a normal run.
 
@@ -266,6 +334,7 @@ def redo(
     The redo holds the one-writer lock from the re-roll to the end of its run.
     """
     project = Project(project_dir)
+    who = _origin(origin)
     with writer_lock(project.root):
         if not (project.build / "storyboard.json").is_file():
             raise PlanError(["nothing to redo: run the storyboard stage first"])
@@ -286,4 +355,7 @@ def redo(
             auto=auto,
             approve=approve,
             approver=approver,
+            origin=who,
+            command="redo",
+            shot=shot,
         )
