@@ -67,8 +67,9 @@ fit planner (`vidpipe.fit`) writes `build/fit_plan.json`:
    natural boundaries (`vidpipe.segmentation`): sentence ends first, then clause marks (`, ; :`,
    Ethiopic `። ፣ ፤`), then a pause between words, each only where the coarser cut cannot make the
    pieces fit; fewest clips first, then the most natural cuts. Each segment is one clip; every clip
-   after the first is a *continuation clip*, started from the previous clip's last frame. A run
-   stops at fit-planning (before any GPU work) when a shot needs one: generating them is ticket 12.
+   after the first is a *continuation clip*. FFmpeg extracts the previous clip's last frame, and
+   the video provider uses it with a prompt to continue the shot's motion and cover the next
+   narration segment. Each clip is saved separately so a resumed run can reuse completed clips.
 3. **`visuals`** in `vidpipe.yaml`: `shared` (default: one clip set per shot, sized to the longer
    narration; the shorter language plays it slightly faster or trimmed), `per_language` (a clip set
    per language) or `primary_only` (the primary language's clips; another language that needs more
@@ -308,9 +309,8 @@ uploads, retries, the step-down, cancellation and memory release:
 within the 90 s limit (fit-planning refuses longer plans, and assembly checks again).
 
 - **Video.** The clips of each shot play back to back at the speeds in `fit_plan.json`
-  (`languages[lang].clips`: `speed`, `source_s`, `seconds`), then the shot is padded (last frame) or
-  cut to exactly its narration's length. A shot with several clips (continuation clips, ticket 12) is
-  handled the same way; today only clip 0 is generated.
+  (`languages[lang].clips`: `speed`, `source_s`, `seconds`). Assembly joins continuation clips
+  directly and adjusts the end of the shot to match its narration.
 - **Audio.** The shots' narration is joined, and the music sits under it at `mix.music_level` and is
   pushed down by a sidechain compressor keyed on the narration (`mix.duck_ratio`; threshold -30 dB,
   attack 20 ms, release 400 ms), so the music drops while someone speaks and swells back in the gaps.

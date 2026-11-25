@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from vidpipe.contracts import GenerationError
 from vidpipe.subtitles import subtitles_filter
 
 
@@ -110,6 +111,44 @@ def missing_tool_problem(name: str) -> str:
         f"{name} not found {where}; install FFmpeg with libass and set "
         f"`{FFMPEG_DIR_ENV}` to the bin directory containing ffmpeg and ffprobe"
     )
+
+
+def extract_last_frame(video: Path, image: Path) -> None:
+    """Decode the final displayed frame of a short clip into a PNG conditioning image."""
+    ffmpeg = find_tool("ffmpeg")
+    if ffmpeg is None:
+        raise GenerationError(missing_tool_problem("ffmpeg"))
+    try:
+        # Clips last only a few seconds. Reversing their decoded frames avoids guessing a
+        # seek position from rounded duration or relying on the container's frame count.
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-v",
+                "error",
+                "-i",
+                str(video),
+                "-map",
+                "0:v:0",
+                "-vf",
+                "reverse",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                str(image),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GenerationError(f"could not extract the last frame of {video.name}: {exc}") from exc
+    if result.returncode != 0 or not image.is_file():
+        reason = result.stderr.strip() or "no frame was decoded"
+        raise GenerationError(f"could not extract the last frame of {video.name}: {reason}")
 
 
 @functools.cache
@@ -244,9 +283,7 @@ class FfmpegAssembler(Assembler):
             f"setpts=PTS/{clip.speed},fps={job.fps},scale={job.width}:{job.height},setsar=1"
         )
         if trim:
-            chain.append(
-                f",tpad=stop_mode=clone:stop_duration={clip.seconds},trim=duration={clip.seconds}"
-            )
+            chain.append(f",trim=duration={clip.seconds}")
         chain.append(f",setpts=PTS-STARTPTS[{label}]")
         return "".join(chain)
 

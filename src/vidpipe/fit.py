@@ -43,7 +43,7 @@ from vidpipe.models import (
 from vidpipe.segmentation import Segment, segment_narration
 
 #: Bump when the planning rules change: it is hashed into the fit-plan artifact.
-FIT_VERSION = 1
+FIT_VERSION = 2
 MAX_SPEED = 1.3
 MAX_RENDER_S = 90.0
 #: Clip lengths are rounded up to a multiple of this.
@@ -128,6 +128,12 @@ class _Planner:
             )
             played = _play(length, segment.seconds, self.limits.max_speed)
             speed, source = played if played else (1 / self.limits.max_speed, length)
+            # The next clip starts on this clip's last frame. Play through that frame when
+            # the segment can fit it within the speed cap.
+            if index + 1 < len(segments) and source < length:
+                full_speed = length / segment.seconds
+                if full_speed <= self.limits.max_speed:
+                    speed, source = full_speed, length
             uses.append(
                 ClipUse(
                     clip=index,
@@ -156,6 +162,8 @@ class _Planner:
         left = source
         for clip in clips:
             take = min(clip.seconds, left)
+            if round(take, 4) <= 0:
+                break
             left -= take
             uses.append(
                 ClipUse(

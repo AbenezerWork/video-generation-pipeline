@@ -13,13 +13,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel
 
-from vidpipe.artifacts import ArtifactStore, Inputs, Made, Produced
+from vidpipe.artifacts import ArtifactStore, Inputs, Made, Produced, digest
 from vidpipe.assembly import (
     Assembler,
     AssemblyJob,
@@ -28,6 +30,7 @@ from vidpipe.assembly import (
     MixSettings,
     ShotSegment,
     SubtitleTrack,
+    extract_last_frame,
 )
 from vidpipe.bible import (
     Bible,
@@ -60,6 +63,7 @@ from vidpipe.fit import FIT_VERSION, NarrationInput, limits_for, plan_fit
 from vidpipe.fit_inputs import collect_shots, translation_files
 from vidpipe.models import (
     Brief,
+    ClipPlan,
     FitPlan,
     MediaIndex,
     MediaItem,
@@ -515,16 +519,6 @@ class FitPlanningStage(Stage):
             ),
             make=make,
         )
-        # Continuation clips are planned (see `vidpipe plan`) but generating them is ticket 12.
-        # Stop here, before any GPU work, rather than render frozen frames.
-        planned = project.read_model("fit_plan.json", FitPlan)
-        needing = [s.shot_id for s in planned.shots if s.continuation_clips]
-        if needing:
-            raise StageError(
-                f"shots {needing} need continuation clips, which cannot be generated yet; "
-                "`vidpipe plan` shows them. Shorten those narration lines (a shot plays at most "
-                "one clip, slowed by up to 1.3x) and run again"
-            )
         return _rels(ctx, made)
 
 
@@ -620,10 +614,7 @@ class KeyframesStage(Stage):
 
 
 class VideoStage(Stage):
-    """Generates each shot's first clip, from its keyframe, once per visual set in the fit plan.
-
-    Continuation clips are planned (``fit_plan.json``) but not generated yet.
-    """
+    """Animate each visual set from its keyframe, then from each preceding clip's last frame."""
 
     name = "video"
 
@@ -633,50 +624,81 @@ class VideoStage(Stage):
         keyframes = ctx.project.read_model("keyframes.json", MediaIndex)
         items: list[MediaItem] = []
         for shot in ctx.project.read_model("storyboard.json", Storyboard).shots:
-            image = ctx.project.build / keyframes.for_shot(shot.id)
+            keyframe = ctx.project.build / keyframes.for_shot(shot.id)
             for visual_set in plan[shot.id].visual_sets.values():
                 # ``shared`` keeps the plain key; per-language sets live under their language.
                 unit = f"shot_{shot.id:02d}"
-                key = (
+                base = (
                     f"video/{unit}"
                     if visual_set.id == "shared"
                     else f"video/{visual_set.id}/{unit}"
                 )
-                seconds = visual_set.clips[0].seconds
-
-                def make(
-                    shot: Shot = shot, image: Path = image, key: str = key, seconds: float = seconds
-                ) -> Made:
-                    request = ImageToVideoRequest(
-                        image=image,
-                        prompt=shot.visual,
-                        motion_type=shot.motion_type,
-                        duration_s=seconds,
-                        seed=ctx.shot_seed(shot.id),
-                        output_path=ctx.project.artifact_path(f"{key}.mp4"),
+                paths: dict[int, Path] = {}
+                for clip in visual_set.clips:
+                    key = f"{base}_clip_{clip.index:02d}" if clip.index else base
+                    source = keyframe if clip.continues is None else paths[clip.continues]
+                    path = self._animate(ctx, provider, shot, key, clip, source)
+                    paths[clip.index] = path
+                    items.append(
+                        MediaItem(
+                            shot_id=shot.id,
+                            visual_set=visual_set.id,
+                            clip=clip.index,
+                            path=path.relative_to(ctx.project.build).as_posix(),
+                        )
                     )
-                    result = _generate(
-                        f"video for shot {shot.id}", lambda: provider.animate(request)
-                    )
-                    return _recorded(
-                        result.path, result.record, seed=request.seed, duration_s=result.duration_s
-                    )
-
-                made = ctx.produce(
-                    key,
-                    inputs=Inputs(files=[image], values={"prompt": shot.visual}),
-                    parameters={"motion_type": shot.motion_type.value, "duration_s": seconds},
-                    seed=ctx.shot_seed(shot.id),
-                    make=make,
-                )
-                items.append(
-                    MediaItem(
-                        shot_id=shot.id,
-                        visual_set=visual_set.id,
-                        path=made.paths[0].relative_to(ctx.project.build).as_posix(),
-                    )
-                )
         return _write_index(ctx, "video.json", items)
+
+    @staticmethod
+    def _animate(
+        ctx: StageContext,
+        provider: ImageToVideoProvider,
+        shot: Shot,
+        key: str,
+        clip: ClipPlan,
+        source: Path,
+    ) -> Path:
+        prompt = shot.visual
+        seed = ctx.shot_seed(shot.id)
+        label = f"video for shot {shot.id}"
+        if clip.continues is not None:
+            prompt = (
+                f"{prompt}\nContinue the same shot from the supplied frame. "
+                "Maintain the subject, setting, lighting, and camera motion. "
+                "Keep the scene moving continuously without a cut or reset.\n"
+                f"Narration for this segment: {clip.text}"
+            )
+            seed = int(digest([seed, clip.index])[:8], 16) % 2**31
+            label += f" continuation {clip.index}"
+
+        def make() -> Made:
+            with ExitStack() as stack:
+                image = source
+                if clip.continues is not None:
+                    temp = Path(stack.enter_context(TemporaryDirectory()))
+                    image = temp / f"{source.stem}_last.png"
+                    extract_last_frame(source, image)
+                request = ImageToVideoRequest(
+                    image=image,
+                    prompt=prompt,
+                    motion_type=shot.motion_type,
+                    duration_s=clip.seconds,
+                    seed=seed,
+                    output_path=ctx.project.artifact_path(f"{key}.mp4"),
+                )
+                result = provider.animate(request)
+            return _recorded(
+                result.path, result.record, seed=request.seed, duration_s=result.duration_s
+            )
+
+        made = ctx.produce(
+            key,
+            inputs=Inputs(files=[source], values={"prompt": prompt}),
+            parameters={"motion_type": shot.motion_type.value, "duration_s": clip.seconds},
+            seed=seed,
+            make=lambda: _generate(label, make),
+        )
+        return made.paths[0]
 
 
 class MusicStage(Stage):
@@ -766,6 +788,7 @@ class AssemblyStage(Stage):
                                 seconds=use.seconds,
                             )
                             for use in fit.clips
+                            if use.source_s > 0
                         ],
                     )
                 )

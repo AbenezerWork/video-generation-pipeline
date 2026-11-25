@@ -106,12 +106,11 @@ def words(count: int, stop: str = ".") -> str:
 
 
 def narrate_and_plan(
-    make_project: MakeProject, first_line: str, expect_exit: int = 1, **config: Any
+    make_project: MakeProject, first_line: str, **config: Any
 ) -> tuple[Path, dict[str, Any]]:
     """Plan a script whose first shot says ``first_line`` (the other two are short)."""
     project = project_with_script(make_project, [first_line, words(8), words(8)], **config)
-    code = main(["run", str(project), "--until", "fit-planning"])
-    assert code == expect_exit
+    assert main(["run", str(project), "--until", "fit-planning"]) == 0
     return project, read_json(project / "build" / "fit_plan.json")
 
 
@@ -201,18 +200,6 @@ def test_every_extra_segment_becomes_a_continuation_clip_started_from_the_previo
     assert en["segments"][-1]["end_s"] == pytest.approx(en["seconds"])
     # The other shots still need a single clip.
     assert [len(s["visual_sets"]["shared"]["clips"]) for s in plan["shots"]] == [2, 1, 1]
-
-
-def test_a_run_that_needs_continuation_clips_stops_before_generating_anything_else(
-    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
-) -> None:
-    project = project_with_script(make_project, [f"{SENTENCE_A} {SENTENCE_B}", words(8), words(8)])
-
-    assert main(["run", str(project), "--until", "music"]) == 1
-
-    assert "continuation" in capsys.readouterr().err
-    assert (project / "build" / "fit_plan.json").is_file()  # the plan is kept, for `vidpipe plan`
-    assert not (project / "build" / "keyframes.json").exists()
 
 
 # ------------------------------------------------------------------------------------ visuals

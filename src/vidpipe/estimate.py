@@ -104,11 +104,6 @@ def build_report(
             visuals=config.visuals,
             limits=limits_for(video.capabilities),
         )
-    if fit is not None and any(s.continuation_clips for s in fit.shots):
-        notes.append(
-            "continuation clips are planned but cannot be generated yet: `vidpipe run` stops at "
-            "fit-planning when a shot needs one"
-        )
     narrations = [n for s in shots for n in s.narration.values()]
     guessed = sum(n.estimated for n in narrations)
     if guessed:

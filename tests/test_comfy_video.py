@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from tests.conftest import MakeProject, ffprobe
 from tests.fake_comfyui import WRITERS, FakeComfyUI, Job
+from tests.test_fit_plan import project_with_script
 from tests.test_keyframes_bible import ledger
 from vidpipe.assembly import find_tool
 from vidpipe.cli import main
+from vidpipe.models import MediaIndex
+from vidpipe.project import Project
 
 
 def _save_video(job: Job, uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
@@ -29,6 +33,8 @@ def _save_video(job: Job, uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
             "lavfi",
             "-i",
             f"color=c=0x{colour}:s={width}x{height}:r={fps}",
+            "-vf",
+            "drawbox=x=0:y=0:w=64:h=64:color=white:t=fill:enable='gt(n,0)'",
             "-frames:v",
             str(frames),
             "-c:v",
@@ -44,6 +50,34 @@ def _save_video(job: Job, uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
         timeout=15,
     ).stdout
     return "images", ".mp4", mp4
+
+
+def rgb_frame(path: Path, number: int) -> bytes:
+    ffmpeg = find_tool("ffmpeg")
+    assert ffmpeg is not None
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-vf",
+            f"select='eq(n,{number})'",
+            "-frames:v",
+            "1",
+            "-pix_fmt",
+            "rgb24",
+            "-f",
+            "rawvideo",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+        timeout=15,
+    )
+    assert result.stdout
+    return result.stdout
 
 
 @pytest.mark.needs_ffmpeg
@@ -77,3 +111,69 @@ def test_video_oom_reduces_resolution_and_resume_keeps_the_completed_clip(
     assert len(comfy.jobs) == 5
     assert ledger(root)["video/shot_01"] == first
     assert ledger(root)["video/shot_02"]["fallback"] is None
+
+
+@pytest.mark.needs_ffmpeg
+def test_continuation_resumes_from_the_last_frame_after_two_ooms(
+    make_project: MakeProject,
+    comfy: FakeComfyUI,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setitem(WRITERS, "SaveVideo", _save_video)
+    root = project_with_script(
+        make_project,
+        [
+            "The herder watches his goats.",
+            "The goats step over the rocks and graze. The goats wander through the long grass.",
+            "He brews the first coffee.",
+        ],
+        providers={"video": {"name": "comfyui-i2v", "options": {"poll_s": 0.01}}},
+        comfyui={"url": comfy.url},
+    )
+    args = [str(root), "--until", "video", "--auto"]
+    key = "video/shot_02_clip_01"
+    comfy.script("success", "success", "oom", "oom")
+    assert main(["run", *args]) == 1
+    error = capsys.readouterr().err
+    assert "shot 2 continuation 1" in error
+    assert "out of memory again after the step-down (size 640x352 -> 512x288)" in error
+    assert len(comfy.jobs) == 4 and not comfy.running
+    first_records = ledger(root)
+    assert key not in first_records
+
+    comfy.script("oom", "success")
+    assert main(["run", *args]) == 0
+    assert len(comfy.jobs) == 7
+    project = Project(root)
+    index = project.read_model("video.json", MediaIndex)
+    first = project.build / index.for_clip(2, "shared", 0)
+    next_clip = project.build / index.for_clip(2, "shared", 1)
+    uploaded = tmp_path / "condition.png"
+    uploaded.write_bytes(comfy.uploads[comfy.jobs[5].images[0]])
+    last = round(float(ffprobe(first)["streams"][0]["duration"]) * 24) - 1
+    assert rgb_frame(uploaded, 0) == rgb_frame(first, last)
+    assert rgb_frame(uploaded, 0) != rgb_frame(first, 0)
+
+    records = ledger(root)
+    for completed in ("video/shot_01", "video/shot_02"):
+        assert records[completed] == first_records[completed]
+    record = records[key]
+    dependency = f"file:build/{index.for_clip(2, 'shared', 0)}"
+    assert record["inputs"][dependency] == records["video/shot_02"]["outputs"][0]["sha256"]
+    assert record["fallback"].count("step-down") == 1
+    assert [a["outcome"] for a in record["data"]["attempts"]] == ["out_of_memory", "ok"]
+    assert record["data"]["seed"] != record["seed"]
+    normal = comfy.jobs[4].graph
+    reduced = comfy.jobs[5].graph
+    changed = {
+        f"{node}.{field}"
+        for node, spec in normal.items()
+        for field, value in spec["inputs"].items()
+        if reduced[node]["inputs"][field] != value
+    }
+    assert changed == {"latent.width", "latent.height", "sample.seed", "save.filename_prefix"}
+    stream = ffprobe(next_clip)["streams"][0]
+    assert (stream["width"], stream["height"], stream["avg_frame_rate"]) == (512, 288, "24/1")
+    assert float(stream["duration"]) == pytest.approx(record["parameters"]["duration_s"])
