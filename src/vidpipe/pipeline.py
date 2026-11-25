@@ -7,11 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
 from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
-from vidpipe.config import STAGE_KINDS
+from vidpipe.chain import build_provider, describe
+from vidpipe.config import STAGE_KINDS, ProviderSelection
 from vidpipe.contracts import Provider
 from vidpipe.gates import Approver, GateError, GateKeeper
 from vidpipe.models import Manifest, StageRecord, Storyboard
@@ -54,6 +53,11 @@ class RunResult:
     paused_at: str | None = None
 
 
+def _label(stage: str, selection: ProviderSelection | None) -> str | None:
+    kind = STAGE_KINDS.get(stage)
+    return describe(kind, selection) if kind is not None and selection is not None else None
+
+
 def _selected_stages(until: str | None) -> list[str]:
     if until is None:
         return list(STAGE_NAMES)
@@ -71,10 +75,10 @@ def _build_context(
         if kind is None:
             continue  # e.g. `song`: configurable, but not part of the stage graph yet
         try:
-            providers[stage] = registry.create(kind, selection.name, **selection.options)
+            providers[stage] = build_provider(registry, kind, selection)
         except UnknownProvider as exc:
             problems.append(f"{stage}: {exc}")
-        except (TypeError, ValidationError) as exc:
+        except (TypeError, ValueError) as exc:  # ValueError includes pydantic.ValidationError
             problems.append(f"{stage}: cannot configure provider {selection.name!r}: {exc}")
     return StageContext(project=project, providers=providers, assembler=assembler)
 
@@ -102,7 +106,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, selection.name if selection else None))
+        planned.append(PlannedStage(stage.name, _label(stage.name, selection)))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -158,7 +162,7 @@ def run(
         manifest.stages.append(
             StageRecord(
                 stage=stage,
-                provider=selection.name if selection else None,
+                provider=_label(stage, selection),
                 outputs=outputs,
                 generated=ctx.generated,
                 reused=ctx.reused,

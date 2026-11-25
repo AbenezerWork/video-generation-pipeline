@@ -65,7 +65,7 @@ def _interactive_approver() -> Approver | None:
 def _report(result: pipeline.RunResult, project: Path) -> int:
     for record in result.manifest.stages:
         status = "skipped" if record.skipped else f"ran ({record.generated} generated)"
-        print(f"{record.stage:<14}{record.provider or '-':<20}{status}")
+        print(f"{record.stage:<14}{record.provider or '-':<26}{status}")
     if result.paused_at is None:
         return 0
     gate = result.paused_at
