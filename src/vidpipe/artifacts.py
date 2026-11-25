@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -35,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from vidpipe.contracts import Provider
 from vidpipe.project import Project
+from vidpipe.runstate import write_atomically
 
 #: Bump when the hashing scheme changes; an older ledger is then ignored (everything regenerates).
 LEDGER_VERSION = 1
@@ -176,10 +176,8 @@ class ArtifactStore:
         return ledger if ledger.version == LEDGER_VERSION else Ledger()
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        tmp.write_text(self.ledger.model_dump_json(indent=2), encoding="utf-8")
-        os.replace(tmp, self.path)  # atomic: a kill never leaves a half-written ledger
+        # The UI can briefly hold the ledger open while refreshing a stage on Windows.
+        write_atomically(self.path, self.ledger.model_dump_json(indent=2).encode("utf-8"))
 
     def record(self, key: str) -> ArtifactRecord | None:
         return self.ledger.artifacts.get(key)

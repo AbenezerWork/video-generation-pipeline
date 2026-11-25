@@ -98,8 +98,12 @@ def test_a_run_started_from_the_ui_runs_to_the_end_like_a_cli_run(
     # What the run printed is kept in the build folder.
     log = project / started["log"]
     assert log == project / "build" / "logs" / f"ui-run-{end['run_id']}.log"
-    wait_for(lambda: "music" in ui.get("/api/logs").json().get("text", ""), "the CLI report", 5)
-    assert ui.get("/api/logs").json()["run_id"] == end["run_id"]
+    wait_for(
+        lambda: any(line.startswith("music ") for line in ui.get("/api/logs").json()["lines"]),
+        "the CLI report",
+        5,
+    )
+    assert ui.get("/api/logs").json()["path"] == started["log"]
 
 
 def wait_for_status(ui: UiClient, status: str) -> dict[str, Any]:

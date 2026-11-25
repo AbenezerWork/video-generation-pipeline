@@ -2,6 +2,7 @@
 // the one SSE stream (/api/events). Feature-detects newer APIs; no polyfills (AGENTS.md).
 
 import { watchRings } from "/static/console.js";
+import { showStageDetail } from "/static/detail.js";
 
 const rail = document.getElementById("rail");
 const detail = document.getElementById("stage-detail");
@@ -14,8 +15,6 @@ const startButton = document.getElementById("start-button");
 const stopButton = document.getElementById("stop-button");
 const stopNowButton = document.getElementById("stop-now-button");
 const actionError = document.getElementById("run-action-error");
-const logs = document.getElementById("run-logs");
-const logText = document.getElementById("run-log-text");
 
 /** Statuses the design system draws (data-status); a stopped stage rests like a waiting one. */
 const TONE = { stopped: "waiting" };
@@ -235,6 +234,7 @@ function renderDetail() {
   if (run && !progress) note = "This run stops before this stage.";
   else if (stage.gate) note = "The run pauses for approval after this stage.";
   document.getElementById("detail-note").textContent = note;
+  showStageDetail(stage.stage, progress);
 }
 
 // ---------------------------------------------------------------- announcements
@@ -269,11 +269,9 @@ function announce(lines) {
   }, 5000);
 }
 
-// ---------------------------------------------------------------- run controls and logs
+// ---------------------------------------------------------------- run controls
 
 let sendingAction = false;
-let logTimer;
-let loadingLog = false;
 
 function renderControls(before) {
   const focused = document.activeElement;
@@ -324,37 +322,6 @@ startForm.addEventListener("submit", (event) => {
 });
 stopButton.addEventListener("click", () => runAction("stop", { run_id: run.run_id }));
 stopNowButton.addEventListener("click", () => runAction("stop-now", { run_id: run.run_id }));
-
-async function refreshLog() {
-  if (loadingLog || !logs.open) return;
-  loadingLog = true;
-  let text;
-  try {
-    const response = await fetch("/api/logs", { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error();
-    const log = await response.json();
-    if (log) {
-      text = log.truncated ? `Showing the end of the log.\n\n${log.text}` : log.text;
-    } else {
-      text = run?.origin === "cli"
-        ? "Output for this run is in the terminal that started it."
-        : "No captured log yet.";
-    }
-  } catch {
-    text = "Could not load the run log.";
-  } finally {
-    loadingLog = false;
-  }
-  if (logs.open && text !== logText.textContent) logText.textContent = text;
-}
-
-logs.addEventListener("toggle", () => {
-  clearInterval(logTimer);
-  if (logs.open) {
-    refreshLog();
-    logTimer = setInterval(refreshLog, 1500);
-  }
-});
 
 // ---------------------------------------------------------------- live updates
 

@@ -9,7 +9,6 @@ Routes (actions, answered with JSON):
 - ``POST /api/run/stop`` and ``POST /api/run/stop-now``: :func:`vidpipe.stop.request_stop`.
   Both accept an optional ``run_id`` to target a specific run. ``202`` with ``run_id`` and ``now``;
   ``409`` when the target run is no longer in progress.
-- ``GET /api/logs``: a bounded tail of the current run's captured output, or ``null``.
 
 Each run is a separate process running the normal CLI (``python -m vidpipe run``), with
 ``VIDPIPE_RUN_ORIGIN=ui``, fully detached from the server so it survives the browser closing and
@@ -35,7 +34,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import re
 import subprocess
 import sys
 import threading
@@ -56,11 +54,10 @@ from vidpipe.runstate import ACTIVE, ORIGIN_ENV, RUN_ID_ENV, Origin, new_run_id,
 from vidpipe.stages import STAGE_NAMES
 from vidpipe.stop import NoRunInProgress, request_stop
 from vidpipe.ui.context import ui_context
+from vidpipe.ui.diagnostics import read_log_tail, ui_log_path
 
-UI_RUN_LOGS = Path("build") / "logs"
 #: How long ``start`` waits for the new run to publish its run state.
 START_WAIT_S = 30.0
-LOG_TAIL_BYTES = 64 * 1024
 
 NO_STORE = {"Cache-Control": "no-store"}
 
@@ -95,7 +92,7 @@ class RunLauncher:
                     if state is None or state.run_id != self._run_id:
                         raise RunInProgress(self.project_dir, "starting from the UI")
             run_id = new_run_id()
-            relative = UI_RUN_LOGS / f"ui-run-{run_id}.log"
+            relative = ui_log_path(run_id)
             path = self.project_dir / relative
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,17 +134,9 @@ class RunLauncher:
         raise StartRefused(last.removeprefix("error: ") or "the run exited on start", 500)
 
 
-def _log_tail(path: Path) -> tuple[str, bool]:
-    with path.open("rb") as log:
-        size = log.seek(0, os.SEEK_END)
-        offset = max(0, size - LOG_TAIL_BYTES)
-        log.seek(offset)
-        return log.read(LOG_TAIL_BYTES).decode("utf-8", errors="replace"), offset > 0
-
-
 def _last_line(path: Path) -> str:
     with contextlib.suppress(OSError):
-        lines = [line for line in _log_tail(path)[0].splitlines() if line.strip()]
+        lines = [line for line in read_log_tail(path)[0].splitlines() if line.strip()]
         if lines:
             return lines[-1].strip()
     return ""
@@ -282,34 +271,11 @@ async def stop_now(request: Request) -> JSONResponse:
     return await _stop(request, now=True)
 
 
-def _current_log(project_dir: Path) -> dict[str, Any] | None:
-    state = read_run_state(project_dir)
-    if state is None or state.origin != Origin.UI:
-        return None
-    if not re.fullmatch(r"\d{8}T\d{6}-[0-9a-f]{6}", state.run_id):
-        return None
-    path = project_dir / UI_RUN_LOGS / f"ui-run-{state.run_id}.log"
-    try:
-        tail, truncated = _log_tail(path)
-    except FileNotFoundError:
-        return None
-    return {"run_id": state.run_id, "text": tail, "truncated": truncated}
-
-
-async def logs(request: Request) -> JSONResponse:
-    try:
-        result = await run_in_threadpool(_current_log, ui_context(request).project_dir)
-    except OSError as exc:
-        return _error(f"could not read the run log: {exc}", 500)
-    return JSONResponse(result, headers=NO_STORE)
-
-
 def routes() -> list[Route]:
     return [
         Route("/api/run/start", start, methods=["POST"]),
         Route("/api/run/stop", stop, methods=["POST"]),
         Route("/api/run/stop-now", stop_now, methods=["POST"]),
-        Route("/api/logs", logs, methods=["GET"]),
     ]
 
 

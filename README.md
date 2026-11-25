@@ -132,7 +132,7 @@ uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: print
   prompts when a run is in progress. Press Enter to leave it running or enter `s` to request a
   graceful stop. A server with redirected input leaves the run going. Reopening the UI picks up
   the project's current run state.
-- **Run log.** Expand **Run log** to see the recent output of the current UI-started run.
+- **Run log.** Expand **Logs and diagnostics** to see the recent output of the current UI-started run.
   Full logs are saved under `build/logs/ui-run-<run-id>.log`. For CLI-started runs, output
   is in the terminal that started them.
 - **Access.** By default the UI listens on 127.0.0.1 and accepts only loopback host names (so a web
@@ -142,7 +142,7 @@ uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: print
   scripts can send `Authorization: Bearer <token>`. Anything else gets 401. Use `--port` to move it.
 - **HTTP API.** `GET /api/project` (the stages with provider, phase and gate, the project config's
   languages and gates, and the run state), `GET /api/run` (the run state above, or `null`),
-  `GET /api/logs` (captured output for the current run, or `null`), and `GET /api/events`, one
+  `GET /api/logs` (the log path, recent lines and truncation status), and `GET /api/events`, one
   SSE stream whose `run` events carry the run state on connect and whenever it changes.
   Actions are `POST /api/run/start` (optional JSON `until`), `POST /api/run/stop` and
   `POST /api/run/stop-now` (optional JSON `run_id` to target the run shown on screen).

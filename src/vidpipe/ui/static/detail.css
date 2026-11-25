@@ -1,0 +1,375 @@
+/*
+ * vidpipe console page: the selected stage's outputs and the diagnostics disclosure (detail.js).
+ * Layout only, tokens from tokens.css only. Nothing here moves.
+ */
+
+.stage-outputs {
+  display: grid;
+  gap: var(--space-5);
+  min-inline-size: 0;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.output-section {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.output-title {
+  font-size: var(--text-lg);
+}
+
+.prose p {
+  white-space: pre-line;
+}
+
+.well {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* ---------- Lines (script, narration, storyboard) ---------- */
+
+.line-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &.numbered {
+    padding-inline-start: var(--space-5);
+    list-style: decimal;
+
+    & li::marker {
+      font-family: var(--font-mono);
+      color: var(--color-text-faint);
+    }
+  }
+}
+
+.narration-line,
+.shot {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  padding-block: var(--space-2);
+  border-block-end: var(--border-width) solid var(--color-line);
+
+  &:last-child {
+    border-block-end: 0;
+  }
+}
+
+.narration-line {
+  grid-template-columns: 4.5rem minmax(0, 1fr) minmax(12rem, 18rem) 3.5rem;
+
+  & > .numeral:last-child {
+    text-align: end;
+  }
+}
+
+audio {
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  block-size: 2.25rem;
+}
+
+/* ---------- Media ---------- */
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.render-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+}
+
+.media-figure {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  min-inline-size: 0;
+
+  & img,
+  & video {
+    display: block;
+  }
+
+  & img,
+  & video,
+  & .media-unplayable {
+    inline-size: 100%;
+    block-size: auto;
+    /* Space is kept before the media loads, so nothing moves while reading. */
+    aspect-ratio: 16 / 9;
+    object-fit: contain;
+    background-color: var(--color-inset);
+    border-radius: var(--radius-2);
+  }
+
+  & a:has(img) {
+    display: block;
+    border-radius: var(--radius-2);
+  }
+
+  & figcaption {
+    font-size: var(--text-xs);
+  }
+}
+
+.media-unplayable {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+}
+
+.media-figure .render-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Tables (translation review, ledger) ---------- */
+
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(32rem, 70dvb);
+  container-type: inline-size;
+  border: var(--border-width) solid var(--color-line);
+  border-radius: var(--radius-2);
+}
+
+.table-wrapper table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+
+  & caption {
+    padding: var(--space-2) var(--space-3);
+    text-align: start;
+    caption-side: top;
+  }
+
+  & th,
+  & td {
+    padding: var(--space-2) var(--space-3);
+    text-align: start;
+    vertical-align: top;
+    border-block-start: var(--border-width) solid var(--color-line);
+  }
+
+  & thead th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--layer-raised);
+    background-color: var(--color-raised);
+    font-family: var(--font-ui);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-strong);
+    font-stretch: var(--stretch-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  & tbody th {
+    font-weight: var(--weight-regular);
+    color: var(--color-text-muted);
+  }
+}
+
+.review-table {
+  overflow-wrap: anywhere;
+
+  & td:nth-of-type(2) {
+    font-size: var(--text-md);
+  }
+
+  /* A drifted line: tinted, with an edge bar, and the "Drift" chip in its Check cell. */
+  & tr[data-drift] > * {
+    background-color: color-mix(in oklab, var(--color-status-paused) 9%, transparent);
+  }
+
+  & tr[data-drift] > th {
+    border-inline-start: var(--space-1) solid var(--color-status-paused);
+  }
+}
+
+.review-cell-label,
+.review-line-label {
+  display: none;
+}
+
+.drift-flag {
+  display: grid;
+  gap: var(--space-1);
+
+  & p {
+    font-size: var(--text-xs);
+  }
+
+  /* A drift flag is a finding, not a gate: no pulse. */
+  & .status-mark::after {
+    content: none;
+  }
+}
+
+.table-wrapper .ledger-table {
+  font-size: var(--text-xs);
+
+  & td,
+  & th {
+    white-space: nowrap;
+  }
+}
+
+/* Narrow: each review line becomes a card, each cell labelled by its column. */
+@container (width < 40rem) {
+  .table-wrapper .review-table {
+    display: block;
+
+    & tbody,
+    & tr,
+    & th,
+    & td,
+    & caption,
+    & .review-cell-label {
+      display: block;
+    }
+
+    & thead {
+      display: none;
+    }
+
+    & tr {
+      border-block-start: var(--border-width) solid var(--color-line);
+    }
+
+    & th,
+    & td {
+      border-block-start: 0;
+    }
+
+    & .review-line-label {
+      display: inline;
+    }
+  }
+}
+
+/* ---------- Diagnostics disclosure ---------- */
+
+.diagnostics {
+  border-block-start: var(--border-width) solid var(--color-line);
+  padding-block-start: var(--space-3);
+
+  & > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: fit-content;
+    min-block-size: var(--control-height);
+    padding-inline: var(--space-2);
+    margin-inline-start: calc(-1 * var(--space-2));
+    border-radius: var(--radius-2);
+    color: var(--color-text-muted);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    /* The disclosure shape: a chevron that points down when open. */
+    &::before {
+      content: "";
+      inline-size: 0.5em;
+      block-size: 0.5em;
+      border-inline-end: 2px solid currentColor;
+      border-block-end: 2px solid currentColor;
+      rotate: -45deg;
+    }
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+
+  &[open] > summary::before {
+    rotate: 45deg;
+  }
+}
+
+.diagnostics-body {
+  display: grid;
+  gap: var(--space-5);
+  padding-block-start: var(--space-3);
+}
+
+.log {
+  max-block-size: 20rem;
+  margin: 0;
+  overflow: auto;
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[aria-busy="true"]:empty::before {
+  content: "Loading…";
+  color: var(--color-text-faint);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (width < 48rem) {
+  /* One scroller on a phone: the page, not a box inside it. */
+  .table-wrapper {
+    max-block-size: none;
+  }
+
+  .narration-line {
+    grid-template-columns: 4rem minmax(0, 1fr);
+
+    & audio {
+      grid-column: 1 / -1;
+      max-inline-size: none;
+    }
+
+    & > .numeral:last-child {
+      display: none;
+    }
+  }
+
+  .shot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  .review-table tr[data-drift] > th {
+    border-inline-start-color: CanvasText;
+  }
+}

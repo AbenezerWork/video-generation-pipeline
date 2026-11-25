@@ -20,7 +20,7 @@ Spec: `.scratch/vidpipe-ui/spec.md`
 and resume with the previous stage limit selected. The API starts the normal CLI as a detached
 process with closed piped stdin and correlates its run state by run ID, including under a Windows
 virtual environment. CLI runs have the same stop controls. Each UI launch gets its own log in
-`build/logs/`. The Run log disclosure shows the recent output for the current UI-started run.
+`build/logs/`. The Logs and diagnostics disclosure follows the current UI-started run's output.
 Ctrl+C at the UI server prompts to keep the run going or request a graceful stop.
 
 **Verification.** HTTP and SSE tests on Windows cover launch through assembly with portable FFmpeg

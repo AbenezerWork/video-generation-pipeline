@@ -181,7 +181,6 @@ body {
 
 /* ---------- Stage detail (filled in by later features) ---------- */
 
-.run-detail-column,
 .stage-detail {
   min-inline-size: 0;
   border-radius: var(--radius-3);
@@ -198,23 +197,6 @@ body {
   & h2 {
     font-size: var(--text-2xl);
   }
-}
-
-.run-logs {
-  margin-block-start: var(--space-3);
-}
-
-.run-logs summary {
-  cursor: pointer;
-}
-
-#run-log-text {
-  margin: var(--space-3) 0 0;
-  max-block-size: calc(var(--space-8) * 4);
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: var(--text-sm);
 }
 
 .facts {
