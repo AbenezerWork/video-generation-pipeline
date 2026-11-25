@@ -117,10 +117,15 @@ the file is left as it is.
 shows the ten stages as a rail with each stage's status, provider, time and, while it runs, a
 progress ring, following the run state live.
 
-The Config view lets you try changes to the project config and preview the resulting YAML.
+The Config view lets you edit the project config, preview the YAML and estimate what the next run
+will regenerate. **Save changes** writes the preview while keeping comments and key order.
 Each stage offers the providers that implement its contract, with readiness and suggested fixes
 from `vidpipe doctor`. The CLI checks cover executable discovery. Text stages also let you
-edit their fallback order. Validation runs as you type, and the project file stays unchanged.
+edit their fallback order. Validation runs as you type.
+
+A save during a run is marked pending. The active run keeps the config it started with. Select
+**Stop and restart** to finish the current artifact and launch a run with the saved config,
+reusing finished work where its inputs still match. Keep the page open until that run starts.
 
 ```
 uv run vidpipe ui examples/sample                   # http://127.0.0.1:8765/, this machine only
@@ -229,7 +234,9 @@ GPU minutes (local providers) or dollars (hosted) per stage and overall. It call
 generation method and writes nothing. It needs a storyboard to know the shots
 (`vidpipe run PROJECT --until storyboard`); narration durations are the real ones when narration
 was generated for the current text, otherwise estimated from the script at the TTS provider's
-declared `seconds_per_char` (marked `estimated`). Estimates are for a run from scratch.
+declared `seconds_per_char` (marked `estimated`). The stage totals are for a run from scratch.
+The regeneration estimate uses the current ledger and matches the Config view. It marks downstream
+stages as possible regeneration when their inputs depend on work that has yet to run.
 
 Providers declare what their work costs as a `cost = CostModel(...)` class attribute: GPU minutes
 (`gpu_minutes`, for providers with `uses_gpu = True`) or `dollars` (hosted), per `CALL` or per

@@ -273,12 +273,14 @@ class ArtifactStore:
         options: Mapping[str, Any] | None = None,
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
+        expected_outputs: Sequence[Path] = (),
     ) -> Produced:
         """Return the artifact ``key``, generating it with ``make`` only when its inputs changed.
 
         ``options`` are the provider options from the project config: they are hashed and recorded
         (a provider may consume them in its constructor, so ``provider.options`` is not enough).
         The provider's ``unhashed_options`` (a server address, say) are recorded but not hashed.
+        If given, ``expected_outputs`` must be in the record to reuse it.
         """
         params = dict(parameters or {})
         configured = dict(options or {})
@@ -297,6 +299,7 @@ class ArtifactStore:
             existing is not None
             and existing.input_hash == wanted
             and all(self.project.root.joinpath(o.path).is_file() for o in existing.outputs)
+            and {self._rel(path) for path in expected_outputs} <= {o.path for o in existing.outputs}
         ):
             paths = [self.project.root / o.path for o in existing.outputs]
             return Produced(paths=paths, data=existing.data, reused=True, record=existing)

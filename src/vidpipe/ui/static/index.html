@@ -33,6 +33,9 @@
           <span class="status-mark" aria-hidden="true"></span><span class="status-text">Loading</span>
         </span>
         <span class="muted" id="run-detail"></span>
+        <span class="status" data-status="paused" id="config-pending-chip" hidden>
+          <span class="status-mark" aria-hidden="true"></span>Config pending
+        </span>
         <span class="faint" id="connection" hidden>Reconnecting…</span>
       </div>
       <div class="run-controls" id="run-controls" hidden>
@@ -124,8 +127,7 @@
       <div class="config-view view" id="view-config" role="tabpanel" aria-labelledby="tab-config" hidden>
         <div class="config-head">
           <h2 id="config-title">Project config</h2>
-          <p class="muted">Edit settings to preview the resulting YAML. Changes stay in this tab.</p>
-          <a class="preview-jump" href="#config-check">Jump to validation and YAML</a>
+          <a class="preview-jump" href="#config-check">Jump to validation, change impact and save</a>
         </div>
         <form class="config-form" id="config-form" aria-labelledby="config-title">
           <p class="muted" id="config-loading">Loading the project config…</p>
@@ -137,6 +139,22 @@
             </p>
             <ul class="config-problems" id="config-problems" aria-label="Problems"></ul>
           </div>
+          <section class="panel config-impact" aria-labelledby="config-impact-title">
+            <h3 id="config-impact-title">Next run estimate</h3>
+            <p class="muted" id="config-impact-total">Edit the config to preview what will regenerate.</p>
+            <ul id="config-impact-stages" hidden></ul>
+            <ul class="config-problems" id="config-plan-problems" aria-label="Plan problems" hidden></ul>
+            <div class="config-actions">
+              <button type="submit" class="btn btn-primary" form="config-form" id="config-save" hidden>Save changes</button>
+              <button type="button" class="btn btn-quiet" id="config-reload" hidden>Discard edits and reload</button>
+            </div>
+            <p id="config-action-message" class="muted" role="status"></p>
+          </section>
+          <section class="panel config-impact" id="config-pending" aria-labelledby="config-pending-title" hidden>
+            <h3 id="config-pending-title">Pending change</h3>
+            <p class="muted">The saved config applies to the next run. The current run keeps the config it started with.</p>
+            <button type="button" class="btn btn-quiet" id="config-restart">Stop and restart</button>
+          </section>
           <details class="panel yaml-view" open>
             <summary id="yaml-title">YAML preview</summary>
             <pre class="well numeral" id="config-yaml" tabindex="0" aria-labelledby="yaml-title"></pre>

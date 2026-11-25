@@ -102,9 +102,7 @@ class RunLauncher:
     def redo(self, shot: int) -> dict[str, Any]:
         return self._launch(["redo", "shot", str(shot)])
 
-    def _launch(
-        self, args: list[str], *, gate: tuple[str, str] | None = None
-    ) -> dict[str, Any]:
+    def _launch(self, args: list[str], *, gate: tuple[str, str] | None = None) -> dict[str, Any]:
         if not self._lock.acquire(blocking=False):
             holder = describe_holder(self.project_dir / "build")
             raise RunInProgress(self.project_dir, holder or "starting from the UI")
@@ -169,9 +167,7 @@ def _last_line(path: Path) -> str:
     return ""
 
 
-def _spawn(
-    project_dir: Path, run_id: str, args: list[str], log: TextIO
-) -> subprocess.Popen[bytes]:
+def _spawn(project_dir: Path, run_id: str, args: list[str], log: TextIO) -> subprocess.Popen[bytes]:
     command = [sys.executable, "-m", "vidpipe", *args, str(project_dir)]
     env = {
         **os.environ,
@@ -303,7 +299,7 @@ async def decide_gate(request: Request) -> JSONResponse:
             "run_id": run_id,
             "status": "paused",
             "next_steps": [
-                "Edit the project config in vidpipe.yaml. Open Config to preview settings.",
+                "Edit and save the project settings in the Config tab, then start another run.",
                 "Open Keyframes or Video and choose Redo shot for an existing output.",
                 "Edit the project files, then start another run to review the updated outputs.",
             ],

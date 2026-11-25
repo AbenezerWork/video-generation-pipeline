@@ -1,7 +1,7 @@
 """What the UI shows about a project, as JSON-ready dicts (no web framework in here).
 
 The project summary is read fresh on every request: the project config can change on disk at any
-time (by hand now, from the Config view later), and the run state belongs to the runner.
+time, and the run state belongs to the runner.
 """
 
 from __future__ import annotations

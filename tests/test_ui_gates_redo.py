@@ -104,7 +104,10 @@ def test_redo_replaces_only_one_shot_and_its_assemblies_after_a_fresh_gate_revie
         after = ledger(project)
         assert after.keys() == before.keys()
         assert {key for key in after if after[key] != before[key]} == {
-            "keyframes/shot_02", "video/shot_02", "assembly/en", "assembly/am",
+            "keyframes/shot_02",
+            "video/shot_02",
+            "assembly/en",
+            "assembly/am",
         }
     finally:
         ui.stop()

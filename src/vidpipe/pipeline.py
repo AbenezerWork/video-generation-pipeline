@@ -10,13 +10,14 @@ from typing import Any
 from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.chain import build_provider, describe
-from vidpipe.config import STAGE_KINDS, ProviderSelection
+from vidpipe.config import STAGE_KINDS, ProjectConfig, ProviderSelection
 from vidpipe.contracts import Cancelled, MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper, require_paused_gate
 from vidpipe.lock import writer_lock
 from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
+from vidpipe.regeneration import estimate_regeneration
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
 from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
@@ -109,6 +110,7 @@ def plan(
     registry: Registry | None = None,
     assembler: Assembler | None = None,
     estimate: bool = False,
+    config: ProjectConfig | None = None,
 ) -> Plan:
     """Resolve providers and check capabilities for every stage up to ``until``.
 
@@ -116,9 +118,9 @@ def plan(
     report them all. With ``estimate`` the plan also carries the fit plan (segments, speed
     factors, continuation clips) and the estimated GPU time and cost per stage, built from what is
     on disk; fit problems (a render over 90 s, narration no clip can cover) are added to
-    ``problems``.
+    ``problems``. An explicit ``config`` plans a proposed edit against the same project and ledger.
     """
-    project = Project(project_dir)
+    project = Project(project_dir, config=config)
     names = _selected_stages(until)
     problems: list[str] = []
     ctx = _build_context(
@@ -146,6 +148,9 @@ def plan(
     report = None
     if estimate:
         report = build_report(project, ctx.providers, [p.name for p in planned])
+        report.regeneration = estimate_regeneration(
+            ctx, [stage for stage in STAGES if stage.name in names], report
+        )
         if report.fit is not None:
             problems += [f"fit-planning: {p}" for p in report.fit.problems]
             music = ctx.providers.get("music")

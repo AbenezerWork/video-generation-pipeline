@@ -55,6 +55,31 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.config-impact {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.config-impact ul {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
+.config-impact [hidden],
+.config-impact[hidden],
+#config-pending-chip[hidden],
+#config-action-message:empty {
+  display: none;
+}
+
+.config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .config-section,
 .config-form fieldset,
 .yaml-view pre,
