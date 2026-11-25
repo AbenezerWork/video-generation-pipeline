@@ -1,0 +1,27 @@
+languages: [en, am]
+visuals: shared
+output_name: demo
+width: 512
+height: 288
+fps: 24
+comfyui:
+  url: http://127.0.0.1:8188
+providers:
+  script: [claude-cli, codex-cli]
+  translation:
+    - {name: codex-cli, options: {model: gpt-6.2-astra}}
+    - {name: codex-cli, options: {model: gpt-6.2-sol}}
+  storyboard: [claude-cli, codex-cli]
+  narration: edge-tts
+  keyframes:
+    name: comfyui-keyframer
+    options:
+      settings: {reference_megapixels: 0.25}
+  video:
+    name: comfyui-i2v
+    options:
+      settings: {width: 512, height: 288}
+  music:
+    name: comfyui-music
+    options:
+      settings: {bpm: 84, keyscale: D major}

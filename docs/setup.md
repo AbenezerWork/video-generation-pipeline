@@ -51,6 +51,9 @@ English uses `en-US-AriaNeural` by default and Amharic uses `am-ET-AmehaNeural`.
 
 ## ComfyUI
 
+The [Coffee Highlands example](../examples/coffee-origin/README.md) uses the pinned
+workflows below to render a real-provider bilingual demo.
+
 Start [ComfyUI v0.46.3](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.46.3) separately.
 The reference installation uses ComfyUI frontend `1.59.6` and workflow templates `0.11.118`.
 Vidpipe connects to `http://127.0.0.1:8188` by default. Set `comfyui.url` in the project or

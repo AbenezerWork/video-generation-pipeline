@@ -1,0 +1,20 @@
+# The project bible: who and where the story is about, and how it should look.
+# Keyframes receive the `reference` pictures (paths relative to this folder); the descriptions are
+# used where no picture is passed. Write in English. See "The project bible" in the README.
+style:
+  description: >
+    Warm hand-painted storybook illustration, soft watercolour textures, gentle morning light.
+characters:
+  # The first character is the protagonist: the default for every shot.
+  - id: protagonist
+    name: the protagonist
+    description: >
+      A ten-year-old girl from a highland village: two black braids with a red ribbon, indigo
+      dress, yellow shawl, leather satchel.
+    reference: bible/protagonist.jpg  # placeholder sheet drawn with the keyframer itself
+locations:
+  # No picture: the description goes into the prompt of shots that take place here.
+  - id: highlands
+    name: the highland village
+    description: >
+      Round stone houses with thatched roofs on green terraced slopes, mist in the valleys.
