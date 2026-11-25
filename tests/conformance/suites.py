@@ -64,8 +64,11 @@ def check_text(provider: TextProvider, tmp_path: Path) -> None:
 
 def check_translation(provider: TranslationProvider, tmp_path: Path) -> None:
     caps = provider.capabilities
-    source = sorted(caps.source_languages)[0]
-    target = sorted(caps.target_languages)[0]
+    source = "en" if "en" in caps.source_languages else sorted(caps.source_languages)[0]
+    target = next(
+        (lang for lang in sorted(caps.target_languages) if lang != source),
+        sorted(caps.target_languages)[0],
+    )
     texts = ["Hello there.", "Good morning."]
     response = provider.translate(
         TranslationRequest(texts=texts, source_language=source, target_language=target)
