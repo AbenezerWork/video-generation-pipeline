@@ -35,6 +35,7 @@ def test_provider_passes_its_contract_suite(
 ) -> None:
     provider = provider_class()
     suites.declares_identity_and_capabilities(provider)
+    suites.has_a_stable_fingerprint(provider)
     check = suites.CHECKS[provider.kind.value]
     if provider.kind is ProviderKind.IMAGE_TO_VIDEO:
         image = tmp_path / "keyframe.png"
