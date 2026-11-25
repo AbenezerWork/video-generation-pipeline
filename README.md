@@ -110,6 +110,35 @@ a rename can cause on Windows. A record still saying `running` or `stopping` who
 (killed, crashed) comes back as `failed` with an error saying so, and the stage it was in as `failed`;
 the file is left as it is.
 
+## The UI
+
+`vidpipe ui <project>` serves a web console for one project (the optional `ui` extra:
+`pip install 'vidpipe[ui]'` or `uv sync --extra ui`; the dev environment has it). The Run view
+shows the ten stages as a rail with each stage's status, provider, time and, while it runs, a
+progress ring, following the run state live. Runs are started from the CLI for now; one started
+in another terminal shows up on its own, and closing the tab never affects it.
+
+```
+uv run vidpipe ui examples/sample                   # http://127.0.0.1:8765/, this machine only
+uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: prints a link with a token
+```
+
+![The Run view during a run on fake providers](docs/assets/ui-run-view.jpg)
+
+- **Access.** By default the UI listens on 127.0.0.1 and accepts only loopback host names (so a web
+  page cannot reach it by rebinding a domain to 127.0.0.1). With any other `--host` it requires a
+  random token printed at startup as a link, `http://<address>:8765/?token=<token>`: opening it
+  swaps the token for an `HttpOnly`, `SameSite=Lax` cookie that the page and its event stream carry;
+  scripts can send `Authorization: Bearer <token>`. Anything else gets 401. Use `--port` to move it.
+- **HTTP API.** `GET /api/project` (the stages with provider, phase and gate, the project config's
+  languages and gates, and the run state), `GET /api/run` (the run state above, or `null`), and
+  `GET /api/events`, one SSE stream whose `run` events carry the run state on connect and whenever
+  it changes.
+- **Front end.** No-build HTML, CSS and JS in `src/vidpipe/ui/static/`, styled only with the design
+  system there (`style.html` shows every token and component). The rail is operable by keyboard
+  (arrow keys, Home, End) and becomes a horizontal strip on narrow screens; a polite live region
+  announces only stage start, finish, pause at a gate and failure.
+
 ## Gates, --auto and redo
 
 The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
@@ -423,9 +452,10 @@ music, a `SubtitleTrack` and the `MixSettings`.
 
 ## Development
 
-- `uv run pytest` runs the fast suite on fake providers. Two seams only: the pipeline run through
+- `uv run pytest` runs the fast suite on fake providers. Three seams: the pipeline run through
   the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`) and the per-contract provider conformance suite
-  (`tests/conformance/`). ComfyUI providers are tested against an in-process fake server
+  (`tests/conformance/`), and the UI's HTTP API (`tests/test_ui_run_view.py`, a real server on a free
+  port watching CLI runs; skipped without the `ui` extra). ComfyUI providers are tested against an in-process fake server
   (`tests/fake_comfyui.py`, fixture `comfy`); `uv run pytest -m integration -k comfy` runs them on a
   real ComfyUI at 127.0.0.1:8188 with the models above. With the ACE-Step checkpoint installed,
   `uv run pytest -m integration -k 'comfyui_music or comfyui-music'` runs just the music tests,
