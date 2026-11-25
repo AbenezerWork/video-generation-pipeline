@@ -1,0 +1,794 @@
+/*
+ * vidpipe studio console: base elements and shared components.
+ * Load after tokens.css. Components use only tokens from tokens.css.
+ *
+ * Motion rule: anything that moves (spin, pulse, scale, slide) is declared only inside
+ * @media (prefers-reduced-motion: no-preference); without it every component rests in its final
+ * state. Colour and opacity fades stay, since they are not motion.
+ *
+ * Status rule: a stage status is always three things at once: a tone (colour, with a soft glow),
+ * a shape (.status-mark) and a text label. Never show the tone alone.
+ */
+
+/* ---------- Base ---------- */
+
+:root {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  accent-color: var(--color-accent);
+  scrollbar-color: var(--color-line-strong) var(--color-bg);
+  font-family: var(--font-ui);
+  font-size: 100%;
+  font-weight: var(--weight-regular);
+  font-size-adjust: from-font;
+  line-height: var(--leading-body);
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-size: var(--text-md);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-stretch: var(--stretch-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  max-inline-size: 68ch;
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--color-accent);
+  text-underline-offset: 0.2em;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-size-adjust: ch-width from-font;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: var(--focus-offset);
+}
+
+/* Content in Amharic: artifact text only, in the system's Ethiopic font. */
+:lang(am) {
+  font-family: var(--font-content-am);
+  font-size-adjust: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Type roles ---------- */
+
+/* Small all-caps instrument label ("STAGE", "GPU TIME"). Not for emphasis in running text. */
+.label {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-strong);
+  font-stretch: var(--stretch-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* Timings, counts, sizes: monospace with fixed-width digits so live values don't jitter. */
+.numeral {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "zero" 1;
+  letter-spacing: 0;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.faint {
+  color: var(--color-text-faint);
+}
+
+/* ---------- Panels ---------- */
+
+.panel {
+  background-color: var(--color-surface);
+  border: var(--border-width) solid var(--color-line);
+  border-radius: var(--radius-3);
+  padding: var(--space-4);
+}
+
+.panel-raised {
+  background-color: var(--color-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.well {
+  background-color: var(--color-inset);
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-2);
+  background-color: var(--color-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  font-stretch: var(--stretch-label);
+  line-height: var(--leading-snug);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-quick) var(--ease-out),
+    border-color var(--duration-quick) var(--ease-out),
+    color var(--duration-quick) var(--ease-out);
+
+  &:hover {
+    background-color: var(--color-selected);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition-property: background-color, border-color, color, scale;
+
+    &:active:not(:disabled) {
+      scale: 0.97;
+    }
+  }
+
+  &:disabled,
+  &[aria-disabled="true"] {
+    cursor: not-allowed;
+    color: var(--color-text-faint);
+    border-style: dashed;
+    background-color: transparent;
+  }
+
+  & svg {
+    inline-size: 1.1em;
+    block-size: 1.1em;
+    flex: none;
+  }
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+
+  &:hover {
+    background-color: color-mix(in oklab, var(--color-accent) 86%, var(--color-text));
+  }
+}
+
+.btn-danger {
+  background-color: var(--color-status-failed);
+  border-color: var(--color-status-failed);
+  color: var(--color-on-failed);
+
+  &:hover {
+    background-color: color-mix(in oklab, var(--color-status-failed) 86%, var(--color-text));
+  }
+}
+
+/* Ghost: for secondary actions in dense places; keeps a visible boundary for 1.4.11. */
+.btn-quiet {
+  background-color: transparent;
+}
+
+.btn-icon {
+  padding-inline: var(--space-2);
+  min-inline-size: var(--control-height);
+}
+
+@media (forced-colors: active) {
+  .btn,
+  .btn-primary,
+  .btn-danger {
+    border-color: ButtonText;
+  }
+}
+
+/* ---------- Form fields ---------- */
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+
+  & > label,
+  & > .field-label {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-text);
+  }
+
+  & .field-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+  }
+
+  & .field-error {
+    font-size: var(--text-xs);
+    color: var(--color-status-failed);
+    display: flex;
+    gap: var(--space-1);
+    align-items: baseline;
+
+    &::before {
+      content: "\25C6" / "";
+    }
+  }
+}
+
+.input,
+.select,
+.textarea {
+  inline-size: 100%;
+  min-block-size: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-2);
+  background-color: var(--color-inset);
+  color: var(--color-text);
+  font: inherit;
+  line-height: var(--leading-snug);
+  transition: border-color var(--duration-quick) var(--ease-out);
+
+  &::placeholder {
+    color: var(--color-text-faint);
+    opacity: 1;
+  }
+
+  &:hover {
+    border-color: var(--color-text-muted);
+  }
+
+  &:focus-visible {
+    outline-offset: 0;
+    border-color: var(--color-focus);
+  }
+
+  &:user-invalid,
+  &[aria-invalid="true"] {
+    border-color: var(--color-status-failed);
+    border-width: 2px;
+  }
+}
+
+.select {
+  appearance: auto;
+}
+
+.textarea {
+  resize: vertical;
+  min-block-size: 6rem;
+}
+
+/* Numeric inputs (resolution, seconds) read as instrument values. */
+.input-numeral {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Phase signal ---------- */
+
+/* Sets --phase to the phase hue for anything inside: rail stripes, labels, rules. Kept apart
+   from --tone (status) so a rail row can carry both. */
+[data-phase="words"] {
+  --phase: var(--color-phase-words);
+}
+[data-phase="voice"] {
+  --phase: var(--color-phase-voice);
+}
+[data-phase="picture"] {
+  --phase: var(--color-phase-picture);
+}
+[data-phase="sound"] {
+  --phase: var(--color-phase-sound);
+}
+
+.phase-stripe {
+  inline-size: 3px;
+  align-self: stretch;
+  border-radius: var(--radius-round);
+  background-color: var(--phase, var(--color-line-strong));
+}
+
+.phase-label {
+  color: var(--phase, var(--color-text-muted));
+}
+
+@media (forced-colors: active) {
+  .phase-stripe {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* ---------- Stage status: tone + shape + label ---------- */
+
+/* data-status sets --tone for anything inside (a .status chip, a rail row, a toast). */
+[data-status="waiting"] {
+  --tone: var(--color-status-waiting);
+}
+[data-status="running"] {
+  --tone: var(--color-status-running);
+}
+[data-status="done"] {
+  --tone: var(--color-status-done);
+}
+[data-status="reused"] {
+  --tone: var(--color-status-reused);
+}
+[data-status="paused"] {
+  --tone: var(--color-status-paused);
+}
+[data-status="failed"] {
+  --tone: var(--color-status-failed);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--tone, var(--color-status-waiting));
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  font-stretch: var(--stretch-label);
+  line-height: var(--leading-snug);
+}
+
+.status-mark {
+  --mark: var(--mark-waiting);
+  position: relative;
+  flex: none;
+  inline-size: 1em;
+  block-size: 1em;
+  font-size: 1rem;
+  border-radius: 50%;
+  /* The soft glow: brighter on the dark console, faint on the daylight bench. */
+  box-shadow: 0 0 var(--glow-radius)
+    light-dark(
+      color-mix(in oklab, var(--tone) 25%, transparent),
+      color-mix(in oklab, var(--tone) 50%, transparent)
+    );
+  transition: box-shadow var(--duration-base) var(--ease-out);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--tone, var(--color-status-waiting));
+    mask: var(--mark) center / contain no-repeat;
+    transition: background-color var(--duration-base) var(--ease-out);
+  }
+
+  /* Waiting is quiet: no glow (and with no status at all, --tone is unset so there is none). */
+  [data-status="waiting"] & {
+    box-shadow: none;
+  }
+
+  [data-status="running"] & {
+    --mark: var(--mark-running);
+  }
+  [data-status="done"] & {
+    --mark: var(--mark-done);
+  }
+  [data-status="reused"] & {
+    --mark: var(--mark-reused);
+    box-shadow: none; /* reused work spent nothing: no glow */
+  }
+  [data-status="paused"] & {
+    --mark: var(--mark-paused);
+    border-radius: var(--radius-1);
+  }
+  [data-status="failed"] & {
+    --mark: var(--mark-failed);
+    border-radius: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-status="running"] &::before {
+      animation: status-spin var(--duration-spin) linear infinite;
+    }
+
+    /* One pulse when a gate pauses the run, then still. */
+    [data-status="paused"] &::after {
+      content: "";
+      position: absolute;
+      inset: -0.25em;
+      border: 2px solid var(--tone);
+      border-radius: var(--radius-2);
+      opacity: 0;
+      animation: status-pulse var(--duration-pulse) var(--ease-out) 1;
+    }
+
+    /* A status that just changed lands in place (set data-changed when re-rendering). */
+    [data-changed] & {
+      animation: status-land var(--duration-slow) var(--ease-signal) 1;
+    }
+  }
+
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+    box-shadow: none;
+
+    &::before {
+      background-color: CanvasText;
+    }
+  }
+}
+
+/* Shapes (masks): waiting = hollow ring, running = open arc, done = disc with check,
+   reused = dashed ring with a dot, paused = two bars, failed = diamond with "!". */
+:root {
+  --mark-waiting: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E");
+  --mark-running: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23000' stroke-opacity='.3' stroke-width='2'/%3E%3Cpath d='M8 2a6 6 0 0 1 6 6' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  --mark-done: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cmask id='m'%3E%3Crect width='16' height='16' fill='%23fff'/%3E%3Cpath d='M4.6 8.3l2.3 2.3 4.4-4.8' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/mask%3E%3Ccircle cx='8' cy='8' r='7' mask='url(%23m)'/%3E%3C/svg%3E");
+  --mark-reused: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23000' stroke-width='1.8' stroke-dasharray='2.6 2.1'/%3E%3Ccircle cx='8' cy='8' r='2.2'/%3E%3C/svg%3E");
+  --mark-paused: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='2' width='3.6' height='12' rx='1.2'/%3E%3Crect x='9.4' y='2' width='3.6' height='12' rx='1.2'/%3E%3C/svg%3E");
+  --mark-failed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cmask id='m'%3E%3Crect width='16' height='16' fill='%23fff'/%3E%3Crect x='7.1' y='4' width='1.8' height='5.2' rx='.9'/%3E%3Ccircle cx='8' cy='11.4' r='1.1'/%3E%3C/mask%3E%3Cpath d='M8 .6 15.4 8 8 15.4.6 8Z' mask='url(%23m)'/%3E%3C/svg%3E");
+}
+
+@keyframes status-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes status-pulse {
+  0% {
+    opacity: 0.9;
+    scale: 0.8;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+
+@keyframes status-land {
+  0% {
+    scale: 0.4;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+/* ---------- Progress ring (running stage) ---------- */
+
+@property --value {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  --ring-size: 3.5rem;
+  --ring-thickness: 0.3rem;
+}
+
+progress.ring-progress {
+  --value: attr(value type(<number>));
+  --max: attr(max type(<number>), 100);
+  --fill: var(--tone, var(--phase, var(--color-status-running)));
+  --track: var(--color-line);
+  appearance: none;
+  inline-size: var(--ring-size);
+  block-size: var(--ring-size);
+  border-radius: 50%;
+  color: var(--fill);
+  background: conic-gradient(var(--fill) calc(var(--value) / var(--max, 100) * 100%), var(--track) 0);
+  background-clip: border-area;
+  background-origin: border-box;
+  border: var(--ring-thickness) solid transparent;
+  filter: drop-shadow(
+    0 0 0.35rem
+      light-dark(
+        color-mix(in oklab, var(--fill) 20%, transparent),
+        color-mix(in oklab, var(--fill) 45%, transparent)
+      )
+  );
+  transition: --value 0s linear;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition-duration: var(--duration-slow);
+    transition-timing-function: var(--ease-out);
+  }
+
+  &::-webkit-progress-bar,
+  &::-webkit-progress-value {
+    display: none;
+    background: none;
+  }
+  &::-moz-progress-bar {
+    display: none;
+    background: none;
+  }
+
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+    filter: none;
+    --fill: CanvasText;
+    --track: Canvas;
+  }
+}
+
+@supports not (background-clip: border-area) {
+  progress.ring-progress {
+    mask-image: radial-gradient(
+      transparent calc(50% - var(--ring-thickness)),
+      black calc(50% - var(--ring-thickness) + 0.5px)
+    );
+    border: 0;
+  }
+}
+
+.ring-content {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--color-text);
+}
+
+/* ---------- Dialog (modal, opened with showModal() or command="show-modal") ---------- */
+
+dialog.dialog {
+  max-inline-size: min(32rem, calc(100vi - 2 * var(--space-4)));
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-3);
+  background-color: var(--color-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-raised);
+  opacity: 0;
+  transition-property: opacity, scale, translate, display, overlay;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
+
+  & h1 {
+    font-size: var(--text-xl);
+    margin-block-end: var(--space-3);
+  }
+
+  & .dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-block-start: var(--space-5);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    scale: 0.96;
+    translate: 0 0.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: var(--duration-instant);
+  }
+}
+
+dialog.dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.dialog[open] {
+  opacity: 1;
+
+  @starting-style {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    scale: 1;
+    translate: 0 0;
+
+    @starting-style {
+      scale: 0.96;
+      translate: 0 0.5rem;
+    }
+  }
+}
+
+dialog.dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgb(0 0 0 / 0);
+  backdrop-filter: blur(0);
+  transition-property: background-color, backdrop-filter, display, overlay;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
+}
+
+dialog.dialog[open]::backdrop {
+  background-color: light-dark(rgb(30 25 15 / 0.35), rgb(0 0 0 / 0.6));
+  backdrop-filter: blur(3px);
+
+  @starting-style {
+    background-color: rgb(0 0 0 / 0);
+    backdrop-filter: blur(0);
+  }
+}
+
+/* ---------- Toasts (popover="manual" inside one named region) ---------- */
+
+.toast-region {
+  position: fixed;
+  inset-block-end: var(--space-4);
+  inset-inline-end: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  pointer-events: none;
+}
+
+.toast {
+  /* Top layer ignores the region's position, so each toast places itself. */
+  position: fixed;
+  inset: auto var(--space-4) calc(var(--space-4) + var(--toast-stack, 0px)) auto;
+  margin: 0;
+  max-inline-size: min(24rem, calc(100vi - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  display: none;
+  gap: var(--space-3);
+  align-items: start;
+  grid-template-columns: auto 1fr auto;
+  border: var(--border-width) solid var(--color-line-strong);
+  border-inline-start: 3px solid var(--tone, var(--color-accent));
+  border-radius: var(--radius-2);
+  background-color: var(--color-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-raised);
+  pointer-events: auto;
+  opacity: 0;
+  transition-property: opacity, translate, display, overlay;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
+
+  @media (prefers-reduced-motion: no-preference) {
+    translate: 0 0.75rem;
+  }
+
+  & .toast-body {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  & .toast-title {
+    font-weight: var(--weight-strong);
+    font-stretch: var(--stretch-label);
+  }
+}
+
+.toast:popover-open {
+  display: grid;
+  opacity: 1;
+
+  @starting-style {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    translate: 0 0;
+
+    @starting-style {
+      translate: 0 0.75rem;
+    }
+  }
+}
+
+/* ---------- Theme toggle (two states: system, and the opposite of what is shown) ---------- */
+
+.theme-toggle {
+  & > span {
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  & .theme-to-light {
+    display: none;
+  }
+
+  & .theme-to-dark {
+    display: inline-flex;
+  }
+}
+
+/* Showing dark (pinned dark, or following a dark system): offer light. */
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle {
+  & > span {
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  & .theme-to-light {
+    display: inline-flex;
+  }
+  & .theme-to-dark {
+    display: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-toggle {
+    & .theme-to-light {
+      display: inline-flex;
+    }
+    & .theme-to-dark {
+      display: none;
+    }
+  }
+}
+
+/* ---------- View transitions (Run <-> Config views) ---------- */
+
+::view-transition-group(*) {
+  animation-duration: var(--duration-base);
+  animation-timing-function: var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

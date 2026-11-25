@@ -1,0 +1,279 @@
+/*
+ * vidpipe studio console: design tokens.
+ *
+ * Every later UI ticket styles with these custom properties and nothing else. Colours come in
+ * pairs: a raw value per theme (--color-<name>-dark / --color-<name>-light, plain hex so the
+ * contrast test can read them) and one semantic token (--color-<name>) that picks between them
+ * with light-dark(), so it follows the color-scheme of whatever element uses it. Use only the
+ * semantic tokens in components.
+ *
+ * The dark theme is a graphite grading suite; the light theme is a daylight bench (warm
+ * aluminium and paper), tuned separately rather than inverted. Phase hues and status colours are
+ * signal lights; generated media should stay the most colourful thing on screen, so hues are
+ * used for marks, rules and labels, never for large fills.
+ *
+ * Contrast (checked by tests/test_ui_design_system.py): every text, accent, status and phase
+ * colour is >= 4.5:1 on every background (bg, surface, raised, inset, selected) in both themes;
+ * line-strong and focus are >= 3:1 on them; on-accent and on-failed are >= 4.5:1 on their fill.
+ * --color-line is decorative only (dividers inside a component that already has a boundary).
+ */
+
+@font-face {
+  font-family: "Mona Sans";
+  src: url("fonts/MonaSansVF.woff2") format("woff2");
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---- Surfaces: canvas, panels, raised controls, wells, the selected rail row ---- */
+  --color-bg-dark: #0b0c0f;
+  --color-bg-light: #e9e6df;
+  --color-surface-dark: #121419;
+  --color-surface-light: #f4f2ed;
+  --color-raised-dark: #1a1d24;
+  --color-raised-light: #fdfcfa;
+  --color-inset-dark: #07080a;
+  --color-inset-light: #dedad1;
+  --color-selected-dark: #22262f;
+  --color-selected-light: #e0dcd2;
+
+  /* ---- Lines: decorative divider, and component boundary (>= 3:1) ---- */
+  --color-line-dark: #262a33;
+  --color-line-light: #d0cbc0;
+  --color-line-strong-dark: #6f7686;
+  --color-line-strong-light: #7d786d;
+
+  /* ---- Text ---- */
+  --color-text-dark: #eceef2;
+  --color-text-light: #16171a;
+  --color-text-muted-dark: #aab0bc;
+  --color-text-muted-light: #454850;
+  --color-text-faint-dark: #8d94a2;
+  --color-text-faint-light: #5a5d66;
+
+  /* ---- Accent (primary action, links, selection) and focus ring ---- */
+  --color-accent-dark: #9db8ff;
+  --color-accent-light: #2347b8;
+  --color-on-accent-dark: #0b0c0f;
+  --color-on-accent-light: #ffffff;
+  --color-focus-dark: #c3d3ff;
+  --color-focus-light: #2347b8;
+
+  /* ---- Stage status (always paired with a label and a shape) ---- */
+  --color-status-waiting-dark: #9097a5;
+  --color-status-waiting-light: #555963;
+  --color-status-running-dark: #7fb0ff;
+  --color-status-running-light: #2150c4;
+  --color-status-done-dark: #5fdc93;
+  --color-status-done-light: #0e6537;
+  --color-status-reused-dark: #9fb0c4;
+  --color-status-reused-light: #4c5b6e;
+  --color-status-paused-dark: #f4c64e;
+  --color-status-paused-light: #7d5300;
+  --color-status-failed-dark: #ff7a72;
+  --color-status-failed-light: #b3261e;
+  --color-on-failed-dark: #0b0c0f;
+  --color-on-failed-light: #ffffff;
+
+  /* ---- Phase signal hues: words (brief, script, storyboard, translation), voice (narration),
+          picture (keyframes, video), sound (music, assembly mix) ---- */
+  --color-phase-words-dark: #ffa477;
+  --color-phase-words-light: #963b08;
+  --color-phase-voice-dark: #ff7fb8;
+  --color-phase-voice-light: #a8215f;
+  --color-phase-picture-dark: #5fd6ea;
+  --color-phase-picture-light: #0a6579;
+  --color-phase-sound-dark: #b79cff;
+  --color-phase-sound-light: #6440c2;
+
+  /* ---- Semantic colour tokens: use these ---- */
+  --color-bg: light-dark(var(--color-bg-light), var(--color-bg-dark));
+  --color-surface: light-dark(var(--color-surface-light), var(--color-surface-dark));
+  --color-raised: light-dark(var(--color-raised-light), var(--color-raised-dark));
+  --color-inset: light-dark(var(--color-inset-light), var(--color-inset-dark));
+  --color-selected: light-dark(var(--color-selected-light), var(--color-selected-dark));
+  --color-line: light-dark(var(--color-line-light), var(--color-line-dark));
+  --color-line-strong: light-dark(var(--color-line-strong-light), var(--color-line-strong-dark));
+  --color-text: light-dark(var(--color-text-light), var(--color-text-dark));
+  --color-text-muted: light-dark(var(--color-text-muted-light), var(--color-text-muted-dark));
+  --color-text-faint: light-dark(var(--color-text-faint-light), var(--color-text-faint-dark));
+  --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
+  --color-on-accent: light-dark(var(--color-on-accent-light), var(--color-on-accent-dark));
+  --color-focus: light-dark(var(--color-focus-light), var(--color-focus-dark));
+  --color-status-waiting: light-dark(var(--color-status-waiting-light), var(--color-status-waiting-dark));
+  --color-status-running: light-dark(var(--color-status-running-light), var(--color-status-running-dark));
+  --color-status-done: light-dark(var(--color-status-done-light), var(--color-status-done-dark));
+  --color-status-reused: light-dark(var(--color-status-reused-light), var(--color-status-reused-dark));
+  --color-status-paused: light-dark(var(--color-status-paused-light), var(--color-status-paused-dark));
+  --color-status-failed: light-dark(var(--color-status-failed-light), var(--color-status-failed-dark));
+  --color-on-failed: light-dark(var(--color-on-failed-light), var(--color-on-failed-dark));
+  --color-phase-words: light-dark(var(--color-phase-words-light), var(--color-phase-words-dark));
+  --color-phase-voice: light-dark(var(--color-phase-voice-light), var(--color-phase-voice-dark));
+  --color-phase-picture: light-dark(var(--color-phase-picture-light), var(--color-phase-picture-dark));
+  --color-phase-sound: light-dark(var(--color-phase-sound-light), var(--color-phase-sound-dark));
+
+  /* Glow and shadow colours. A glow is decorative: it sits around a shape, never under text,
+     and forced colors removes it. console.css builds it from a tone in .status-mark: the dark
+     console glows (50% of the tone), the daylight bench barely does (25%). */
+  --color-shadow: light-dark(rgb(60 45 20 / 0.14), rgb(0 0 0 / 0.55));
+  --shadow-raised: 0 1px 2px var(--color-shadow), 0 8px 24px var(--color-shadow);
+  --glow-radius: 0.75rem;
+
+  /* ---- Type ---- */
+  --font-display: "Mona Sans", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-ui: "Mona Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* Amharic is artifact content only and uses the system font (no Ethiopic font is bundled). */
+  --font-content-am: "Nyala", "Noto Sans Ethiopic", "Abyssinica SIL", system-ui, sans-serif;
+
+  --text-2xs: 0.6875rem; /* 11px: micro labels, all-caps eyebrow */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem; /* body */
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: clamp(1.75rem, 1.25rem + 1.6vw, 2.5rem);
+  --text-3xl: clamp(2.25rem, 1.4rem + 3.2vw, 4rem);
+
+  --weight-regular: 420;
+  --weight-medium: 540;
+  --weight-strong: 680;
+  --weight-display: 780;
+  /* Mona Sans width axis: expanded for display, slightly condensed for dense labels. */
+  --stretch-display: 125%;
+  --stretch-label: 112%;
+  --stretch-dense: 92%;
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-body: 1.5;
+  --tracking-label: 0.08em;
+  --tracking-display: -0.02em;
+
+  /* ---- Space (4px grid) ---- */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- Shape ---- */
+  --radius-1: 0.25rem;
+  --radius-2: 0.5rem;
+  --radius-3: 0.875rem;
+  --radius-round: 999px;
+  --border-width: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --control-height: 2.5rem; /* minimum block size, never a fixed height */
+
+  /* ---- Motion: only meaningful motion; components opt in under
+          prefers-reduced-motion: no-preference and keep their final state without it ---- */
+  --duration-instant: 90ms;
+  --duration-quick: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 420ms;
+  --duration-pulse: 1200ms;
+  --duration-spin: 1600ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-signal: cubic-bezier(0.3, 1.4, 0.5, 1); /* slight overshoot for a status landing */
+
+  /* ---- Layers (only for things not in the top layer) ---- */
+  --layer-raised: 1;
+  --layer-sticky: 10;
+
+  /* ---- Theme: follow the system; theme.js pins it via <meta name="color-scheme"> ---- */
+  color-scheme: light dark;
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+}
+
+/* Browsers without light-dark() (newly available) still get the right theme for the system
+   setting; only the in-page override is lost. Keep this list in step with the tokens above. */
+@supports not (color: light-dark(white, black)) {
+  :root {
+    --color-bg: var(--color-bg-light);
+    --color-surface: var(--color-surface-light);
+    --color-raised: var(--color-raised-light);
+    --color-inset: var(--color-inset-light);
+    --color-selected: var(--color-selected-light);
+    --color-line: var(--color-line-light);
+    --color-line-strong: var(--color-line-strong-light);
+    --color-text: var(--color-text-light);
+    --color-text-muted: var(--color-text-muted-light);
+    --color-text-faint: var(--color-text-faint-light);
+    --color-accent: var(--color-accent-light);
+    --color-on-accent: var(--color-on-accent-light);
+    --color-focus: var(--color-focus-light);
+    --color-status-waiting: var(--color-status-waiting-light);
+    --color-status-running: var(--color-status-running-light);
+    --color-status-done: var(--color-status-done-light);
+    --color-status-reused: var(--color-status-reused-light);
+    --color-status-paused: var(--color-status-paused-light);
+    --color-status-failed: var(--color-status-failed-light);
+    --color-on-failed: var(--color-on-failed-light);
+    --color-phase-words: var(--color-phase-words-light);
+    --color-phase-voice: var(--color-phase-voice-light);
+    --color-phase-picture: var(--color-phase-picture-light);
+    --color-phase-sound: var(--color-phase-sound-light);
+    --color-shadow: rgb(60 45 20 / 0.14);
+
+    @media (prefers-color-scheme: dark) {
+      --color-bg: var(--color-bg-dark);
+      --color-surface: var(--color-surface-dark);
+      --color-raised: var(--color-raised-dark);
+      --color-inset: var(--color-inset-dark);
+      --color-selected: var(--color-selected-dark);
+      --color-line: var(--color-line-dark);
+      --color-line-strong: var(--color-line-strong-dark);
+      --color-text: var(--color-text-dark);
+      --color-text-muted: var(--color-text-muted-dark);
+      --color-text-faint: var(--color-text-faint-dark);
+      --color-accent: var(--color-accent-dark);
+      --color-on-accent: var(--color-on-accent-dark);
+      --color-focus: var(--color-focus-dark);
+      --color-status-waiting: var(--color-status-waiting-dark);
+      --color-status-running: var(--color-status-running-dark);
+      --color-status-done: var(--color-status-done-dark);
+      --color-status-reused: var(--color-status-reused-dark);
+      --color-status-paused: var(--color-status-paused-dark);
+      --color-status-failed: var(--color-status-failed-dark);
+      --color-on-failed: var(--color-on-failed-dark);
+      --color-phase-words: var(--color-phase-words-dark);
+      --color-phase-voice: var(--color-phase-voice-dark);
+      --color-phase-picture: var(--color-phase-picture-dark);
+      --color-phase-sound: var(--color-phase-sound-dark);
+      --color-shadow: rgb(0 0 0 / 0.55);
+    }
+  }
+}
