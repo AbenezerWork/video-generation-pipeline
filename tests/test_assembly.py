@@ -22,6 +22,7 @@ import yaml
 from tests.conftest import MakeProject, ffprobe
 from tests.test_resume import StubAssembler
 from vidpipe import pipeline
+from vidpipe.assembly import FFMPEG_DIR_ENV, find_tool
 from vidpipe.cli import main
 
 BUNDLED_FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
@@ -86,8 +87,10 @@ def narration_timeline(project: Path, language: str) -> list[tuple[float, float]
 
 
 def decode_audio(path: Path, rate: int = 8000) -> array.array[int]:
+    tool = find_tool("ffmpeg")
+    assert tool is not None
     raw = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate)]
+        [tool, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate)]
         + ["-f", "s16le", "-"],
         check=True,
         capture_output=True,
@@ -117,8 +120,10 @@ def music_frequency(wav_path: Path) -> int:
 
 
 def gray_frame(video: Path, at_s: float, size: tuple[int, int]) -> bytes:
+    tool = find_tool("ffmpeg")
+    assert tool is not None
     raw = subprocess.run(
-        ["ffmpeg", "-v", "error", "-ss", str(at_s), "-i", str(video), "-frames:v", "1"]
+        [tool, "-v", "error", "-ss", str(at_s), "-i", str(video), "-frames:v", "1"]
         + ["-f", "rawvideo", "-pix_fmt", "gray", "-"],
         check=True,
         capture_output=True,
@@ -373,8 +378,7 @@ def test_an_ffmpeg_without_libass_is_a_plan_error(
             script = bin_dir / tool
             script.write_text(f'#!/bin/sh\ncat "{bin_dir / "filters.txt"}"\n', encoding="utf-8")
             script.chmod(script.stat().st_mode | stat.S_IXUSR)
-    system = [str(Path(os.environ["SYSTEMROOT"]) / "System32")] if os.name == "nt" else ["/bin"]
-    monkeypatch.setenv("PATH", os.pathsep.join([str(bin_dir), *system]))
+    monkeypatch.setenv(FFMPEG_DIR_ENV, str(bin_dir))
     project = make_project()
 
     assert run_cli("plan", str(project)) == 1

@@ -12,6 +12,7 @@ and needs no ffmpeg); the assembler only burns it in.
 from __future__ import annotations
 
 import functools
+import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -92,20 +93,44 @@ class Assembler(ABC):
         """Render every language in the job; return the written files."""
 
 
+FFMPEG_DIR_ENV = "VIDPIPE_FFMPEG_DIR"
+
+
 def find_tool(name: str) -> str | None:
+    """Find a media binary in the configured portable bin directory or on PATH."""
+    if directory := os.environ.get(FFMPEG_DIR_ENV):
+        return shutil.which(str((Path(directory).expanduser() / name).resolve()))
     return shutil.which(name)
+
+
+def missing_tool_problem(name: str) -> str:
+    directory = os.environ.get(FFMPEG_DIR_ENV)
+    where = f"in {directory}" if directory else "on PATH"
+    return (
+        f"{name} not found {where}; install FFmpeg with libass and set "
+        f"`{FFMPEG_DIR_ENV}` to the bin directory containing ffmpeg and ffprobe"
+    )
 
 
 @functools.cache
 def ffmpeg_filters(ffmpeg: str) -> frozenset[str]:
     """Names of the filters this ffmpeg was built with (empty if it cannot be asked)."""
     try:
-        listing = subprocess.run(
-            [ffmpeg, "-hide_banner", "-filters"], capture_output=True, text=True, check=False
-        ).stdout
-    except OSError:
+        completed = subprocess.run(
+            [ffmpeg, "-hide_banner", "-filters"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return frozenset()
-    return frozenset(parts[1] for line in listing.splitlines() if len(parts := line.split()) > 2)
+    if completed.returncode != 0:
+        return frozenset()
+    return frozenset(
+        parts[1] for line in completed.stdout.splitlines() if len(parts := line.split()) > 2
+    )
 
 
 #: Filters assembly needs beyond the basics, and why.
@@ -124,15 +149,14 @@ class FfmpegAssembler(Assembler):
 
     def problems(self) -> list[str]:
         found = [
-            f"{tool} not found on PATH (needed for assembly)"
-            for tool in ("ffmpeg", "ffprobe")
-            if find_tool(tool) is None
+            missing_tool_problem(tool) for tool in ("ffmpeg", "ffprobe") if find_tool(tool) is None
         ]
         ffmpeg = find_tool("ffmpeg")
         if ffmpeg is not None:
             available = ffmpeg_filters(ffmpeg)
             found += [
-                f"ffmpeg has no {name!r} filter: {why}"
+                f"ffmpeg has no {name!r} filter ({why}); replace {ffmpeg} with a build "
+                f"that includes {name!r}"
                 for name, why in REQUIRED_FILTERS.items()
                 if name not in available
             ]
@@ -141,7 +165,7 @@ class FfmpegAssembler(Assembler):
     def assemble(self, job: AssemblyJob) -> list[Path]:
         ffmpeg = find_tool("ffmpeg")
         if ffmpeg is None:
-            raise AssemblyError("ffmpeg not found on PATH")
+            raise AssemblyError(missing_tool_problem("ffmpeg"))
         written: list[Path] = []
         for render in job.renders:
             render.output.parent.mkdir(parents=True, exist_ok=True)

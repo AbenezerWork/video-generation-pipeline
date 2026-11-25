@@ -11,18 +11,18 @@ import yaml
 
 from tests.cli_text_fixtures import fake_clis as fake_clis
 from tests.fake_comfyui import FakeComfyUI
+from vidpipe.assembly import FFMPEG_DIR_ENV, find_tool
 
 SAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample"
 
-HAVE_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+HAVE_FFMPEG = find_tool("ffmpeg") is not None and find_tool("ffprobe") is not None
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Skip `needs_ffmpeg` tests cleanly when ffmpeg/ffprobe are absent; they run automatically
-    as soon as the binaries are on PATH."""
+    """Skip `needs_ffmpeg` tests cleanly when ffmpeg/ffprobe are absent."""
     if HAVE_FFMPEG:
         return
-    skip = pytest.mark.skip(reason="ffmpeg/ffprobe not found on PATH")
+    skip = pytest.mark.skip(reason=f"ffmpeg/ffprobe not found via {FFMPEG_DIR_ENV} or PATH")
     for item in items:
         if "needs_ffmpeg" in item.keywords:
             item.add_marker(skip)
@@ -65,9 +65,11 @@ def make_project(tmp_path: Path) -> MakeProject:
 def ffprobe(path: Path) -> dict[str, Any]:
     import json
 
+    tool = find_tool("ffprobe")
+    assert tool is not None
     out = subprocess.run(
         [
-            "ffprobe",
+            tool,
             "-v",
             "error",
             "-print_format",

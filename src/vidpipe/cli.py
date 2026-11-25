@@ -40,6 +40,10 @@ def _parser() -> argparse.ArgumentParser:
     plan.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     plan.add_argument("--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)")
     plan.add_argument("--json", action="store_true", help="print the plan and estimates as JSON")
+    doctor = sub.add_parser("doctor", help="check the environment without running providers")
+    doctor.add_argument(
+        "project", type=Path, nargs="?", help="project directory (default: current directory)"
+    )
     redo = sub.add_parser(
         "redo", help="re-roll one shot with a new seed and regenerate what follows"
     )
@@ -109,6 +113,19 @@ def main(argv: list[str] | None = None) -> int:
     _utf8_output()
     args = _parser().parse_args(argv)
     try:
+        if args.command == "doctor":
+            from vidpipe.doctor import check_environment
+
+            checks = check_environment(args.project)
+            for check in checks:
+                status = "OK" if check.ok else "FAIL"
+                print(f"{status:<5} {check.name}: {check.detail}")
+            failed = sum(not check.ok for check in checks)
+            if failed:
+                print(f"Doctor found {failed} problem(s).")
+                return 1
+            print("Doctor passed. All checked dependencies are available.")
+            return 0
         if args.command == "plan":
             the_plan = pipeline.plan(args.project, until=args.until, estimate=True)
             if args.json:

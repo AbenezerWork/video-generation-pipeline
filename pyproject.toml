@@ -30,7 +30,7 @@ packages = ["src/vidpipe"]
 testpaths = ["tests"]
 addopts = "-m 'not integration'"
 markers = [
-    "needs_ffmpeg: needs real ffmpeg/ffprobe on PATH (skipped cleanly when absent)",
+    "needs_ffmpeg: needs real ffmpeg/ffprobe via VIDPIPE_FFMPEG_DIR or PATH",
     "integration: real providers (ComfyUI, CLIs, edge-tts); opt in with -m integration",
 ]
 

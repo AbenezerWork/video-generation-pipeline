@@ -198,6 +198,13 @@ class WorkflowModel:
     def image_counts(self) -> list[int]:
         return sorted(self._graphs)
 
+    @property
+    def node_types(self) -> frozenset[str]:
+        """Node classes needed across every variant of this workflow."""
+        return frozenset(
+            str(node["class_type"]) for graph in self._graphs.values() for node in graph.values()
+        )
+
     def workflow_name(self, images: int) -> str:
         return next(v.workflow for v in self.spec.variants if v.images == images)
 
