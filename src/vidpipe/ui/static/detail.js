@@ -14,6 +14,7 @@ let lastKey = null; // what the outputs were last fetched for (stage, status, pr
 let lastBody = null; // the last outputs JSON rendered, to leave players alone when unchanged
 let outputsRequest = null;
 let diagnosticsRequest = null;
+let redoDisabled = false;
 
 // ---------------------------------------------------------------- small helpers
 
@@ -113,8 +114,27 @@ function audioPlayer(item, label) {
   return h("audio", { controls: true, preload: "none", src: item.url, "aria-label": label });
 }
 
+function shotCaption(item, shots) {
+  const canRedo = Number.isInteger(item.shot_id) && item.shot_id > 0 && !shots.has(item.shot_id);
+  shots.add(item.shot_id);
+  return h(
+    "figcaption",
+    { class: "shot-caption" },
+    h("span", { class: "numeral faint" }, shotLabel(item)),
+    canRedo
+      ? h("button", {
+          class: "btn btn-quiet",
+          type: "button",
+          dataset: { redoShot: item.shot_id },
+          "aria-disabled": String(redoDisabled),
+        }, `Redo shot ${item.shot_id}`)
+      : null,
+  );
+}
+
 function keyframes(media) {
   if (!media.length) return empty("No keyframes yet.");
+  const shots = new Set();
   return h(
     "ul",
     { class: "media-grid", role: "list" },
@@ -133,7 +153,7 @@ function keyframes(media) {
               decoding: "async",
             }),
           ),
-          h("figcaption", { class: "numeral faint" }, shotLabel(item)),
+          shotCaption(item, shots),
         ),
       ),
     ),
@@ -142,6 +162,7 @@ function keyframes(media) {
 
 function clips(media) {
   if (!media.length) return empty("No clips yet.");
+  const shots = new Set();
   return h(
     "ul",
     { class: "media-grid", role: "list" },
@@ -153,7 +174,7 @@ function clips(media) {
           "figure",
           { class: "media-figure" },
           videoPlayer(item, shotLabel(item)),
-          h("figcaption", { class: "numeral faint" }, shotLabel(item)),
+          shotCaption(item, shots),
         ),
       ),
     ),
@@ -433,9 +454,16 @@ function renderOutputs(detail) {
       `${seconds(timing.wall_seconds)} to generate, last generated ${when(timing.last_started_at)}` +
       (timing.fallbacks.length ? `. Stepped down: ${timing.fallbacks.map((f) => f.note).join("; ")}` : "")
     : "";
+  const redoShot = outputsBox.contains(document.activeElement)
+    ? document.activeElement.dataset.redoShot
+    : null;
   outputsBox.replaceChildren(
     ...[outputsFor(detail)].flat().filter(Boolean),
   );
+  if (redoShot) {
+    const button = outputsBox.querySelector(`[data-redo-shot="${CSS.escape(redoShot)}"]`);
+    (button ?? outputsBox.closest("[role=tabpanel]")).focus({ preventScroll: true });
+  }
 }
 
 // ---------------------------------------------------------------- fetching
@@ -484,6 +512,14 @@ export function showStageDetail(stage, progress) {
   if (key === lastKey) return;
   lastKey = key;
   loadOutputs(stage);
+}
+
+export function setRedoDisabled(disabled) {
+  if (redoDisabled === disabled) return;
+  redoDisabled = disabled;
+  for (const button of outputsBox.querySelectorAll("[data-redo-shot]")) {
+    button.setAttribute("aria-disabled", String(disabled));
+  }
 }
 
 // ---------------------------------------------------------------- diagnostics (on request)

@@ -2,7 +2,7 @@
 // the one SSE stream (/api/events). Feature-detects newer APIs; no polyfills (AGENTS.md).
 
 import { watchRings } from "/static/console.js";
-import { showStageDetail } from "/static/detail.js";
+import { setRedoDisabled, showStageDetail } from "/static/detail.js";
 
 const rail = document.getElementById("rail");
 const detail = document.getElementById("stage-detail");
@@ -15,6 +15,13 @@ const startButton = document.getElementById("start-button");
 const stopButton = document.getElementById("stop-button");
 const stopNowButton = document.getElementById("stop-now-button");
 const actionError = document.getElementById("run-action-error");
+const reviewGate = document.getElementById("review-gate");
+const gateReview = document.getElementById("gate-review");
+const gateApprove = document.getElementById("gate-approve");
+const gateReject = document.getElementById("gate-reject");
+const gateResult = document.getElementById("gate-result");
+const gateSteps = document.getElementById("gate-next-steps");
+const motionAllowed = matchMedia("(prefers-reduced-motion: no-preference)");
 
 /** Statuses the design system draws (data-status); a stopped stage rests like a waiting one. */
 const TONE = { stopped: "waiting" };
@@ -110,9 +117,10 @@ function renderStage(stage) {
 
   const tone = TONE[status] ?? status;
   if (tab.dataset.status !== tone) {
-    if (tab.dataset.status) tab.toggleAttribute("data-changed", true);
+    tab.toggleAttribute("data-changed", Boolean(tab.dataset.status) && tone !== "paused");
     tab.dataset.status = tone;
   }
+  if (tone !== "paused") tab.removeAttribute("data-gate-pulse");
   tab.querySelector(".status-text").textContent = STAGE_STATUS_TEXT[status];
 
   const ring = tab.querySelector(".ring");
@@ -232,10 +240,34 @@ function renderDetail() {
     duration(progress?.started_at, progress?.finished_at) || "–";
   let note = "";
   if (run && !progress) note = "This run stops before this stage.";
-  else if (stage.gate) note = "The run pauses for approval after this stage.";
+  else if (stage.gate && run?.paused_at !== selected) {
+    note = "The run pauses for approval after this stage.";
+  }
   document.getElementById("detail-note").textContent = note;
+  renderGateReview();
   showStageDetail(stage.stage, progress);
 }
+
+let rejectedRunId = null;
+
+function renderGateReview() {
+  const pausedAt = run?.status === "paused" ? run.paused_at : null;
+  const focused = document.activeElement;
+  gateReview.hidden = pausedAt !== selected;
+  reviewGate.hidden = !pausedAt || pausedAt === selected;
+  if ((gateReview.hidden && gateReview.contains(focused)) ||
+      (reviewGate.hidden && reviewGate === focused)) {
+    detail.focus({ preventScroll: true });
+  }
+  if (rejectedRunId !== null && run?.run_id !== rejectedRunId) {
+    rejectedRunId = null;
+    gateResult.textContent = "";
+    gateSteps.hidden = true;
+    gateSteps.replaceChildren();
+  }
+}
+
+reviewGate.addEventListener("click", () => select(run.paused_at, { pin: true, focus: true }));
 
 // ---------------------------------------------------------------- announcements
 
@@ -284,30 +316,30 @@ function renderControls(before) {
   startForm.hidden = active;
   stopButton.hidden = run?.status !== "running";
   stopNowButton.hidden = run?.status !== "stopping";
-  for (const button of [startButton, stopButton, stopNowButton]) {
+  for (const button of [startButton, stopButton, stopNowButton, gateApprove, gateReject]) {
     button.setAttribute("aria-disabled", String(sendingAction));
   }
+  setRedoDisabled(active || sendingAction);
   if (controls.contains(focused) && focused.closest("[hidden]")) {
     const activeButton = stopButton.hidden ? stopNowButton : stopButton;
     (active ? activeButton : startButton).focus();
   }
 }
 
-async function runAction(action, body) {
+async function runAction(path, body) {
   if (sendingAction) return;
   sendingAction = true;
   actionError.textContent = "";
   renderControls(run);
   try {
-    const response = await fetch(`/api/run/${action}`, {
+    const response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) {
-      const problem = await response.json();
-      actionError.textContent = problem.error;
-    }
+    const result = await response.json();
+    if (response.ok) return result;
+    actionError.textContent = result.error;
   } catch {
     actionError.textContent = "Could not reach the server. Check the run status before trying again.";
   } finally {
@@ -318,18 +350,53 @@ async function runAction(action, body) {
 
 startForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  runAction("start", { until: until.value || null });
+  runAction("/api/run/start", { until: until.value || null });
 });
-stopButton.addEventListener("click", () => runAction("stop", { run_id: run.run_id }));
-stopNowButton.addEventListener("click", () => runAction("stop-now", { run_id: run.run_id }));
+stopButton.addEventListener("click", () => runAction("/api/run/stop", { run_id: run.run_id }));
+stopNowButton.addEventListener("click", () => runAction("/api/run/stop-now", { run_id: run.run_id }));
+gateApprove.addEventListener("click", () => {
+  runAction(`/api/gates/${run.paused_at}/approve`, { run_id: run.run_id });
+});
+gateReject.addEventListener("click", async () => {
+  const result = await runAction(`/api/gates/${run.paused_at}/reject`, { run_id: run.run_id });
+  if (!result || run?.run_id !== result.run_id) return;
+  rejectedRunId = result.run_id;
+  gateSteps.replaceChildren(...result.next_steps.map((step) => {
+    const item = document.createElement("li");
+    item.textContent = step;
+    return item;
+  }));
+  gateSteps.hidden = false;
+  gateResult.textContent = "Gate rejected. The run is still paused.";
+});
+detail.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-redo-shot]");
+  if (button?.getAttribute("aria-disabled") === "false") {
+    runAction(`/api/shots/${button.dataset.redoShot}/redo`, {});
+  }
+});
 
 // ---------------------------------------------------------------- live updates
 
-function update(state, { speak }) {
+function clearPulse(event) {
+  if (event.animationName === "status-pulse") {
+    event.target.closest("[data-gate-pulse]")?.removeAttribute("data-gate-pulse");
+  }
+}
+
+rail.addEventListener("animationend", clearPulse);
+rail.addEventListener("animationcancel", clearPulse);
+
+function update(state, { speak, live = false }) {
   const before = run;
   run = state;
   if (speak) announce(transitions(before, state));
   for (const stage of stages) renderStage(stage);
+  if (live && motionAllowed.matches && run?.status === "paused" &&
+      (before?.run_id !== run.run_id || before?.status !== "paused")) {
+    const tab = tabs.get(run.paused_at);
+    tab?.setAttribute("data-gate-pulse", "");
+  }
   renderRunSummary();
   renderControls(before);
   if (!pinned) {
@@ -366,7 +433,7 @@ async function start() {
   let first = true;
   events.addEventListener("run", (event) => {
     connection.hidden = true;
-    update(JSON.parse(event.data), { speak: !first });
+    update(JSON.parse(event.data), { speak: !first, live: true });
     first = false;
   });
   events.addEventListener("error", () => {

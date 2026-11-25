@@ -442,7 +442,7 @@ pre {
     }
 
     /* One pulse when a gate pauses the run, then still. */
-    [data-status="paused"] &::after {
+    [data-status="paused"][data-gate-pulse] &::after {
       content: "";
       position: absolute;
       inset: -0.25em;

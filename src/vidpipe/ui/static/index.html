@@ -83,7 +83,17 @@
               <div><dt class="label">GPU time</dt><dd class="numeral" id="detail-gpu">–</dd></div>
             </dl>
             <p class="muted" id="detail-note"></p>
-            <!-- Gate review (approve, reject) and redo shot go here (ticket 08). -->
+            <button class="btn" id="review-gate" type="button" hidden>Review paused gate</button>
+            <section class="panel gate-review" id="gate-review" aria-labelledby="gate-title" hidden>
+              <h3 class="label" id="gate-title">Gate review</h3>
+              <p>Review this stage’s outputs before continuing.</p>
+              <div class="gate-actions">
+                <button class="btn btn-primary" id="gate-approve" type="button">Approve</button>
+                <button class="btn" id="gate-reject" type="button">Reject</button>
+              </div>
+              <p id="gate-result" role="status"></p>
+              <ul id="gate-next-steps" hidden></ul>
+            </section>
             <div class="stage-outputs" id="detail-outputs"></div>
             <p class="faint numeral" id="detail-ledger"></p>
             <details class="diagnostics" id="diagnostics">
