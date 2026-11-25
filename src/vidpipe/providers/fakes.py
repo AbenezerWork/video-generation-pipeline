@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 from vidpipe.contracts import (
+    CostModel,
+    CostUnit,
     ImageToVideoCapabilities,
     ImageToVideoProvider,
     ImageToVideoRequest,
@@ -155,12 +157,28 @@ class FakeTranslationUpper(_FakeTranslation):
 
 
 class _FakeTTS(TTSProvider):
+    """Speaks at ``seconds_per_char`` (clamped to 1 s..``max_seconds``). Both are configurable, so
+    tests can make narration as long as real speech (edge-tts runs about 0.08 s per character)."""
+
     fake = True
+    languages: frozenset[str] = LANGUAGES
+
+    def __init__(
+        self, *, seconds_per_char: float = 0.05, max_seconds: float = 4.0, **options: Any
+    ) -> None:
+        super().__init__(**options)
+        self.seconds_per_char = seconds_per_char
+        self.max_seconds = max_seconds
+        self.capabilities = TTSCapabilities(
+            languages=self.languages, seconds_per_char=seconds_per_char
+        )
 
     def synthesize(self, request: TTSRequest) -> TTSResult:
         if request.language not in self.capabilities.languages:
             raise UnsupportedRequest(f"language {request.language!r}")
-        duration = min(4.0, max(1.0, round(len(request.text) * 0.05, 2)))
+        duration = min(
+            self.max_seconds, max(1.0, round(len(request.text) * self.seconds_per_char, 2))
+        )
         path = request.output_path.with_suffix(".wav")
         write_wav(path, duration, 180 + stable_int(request.language, request.voice) % 120)
         return TTSResult(path=path, duration_s=duration)
@@ -169,13 +187,12 @@ class _FakeTTS(TTSProvider):
 @register
 class FakeTTS(_FakeTTS):
     name = "fake-tts"
-    capabilities = TTSCapabilities(languages=LANGUAGES)
 
 
 @register
 class FakeTTSEnglishOnly(_FakeTTS):
     name = "fake-tts-en-only"
-    capabilities = TTSCapabilities(languages=frozenset({"en"}))
+    languages = frozenset({"en"})
 
 
 # -------------------------------------------------------------------------------------- keyframer
@@ -187,6 +204,7 @@ class FakeKeyframer(KeyframerProvider):
     fake = True
     uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = KeyframerCapabilities(reference_images=True, max_width=512, max_height=512)
+    cost = CostModel(unit=CostUnit.CALL, gpu_minutes=0.4)  # per image
 
     def generate(self, request: KeyframeRequest) -> KeyframeResult:
         caps = self.capabilities
@@ -208,6 +226,7 @@ class FakeImageToVideo(ImageToVideoProvider):
     fake = True
     uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = ImageToVideoCapabilities(min_seconds=1.0, max_seconds=5.0)
+    cost = CostModel(unit=CostUnit.OUTPUT_SECOND, gpu_minutes=0.5)  # per second of video
 
     def animate(self, request: ImageToVideoRequest) -> ImageToVideoResult:
         caps = self.capabilities
@@ -222,6 +241,15 @@ class FakeImageToVideo(ImageToVideoProvider):
         return ImageToVideoResult(path=path, duration_s=frames / Y4M_FPS)
 
 
+@register
+class FakeImageToVideoHosted(FakeImageToVideo):
+    """A hosted video provider: priced in dollars, no local GPU time."""
+
+    name = "fake-i2v-hosted"
+    uses_gpu = False
+    cost = CostModel(unit=CostUnit.OUTPUT_SECOND, dollars=0.05)  # per second of video
+
+
 # ---------------------------------------------------------------------------------- music / song
 
 
@@ -231,6 +259,7 @@ class FakeMusic(MusicProvider):
     fake = True
     uses_gpu = True  # stands in for a GPU-backed provider
     capabilities = MusicCapabilities(max_seconds=120.0)
+    cost = CostModel(unit=CostUnit.OUTPUT_SECOND, gpu_minutes=0.05)  # per second of music
 
     def compose(self, request: MusicRequest) -> MusicResult:
         if request.duration_s > self.capabilities.max_seconds:

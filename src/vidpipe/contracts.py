@@ -57,6 +57,42 @@ class Capabilities(Frozen):
     """Base capability declaration. Subclasses add typed fields per contract."""
 
 
+class CostUnit(StrEnum):
+    """What a :class:`CostModel` is priced per."""
+
+    CALL = "call"  # per provider call (one image, one request)
+    OUTPUT_SECOND = "output_second"  # per second of audio/video produced
+
+
+class Cost(Frozen):
+    """An estimated cost: local GPU minutes and/or hosted dollars."""
+
+    gpu_minutes: float = 0.0
+    dollars: float = 0.0
+
+    def __add__(self, other: Cost) -> Cost:
+        return Cost(
+            gpu_minutes=self.gpu_minutes + other.gpu_minutes, dollars=self.dollars + other.dollars
+        )
+
+
+class CostModel(Frozen):
+    """What a provider's work costs: GPU minutes locally, dollars for hosted providers.
+
+    Priced per ``unit``: per call, or per second of output. A provider fills in only one of
+    ``gpu_minutes`` (it runs on the local GPU) or ``dollars`` (it is hosted); the default is free.
+    ``vidpipe plan`` multiplies this out before anything is generated.
+    """
+
+    unit: CostUnit = CostUnit.CALL
+    gpu_minutes: float = Field(default=0.0, ge=0)
+    dollars: float = Field(default=0.0, ge=0)
+
+    def estimate(self, *, calls: int = 0, output_seconds: float = 0.0) -> Cost:
+        units = calls if self.unit is CostUnit.CALL else output_seconds
+        return Cost(gpu_minutes=self.gpu_minutes * units, dollars=self.dollars * units)
+
+
 # --------------------------------------------------------------------------------------- text
 
 
@@ -96,6 +132,9 @@ class TranslationResponse(BaseModel):
 
 class TTSCapabilities(Capabilities):
     languages: frozenset[str]
+    #: Typical speaking time per character of text, for dry-run estimates made before narration
+    #: exists (the planner uses real durations once they are known).
+    seconds_per_char: float = 0.08
 
 
 class TTSRequest(Request):
@@ -213,6 +252,8 @@ class Provider[C: Capabilities](ABC):
     #: Generation runs on the local GPU, so the call's wall time is recorded as GPU time.
     uses_gpu: ClassVar[bool] = False
     capabilities: C
+    #: What this provider's work costs (free unless it declares otherwise); see ``vidpipe plan``.
+    cost: CostModel = CostModel()
 
     def __init__(self, **options: Any) -> None:
         self.options = options
