@@ -73,6 +73,8 @@ class ArtifactRecord(BaseModel):
 class Ledger(BaseModel):
     version: int = LEDGER_VERSION
     artifacts: dict[str, ArtifactRecord] = Field(default_factory=dict[str, ArtifactRecord])
+    #: Times each shot (`shot_NN`) has been re-rolled with `vidpipe redo`; feeds its seeds.
+    rerolls: dict[str, int] = Field(default_factory=dict[str, int])
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,22 @@ class ArtifactStore:
 
     def record(self, key: str) -> ArtifactRecord | None:
         return self.ledger.artifacts.get(key)
+
+    def shot_seed(self, shot_id: int) -> int:
+        """Seed for a shot's keyframe and video: the shot id until it is re-rolled, then a new
+        deterministic value for each re-roll (the count is in the ledger, the seed in each record).
+        """
+        count = self.ledger.rerolls.get(f"shot_{shot_id:02d}", 0)
+        if count == 0:
+            return shot_id
+        return int(digest(["reroll", shot_id, count])[:8], 16) % 2**31
+
+    def reroll_shot(self, shot_id: int) -> int:
+        """Count one more re-roll of the shot (saved at once); returns its new seed."""
+        key = f"shot_{shot_id:02d}"
+        self.ledger.rerolls[key] = self.ledger.rerolls.get(key, 0) + 1
+        self._save()
+        return self.shot_seed(shot_id)
 
     def forget(self, key_prefix: str) -> list[str]:
         """Drop the records for ``key_prefix`` and all under it; the next run regenerates them."""

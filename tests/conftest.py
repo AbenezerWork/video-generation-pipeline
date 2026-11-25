@@ -40,6 +40,11 @@ def make_project(tmp_path: Path) -> MakeProject:
         config = yaml.safe_load((root / "vidpipe.yaml").read_text(encoding="utf-8"))
         providers = config_overrides.pop("providers", {})
         config["providers"].update(providers)
+        # Gates would pause most tests mid-run: they are off unless a test asks (`gates=None` keeps
+        # the default gate set).
+        gates = config_overrides.pop("gates", [])
+        if gates is not None:
+            config["gates"] = gates
         config.update(config_overrides)
         text: str = yaml.safe_dump(config)  # pyright: ignore[reportUnknownMemberType]
         (root / "vidpipe.yaml").write_text(text, encoding="utf-8")

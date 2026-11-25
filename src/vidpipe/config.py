@@ -12,6 +12,10 @@ from vidpipe.contracts import ProviderKind
 CONFIG_FILENAME = "vidpipe.yaml"
 
 
+#: Where the run pauses unless `gates:` says otherwise.
+DEFAULT_GATES = ("script", "storyboard", "keyframes")
+
+
 class Visuals(StrEnum):
     SHARED = "shared"
     PER_LANGUAGE = "per_language"
@@ -74,6 +78,8 @@ class ProjectConfig(BaseModel):
     width: int = 160
     height: int = 90
     fps: int = 8
+    #: Stages after which the run pauses for approval (see `vidpipe.gates`); `[]` for none.
+    gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
     #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]

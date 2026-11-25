@@ -20,6 +20,7 @@ import yaml
 from tests.cli_text_fixtures import FakeClis
 from tests.conftest import MakeProject
 from vidpipe.cli import main
+from vidpipe.gates import EXIT_PAUSED
 from vidpipe.providers.fakes import CANNED_SCRIPT
 
 AMHARIC = [
@@ -347,3 +348,19 @@ def test_the_cli_prints_ge_ez_on_a_redirected_windows_style_console(
 
     assert done.returncode == 0, done.stderr.decode("utf-8", errors="replace")
     assert AMHARIC[1] in done.stderr.decode("utf-8")
+
+
+def test_a_drifted_translation_is_shown_when_the_run_pauses_at_a_gate(
+    make_project: MakeProject, fake_clis: FakeClis, capsys: pytest.CaptureFixture[str]
+) -> None:
+    queue_happy_path(fake_clis, verdicts((3, "the first cup is missing")))
+    project = make_project(
+        providers={"translation": ["gemini-cli", "claude-cli"]}, gates=["translation"]
+    )
+
+    assert main(["run", str(project), "--until", "storyboard"]) == EXIT_PAUSED
+
+    captured = capsys.readouterr()
+    assert "paused" in captured.out
+    assert "the first cup is missing" in captured.err
+    assert AMHARIC[2] in captured.err

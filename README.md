@@ -31,6 +31,26 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## Gates, --auto and redo
+
+The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
+`vidpipe.yaml` (`gates: [storyboard]`, or `gates: []` for none; any stage name is valid).
+
+- A pause is a normal outcome, not an error: `vidpipe run` prints the stages that ran and how to
+  continue, and exits with code **3** (`0` = finished, `1` = error). In the library,
+  `pipeline.run(...).paused_at` is the gate name.
+- Approve with `vidpipe approve <project> <gate>` (no input needed: scripts and tests use this) and run
+  again; or `vidpipe run --approve <gate>` (repeatable) to approve in advance; or answer the y/N
+  question that appears when stdin and stdout are a terminal. `--auto` skips every gate.
+- An approval (`build/approvals.json`) is bound to the *content* of the gated stage's output files. A
+  hand edit, a regenerated stage or a `redo` that changes them asks again. A gate after the last stage
+  of a `--until` run holds nothing back, so it does not pause.
+- `vidpipe redo shot N [project]` re-rolls one shot: its keyframe and video get a new seed (the
+  per-shot re-roll count is `rerolls` in `build/ledger.json`, the seed is recorded in each artifact),
+  and the assemblies that use it are redone. Other shots, narration and music are untouched. Gates
+  apply, so the new keyframe is shown at the keyframes gate before it is animated; `--auto` and
+  `--approve` work as for `run`.
+
 ## Development
 
 - `uv run pytest` runs the fast suite on fake providers. Two seams only: the pipeline run through
@@ -123,7 +143,7 @@ line without Ge'ez script, is re-prompted. Output: `build/translation/<lang>.jso
   they all fail. A chain with nobody else runs the check with the translator and records
   `"same_model": true`. Members are "the same model" when name and options are equal.
 - Drifted lines are flagged `"status": "drift"` with a `reason`. They do not stop the run: `vidpipe run`
-  prints each one (with the English, Amharic and back-translation) to stderr, and the ledger record's
+  prints each one (with the English, Amharic and back-translation) to stderr (also when the run pauses at a gate, and at the interactive prompt of any gate after `translation`), and the ledger record's
   `data.drifted` lists their ids. `vidpipe.translate.drift_flags(project)` returns them as `DriftFlag`s
   for a gate or report to show.
 - The check re-runs if the translated file is hand-edited, so fixing a flagged line clears its flag.
