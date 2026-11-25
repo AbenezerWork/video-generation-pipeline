@@ -43,6 +43,21 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   conformance suite with that marker automatically.
 - `uv run ruff check . && uv run ruff format --check . && uv run pyright`
 
+### Narration (edge-tts)
+
+`edge-tts` needs network. Configure it per project, with per-language voices:
+
+```yaml
+providers:
+  narration:
+    name: edge-tts
+    options:
+      voices: {am: am-ET-MekdesNeural}   # defaults: en-US-AriaNeural, am-ET-AmehaNeural
+    fallback: [mms-tts]                  # declared only; MMS-TTS is not implemented yet
+```
+
+Each narration clip's real length is `duration_s` in `build/narration.json`, read from the MP3.
+
 ### Adding a provider
 
 1. Subclass the contract class for its kind in `vidpipe.contracts` (`TextProvider`,
