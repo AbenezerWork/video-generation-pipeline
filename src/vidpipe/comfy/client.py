@@ -264,6 +264,11 @@ class ComfyClient:
         entries = [*queue.get("queue_running", []), *queue.get("queue_pending", [])]
         return [str(entry[1]) for entry in entries]
 
+    def queue_counts(self) -> tuple[int, int]:
+        """How many jobs are running and how many are waiting, whoever submitted them."""
+        queue = self._get_json("/queue")
+        return len(queue.get("queue_running", [])), len(queue.get("queue_pending", []))
+
     def wait(
         self,
         prompt_id: str,
