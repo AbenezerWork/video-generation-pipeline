@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -33,7 +34,7 @@ class PlannedStage:
 @dataclass
 class Plan:
     stages: list[PlannedStage]
-    problems: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list[str])
 
     @property
     def ok(self) -> bool:
@@ -57,7 +58,7 @@ def _selected_stages(until: str | None) -> list[str]:
 def _build_context(
     project: Project, registry: Registry, assembler: Assembler, problems: list[str]
 ) -> StageContext:
-    providers: dict[str, Provider] = {}
+    providers: dict[str, Provider[Any]] = {}
     for stage, selection in project.config.providers.items():
         kind = STAGE_KINDS.get(stage)
         if kind is None:

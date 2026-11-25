@@ -11,15 +11,15 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, TypeVar, cast
+from typing import Any, ClassVar, TypeVar
 
 from vidpipe.assembly import Assembler, AssemblyJob, LanguageRender, ShotSegment
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import (
     ImageToVideoProvider,
     ImageToVideoRequest,
-    KeyframerProvider,
     KeyframeRequest,
+    KeyframerProvider,
     MusicProvider,
     MusicRequest,
     Provider,
@@ -47,7 +47,7 @@ from vidpipe.models import (
 )
 from vidpipe.project import Project
 
-P = TypeVar("P", bound=Provider)
+P = TypeVar("P", bound=Provider[Any])
 
 
 class StageError(Exception):
@@ -57,7 +57,7 @@ class StageError(Exception):
 @dataclass
 class StageContext:
     project: Project
-    providers: dict[str, Provider]
+    providers: dict[str, Provider[Any]]
     assembler: Assembler
 
     def provider(self, stage: str, expected: type[P]) -> P:
@@ -66,7 +66,7 @@ class StageContext:
             raise StageError(f"no provider configured for stage {stage!r}")
         if not isinstance(provider, expected):
             raise StageError(f"stage {stage!r} has a {provider.kind.value} provider; wrong kind")
-        return cast(P, provider)
+        return provider
 
     @property
     def languages(self) -> list[str]:
@@ -140,7 +140,8 @@ class TranslationStage(Stage):
         found: list[str] = []
         if ctx.project.config.primary_language not in caps.source_languages:
             found.append(
-                f"translation provider cannot translate from {ctx.project.config.primary_language!r}"
+                "translation provider cannot translate from "
+                f"{ctx.project.config.primary_language!r}"
             )
         found += [
             f"translation provider cannot translate into {lang!r}"
@@ -322,8 +323,9 @@ class MusicStage(Stage):
         total = ctx.project.read_model("fit_plan.json", FitPlan).total_seconds
         out = ctx.project.artifact_path("music/music.wav")
         result = provider.compose(
-            MusicRequest(prompt=f"Instrumental score for: {brief.title}", duration_s=total,
-                         output_path=out)
+            MusicRequest(
+                prompt=f"Instrumental score for: {brief.title}", duration_s=total, output_path=out
+            )
         )
         return _write_index(ctx, "music.json", [_item(ctx, None, result.path)])
 
@@ -348,14 +350,23 @@ class AssemblyStage(Stage):
                     video=project.build / video.for_shot(shot.id),
                     narration=project.build
                     / next(
-                        c.path for c in narration.clips if c.shot_id == shot.id and c.language == lang
+                        c.path
+                        for c in narration.clips
+                        if c.shot_id == shot.id and c.language == lang
                     ),
                     seconds=plan[shot.id].clip_seconds,
                 )
                 for shot in project.read_model("storyboard.json", Storyboard).shots
             ]
             output = project.out / f"{project.config.output_name}_{lang}.mp4"
-            renders.append(LanguageRender(language=lang, output=output, segments=segments, music=project.build / music_item.path))
+            renders.append(
+                LanguageRender(
+                    language=lang,
+                    output=output,
+                    segments=segments,
+                    music=project.build / music_item.path,
+                )
+            )
         config = project.config
         written = ctx.assembler.assemble(
             AssemblyJob(renders=renders, width=config.width, height=config.height, fps=config.fps)

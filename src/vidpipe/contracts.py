@@ -124,7 +124,7 @@ class KeyframeRequest(Request):
     width: int
     height: int
     seed: int = 0
-    reference_images: list[Path] = Field(default_factory=list)
+    reference_images: list[Path] = Field(default_factory=list[Path])
     output_path: Path
 
 
@@ -203,70 +203,64 @@ class SongResult(BaseModel):
 # ------------------------------------------------------------------------------------ providers
 
 
-class Provider(ABC):
+class Provider[C: Capabilities](ABC):
     """Base class for every provider. Subclasses also inherit one contract class below."""
 
     kind: ClassVar[ProviderKind]
     name: ClassVar[str]
     #: Fakes run in CI; real providers run the same conformance suite under ``integration``.
     fake: ClassVar[bool] = False
-    capabilities: Capabilities
+    capabilities: C
 
     def __init__(self, **options: Any) -> None:
         self.options = options
 
 
-class TextProvider(Provider):
+class TextProvider(Provider[TextCapabilities]):
     kind = ProviderKind.TEXT
-    capabilities: TextCapabilities = TextCapabilities()
+    capabilities = TextCapabilities()
 
     @abstractmethod
     def complete(self, request: TextRequest) -> TextResponse: ...
 
 
-class TranslationProvider(Provider):
+class TranslationProvider(Provider[TranslationCapabilities]):
     kind = ProviderKind.TRANSLATION
-    capabilities: TranslationCapabilities
 
     @abstractmethod
     def translate(self, request: TranslationRequest) -> TranslationResponse: ...
 
 
-class TTSProvider(Provider):
+class TTSProvider(Provider[TTSCapabilities]):
     kind = ProviderKind.TTS
-    capabilities: TTSCapabilities
 
     @abstractmethod
     def synthesize(self, request: TTSRequest) -> TTSResult: ...
 
 
-class KeyframerProvider(Provider):
+class KeyframerProvider(Provider[KeyframerCapabilities]):
     kind = ProviderKind.KEYFRAMER
-    capabilities: KeyframerCapabilities
 
     @abstractmethod
     def generate(self, request: KeyframeRequest) -> KeyframeResult: ...
 
 
-class ImageToVideoProvider(Provider):
+class ImageToVideoProvider(Provider[ImageToVideoCapabilities]):
     kind = ProviderKind.IMAGE_TO_VIDEO
-    capabilities: ImageToVideoCapabilities
 
     @abstractmethod
     def animate(self, request: ImageToVideoRequest) -> ImageToVideoResult: ...
 
 
-class MusicProvider(Provider):
+class MusicProvider(Provider[MusicCapabilities]):
     kind = ProviderKind.MUSIC
-    capabilities: MusicCapabilities
 
     @abstractmethod
     def compose(self, request: MusicRequest) -> MusicResult: ...
 
 
-class SongProvider(Provider):
+class SongProvider(Provider[SongCapabilities]):
     kind = ProviderKind.SONG
-    capabilities: SongCapabilities
 
     @abstractmethod
     def sing(self, request: SongRequest) -> SongResult: ...

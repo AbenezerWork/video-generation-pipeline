@@ -109,9 +109,7 @@ class FfmpegAssembler(Assembler):
                 f"[{2 * n}:a]aresample=48000,aformat=channel_layouts=stereo,apad,"
                 f"atrim=duration={total},volume={self.MUSIC_LEVEL}[music]"
             )
-            parts.append(
-                f"[narration][music]amix=inputs=2:duration=first:dropout_transition=0[mix]"
-            )
+            parts.append("[narration][music]amix=inputs=2:duration=first:dropout_transition=0[mix]")
             audio_label = "mix"
 
         args += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", f"[{audio_label}]"]

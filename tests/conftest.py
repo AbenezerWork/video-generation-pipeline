@@ -39,7 +39,8 @@ def make_project(tmp_path: Path) -> MakeProject:
         providers = config_overrides.pop("providers", {})
         config["providers"].update(providers)
         config.update(config_overrides)
-        (root / "vidpipe.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+        text: str = yaml.safe_dump(config)  # pyright: ignore[reportUnknownMemberType]
+        (root / "vidpipe.yaml").write_text(text, encoding="utf-8")
         return root
 
     return make
@@ -49,8 +50,18 @@ def ffprobe(path: Path) -> dict[str, Any]:
     import json
 
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams",
-         str(path)],
-        check=True, capture_output=True, text=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     return json.loads(out)

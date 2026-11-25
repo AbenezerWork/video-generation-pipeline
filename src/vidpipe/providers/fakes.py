@@ -15,9 +15,9 @@ from vidpipe.contracts import (
     ImageToVideoRequest,
     ImageToVideoResult,
     KeyframerCapabilities,
-    KeyframerProvider,
     KeyframeRequest,
     KeyframeResult,
+    KeyframerProvider,
     MotionType,
     MusicCapabilities,
     MusicProvider,
@@ -72,18 +72,18 @@ CANNED_SHOTS = [
 
 def _instance_for(schema: dict[str, Any], defs: dict[str, Any] | None = None) -> Any:
     """Smallest value that satisfies a JSON schema (enough for conformance-style schemas)."""
-    defs = defs if defs is not None else schema.get("$defs", {})
+    resolved: dict[str, Any] = defs if defs is not None else schema.get("$defs", {})
     if "$ref" in schema:
-        return _instance_for(defs[schema["$ref"].rsplit("/", 1)[-1]], defs)
+        return _instance_for(resolved[str(schema["$ref"]).rsplit("/", 1)[-1]], resolved)
     if "enum" in schema:
         return schema["enum"][0]
     if "anyOf" in schema:
-        return _instance_for(schema["anyOf"][0], defs)
+        return _instance_for(schema["anyOf"][0], resolved)
     kind = schema.get("type")
     if kind == "object":
-        return {k: _instance_for(v, defs) for k, v in schema.get("properties", {}).items()}
+        return {k: _instance_for(v, resolved) for k, v in schema.get("properties", {}).items()}
     if kind == "array":
-        return [_instance_for(schema.get("items", {}), defs)]
+        return [_instance_for(schema.get("items", {}), resolved)]
     if kind == "string":
         return "text"
     if kind == "integer":

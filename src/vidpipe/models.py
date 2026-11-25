@@ -107,4 +107,4 @@ class StageRecord(BaseModel):
 
 
 class Manifest(BaseModel):
-    stages: list[StageRecord] = Field(default_factory=list)
+    stages: list[StageRecord] = Field(default_factory=list[StageRecord])

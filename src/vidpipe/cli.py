@@ -21,9 +21,7 @@ def _parser() -> argparse.ArgumentParser:
     ):
         cmd = sub.add_parser(name, help=help_text)
         cmd.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
-        cmd.add_argument(
-            "--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)"
-        )
+        cmd.add_argument("--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)")
     return parser
 
 
