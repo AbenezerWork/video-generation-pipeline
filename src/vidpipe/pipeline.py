@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from pydantic import ValidationError
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import Provider
+from vidpipe.gates import Approver, GateKeeper
 from vidpipe.models import Manifest, StageRecord
 from vidpipe.project import Project
 from vidpipe.registry import Registry, UnknownProvider, default_registry
@@ -35,6 +37,8 @@ class PlannedStage:
 class Plan:
     stages: list[PlannedStage]
     problems: list[str] = field(default_factory=list[str])
+    #: Stages the run will pause after for approval (`gates:` in the config).
+    gates: list[str] = field(default_factory=list[str])
 
     @property
     def ok(self) -> bool:
@@ -45,6 +49,8 @@ class Plan:
 class RunResult:
     plan: Plan
     manifest: Manifest
+    #: The gate the run stopped at, waiting for approval; `None` when it ran to the end.
+    paused_at: str | None = None
 
 
 def _selected_stages(until: str | None) -> list[str]:
@@ -104,7 +110,12 @@ def plan(
             problems += [f"{stage.name}: {p}" for p in stage.problems(ctx)]
         except StageError as exc:
             problems.append(f"{stage.name}: {exc}")
-    return Plan(stages=planned, problems=problems)
+    problems += [
+        f"gates: unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})"
+        for gate in project.config.gates
+        if gate not in STAGE_NAMES
+    ]
+    return Plan(stages=planned, problems=problems, gates=list(project.config.gates))
 
 
 def run(
@@ -113,28 +124,39 @@ def run(
     until: str | None = None,
     registry: Registry | None = None,
     assembler: Assembler | None = None,
+    auto: bool = False,
+    approve: Sequence[str] = (),
+    approver: Approver | None = None,
 ) -> RunResult:
-    """Run the stage graph (up to ``until``). Capability problems abort before any generation."""
+    """Run the stage graph (up to ``until``). Capability problems abort before any generation.
+
+    After a stage named in the config's ``gates`` the run stops (``RunResult.paused_at``) unless
+    that gate is approved (``vidpipe.gates``): ``approve`` approves gates in advance, ``approver``
+    is asked about the others, and ``auto`` skips every gate. A gate after the last stage the run
+    was asked for holds nothing back, so it does not pause.
+    """
     the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
-    if not the_plan.ok:
-        raise PlanError(the_plan.problems)
+    problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
+    if not the_plan.ok or problems:
+        raise PlanError([*the_plan.problems, *problems])
 
     project = Project(project_dir)
-    problems: list[str] = []
     ctx = _build_context(
-        project, registry or default_registry(), assembler or FfmpegAssembler(), problems
+        project, registry or default_registry(), assembler or FfmpegAssembler(), []
     )
+    keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
+    paused_at: str | None = None
     wanted = set(_selected_stages(until))
-    for stage in STAGES:
-        if stage.name not in wanted:
-            continue
-        ctx.begin(stage.name)
-        outputs = stage.run(ctx)
-        selection = project.config.providers.get(stage.name)
+    selected = [s for s in STAGES if s.name in wanted]
+    for index, stage_obj in enumerate(selected):
+        stage = stage_obj.name
+        ctx.begin(stage)
+        outputs = stage_obj.run(ctx)
+        selection = project.config.providers.get(stage)
         manifest.stages.append(
             StageRecord(
-                stage=stage.name,
+                stage=stage,
                 provider=selection.name if selection else None,
                 outputs=outputs,
                 generated=ctx.generated,
@@ -142,4 +164,11 @@ def run(
             )
         )
         project.write_model("manifest.json", manifest)
-    return RunResult(plan=the_plan, manifest=manifest)
+        if auto or stage not in project.config.gates or index == len(selected) - 1:
+            continue
+        if stage in approve:
+            keeper.approve(stage)
+        if not keeper.passes(stage, approver):
+            paused_at = stage
+            break
+    return RunResult(plan=the_plan, manifest=manifest, paused_at=paused_at)
