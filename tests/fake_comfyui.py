@@ -31,6 +31,8 @@ from tempfile import TemporaryDirectory
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
+from vidpipe.assembly import find_tool
+
 #: What a scripted job does. ``success`` is the default when the script has run out.
 #: ``error``/``oom``: an ``execution_error``; ``hang``: runs until interrupted; ``lost``: vanishes
 #: (as after a server restart); ``reject``: ``/prompt`` answers 400; ``interrupted``: someone
@@ -113,11 +115,13 @@ def _save_audio(job: Job, _uploads: dict[str, bytes]) -> tuple[str, str, bytes]:
         if node["class_type"] == "EmptyAceStep1.5LatentAudio"
     )
     frequency = 110 + job.identity({})[0]
+    ffmpeg = find_tool("ffmpeg")
+    assert ffmpeg is not None
     with TemporaryDirectory() as directory:
         path = Path(directory) / "music.flac"
         subprocess.run(
             [
-                "ffmpeg",
+                ffmpeg,
                 "-v",
                 "error",
                 "-f",
