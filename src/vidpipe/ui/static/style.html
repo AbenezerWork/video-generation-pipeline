@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>try{const v=localStorage.getItem("vidpipe-color-scheme");if(v==="light"||v==="dark")document.querySelector('meta[name="color-scheme"]').content=v}catch{}</script>
+    <link rel="icon" href="data:," />
+    <title>vidpipe · Studio console style page</title>
+    <link rel="preload" href="fonts/MonaSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="console.css" />
+    <script type="module" src="theme.js"></script>
+    <style>
+      /* Layout for this page only; the components come from console.css. */
+      .masthead {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: var(--layer-sticky);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-5);
+        background-color: color-mix(in oklab, var(--color-bg) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-block-end: var(--border-width) solid var(--color-line);
+      }
+      .wordmark {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        & strong {
+          font-family: var(--font-display);
+          font-size: var(--text-xl);
+          font-weight: var(--weight-display);
+          font-stretch: var(--stretch-display);
+          letter-spacing: var(--tracking-display);
+        }
+      }
+      .intro {
+        padding: var(--space-6) var(--space-5) var(--space-5);
+        display: grid;
+        gap: var(--space-3);
+        & h1 {
+          font-size: var(--text-3xl);
+          max-inline-size: 18ch;
+        }
+      }
+      .sheets {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 36rem), 1fr));
+      }
+      .sheet {
+        color-scheme: dark;
+        background-color: var(--color-bg);
+        color: var(--color-text);
+        padding: var(--space-5);
+        display: grid;
+        gap: var(--space-5);
+        align-content: start;
+        border-block-start: var(--border-width) solid var(--color-line);
+        &[data-scheme="light"] {
+          color-scheme: light;
+        }
+        & > header h2 {
+          font-size: var(--text-2xl);
+        }
+      }
+      .specimen {
+        display: grid;
+        gap: var(--space-3);
+        & > h3 {
+          font-size: var(--text-lg);
+          font-stretch: var(--stretch-label);
+        }
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+        align-items: center;
+      }
+
+      /* Rail preview */
+      .rail {
+        display: grid;
+        gap: 2px;
+        padding: var(--space-2);
+        list-style: none;
+        margin: 0;
+      }
+      .rail li {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: var(--space-3);
+        align-items: center;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-2);
+        &[aria-current="true"] {
+          background-color: var(--color-selected);
+        }
+      }
+      .rail .stage-name {
+        display: grid;
+        line-height: var(--leading-snug);
+        & span:first-child {
+          font-weight: var(--weight-medium);
+        }
+        & span:last-child {
+          font-size: var(--text-xs);
+        }
+      }
+      .rail .stage-end {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+      }
+      .rail .ring {
+        --ring-size: 2.25rem;
+        --ring-thickness: 0.22rem;
+      }
+
+      /* Swatches */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+        gap: var(--space-2);
+      }
+      .swatch {
+        display: grid;
+        gap: var(--space-1);
+        padding: var(--space-2);
+        border: var(--border-width) solid var(--color-line);
+        border-radius: var(--radius-2);
+        background-color: var(--color-surface);
+        font-size: var(--text-xs);
+        & .chip {
+          block-size: 2.25rem;
+          border-radius: var(--radius-1);
+          border: var(--border-width) solid var(--color-line);
+          background-color: var(--swatch);
+        }
+        & code {
+          overflow-wrap: anywhere;
+        }
+      }
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+        gap: var(--space-2);
+        & .panel {
+          display: grid;
+          gap: var(--space-1);
+          padding: var(--space-3);
+        }
+      }
+      .phases {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+        gap: var(--space-2);
+        & .panel {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: var(--space-1) var(--space-3);
+          padding: var(--space-3);
+        }
+        & .phase-stripe {
+          grid-row: span 2;
+        }
+      }
+      .scale {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: var(--space-1) var(--space-3);
+        align-items: center;
+        font-size: var(--text-xs);
+        & .bar {
+          block-size: 0.5rem;
+          border-radius: var(--radius-round);
+          background-color: var(--color-line-strong);
+        }
+      }
+      .radii {
+        & div {
+          inline-size: 3.5rem;
+          block-size: 3.5rem;
+          border: 2px solid var(--color-line-strong);
+          background-color: var(--color-raised);
+          display: grid;
+          place-items: center;
+          font-size: var(--text-2xs);
+        }
+      }
+      .motion-track {
+        position: relative;
+        block-size: 1.5rem;
+        border-radius: var(--radius-round);
+        background-color: var(--color-inset);
+        & span {
+          position: absolute;
+          inset-block: 0.25rem;
+          inset-inline-start: 0.25rem;
+          inline-size: 1rem;
+          border-radius: 50%;
+          background-color: var(--color-accent);
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .motion-track[data-playing] span {
+          animation: travel var(--travel-duration) var(--travel-ease) 1 forwards;
+        }
+      }
+      @keyframes travel {
+        to {
+          translate: calc(var(--track-length, 16rem) - 1.5rem) 0;
+        }
+      }
+      .motion-list {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: var(--space-2) var(--space-3);
+        align-items: center;
+        font-size: var(--text-xs);
+        container-type: inline-size;
+        & .motion-track {
+          --track-length: 100cqi;
+        }
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+        gap: var(--space-4);
+      }
+      .sample-am {
+        font-size: var(--text-lg);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="wordmark">
+        <strong>vidpipe</strong>
+        <span class="label">Studio console · design system</span>
+      </div>
+      <button type="button" class="btn btn-quiet theme-toggle" data-theme-toggle>
+        <span class="theme-to-light">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="currentColor" /><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3" /></g></svg>
+          Switch to light theme
+        </span>
+        <span class="theme-to-dark">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7Z" fill="currentColor" /></svg>
+          Switch to dark theme
+        </span>
+      </button>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="intro-title">
+        <h1 id="intro-title">One console, two lights.</h1>
+        <p class="muted">
+          Every token, status, phase hue and component the vidpipe UI is built from, shown in the
+          dark console and the daylight console side by side. The page chrome follows your system
+          setting until you switch it; the choice is remembered in this browser.
+        </p>
+      </section>
+
+      <div class="sheets">
+        <section class="sheet" data-scheme="dark" aria-labelledby="sheet-dark">
+          <header>
+            <span class="label">Theme</span>
+            <h2 id="sheet-dark">Dark console</h2>
+          </header>
+        </section>
+        <section class="sheet" data-scheme="light" aria-labelledby="sheet-light">
+          <header>
+            <span class="label">Theme</span>
+            <h2 id="sheet-light">Daylight console</h2>
+          </header>
+        </section>
+      </div>
+      <noscript><p class="intro">The specimens are stamped into both themes by a script; enable JavaScript to see them.</p></noscript>
+    </main>
+
+    <div class="toast-region" role="region" aria-label="Notifications"></div>
+    <p class="visually-hidden">Screen reader announcements</p>
+    <div id="toast-live" class="visually-hidden" aria-live="polite"></div>
+
+    <template id="specimen">
+      <section class="specimen" aria-labelledby="rail-title">
+        <h3 id="rail-title">Stage rail</h3>
+        <ol class="rail panel" aria-label="Stages">
+          <li data-phase="words" data-status="reused"><span class="phase-stripe"></span><span class="stage-name"><span>Brief</span><span class="faint">built in</span></span><span class="stage-end"><span class="status"><span class="status-mark" aria-hidden="true"></span>Reused</span></span></li>
+          <li data-phase="words" data-status="reused"><span class="phase-stripe"></span><span class="stage-name"><span>Script</span><span class="faint numeral">claude-cli</span></span><span class="stage-end"><span class="status"><span class="status-mark" aria-hidden="true"></span>Reused</span></span></li>
+          <li data-phase="words" data-status="done"><span class="phase-stripe"></span><span class="stage-name"><span>Translation</span><span class="faint numeral">codex-cli</span></span><span class="stage-end"><span class="numeral faint">01:12</span><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span></span></li>
+          <li data-phase="words" data-status="done"><span class="phase-stripe"></span><span class="stage-name"><span>Storyboard</span><span class="faint numeral">claude-cli</span></span><span class="stage-end"><span class="numeral faint">00:48</span><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span></span></li>
+          <li data-phase="voice" data-status="done"><span class="phase-stripe"></span><span class="stage-name"><span>Narration</span><span class="faint numeral">edge-tts</span></span><span class="stage-end"><span class="numeral faint">00:21</span><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span></span></li>
+          <li data-phase="voice" data-status="done"><span class="phase-stripe"></span><span class="stage-name"><span>Fit planning</span><span class="faint">built in</span></span><span class="stage-end"><span class="numeral faint">00:01</span><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span></span></li>
+          <li data-phase="picture" data-status="done"><span class="phase-stripe"></span><span class="stage-name"><span>Keyframes</span><span class="faint numeral">comfyui · flux</span></span><span class="stage-end"><span class="numeral faint">06:40</span><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span></span></li>
+          <li data-phase="picture" data-status="running" aria-current="true"><span class="phase-stripe"></span><span class="stage-name"><span>Video</span><span class="faint numeral">comfyui · wan</span></span><span class="stage-end"><span class="ring"><progress class="ring-progress" value="4" max="11" aria-label="Video progress" aria-valuetext="4 of 11 clips"></progress><span class="ring-content" aria-hidden="true">4/11</span></span><span class="status"><span class="status-mark" aria-hidden="true"></span>Running</span></span></li>
+          <li data-phase="sound" data-status="waiting"><span class="phase-stripe"></span><span class="stage-name"><span>Music</span><span class="faint numeral">comfyui · ace-step</span></span><span class="stage-end"><span class="status"><span class="status-mark" aria-hidden="true"></span>Waiting</span></span></li>
+          <li data-phase="sound" data-status="waiting"><span class="phase-stripe"></span><span class="stage-name"><span>Assembly</span><span class="faint numeral">ffmpeg</span></span><span class="stage-end"><span class="status"><span class="status-mark" aria-hidden="true"></span>Waiting</span></span></li>
+        </ol>
+      </section>
+
+      <section class="specimen" aria-labelledby="status-title">
+        <h3 id="status-title">Stage status</h3>
+        <p class="muted">Tone with a soft glow, a shape, and a text label: readable without colour.</p>
+        <div class="status-grid">
+          <div class="panel" data-status="waiting"><span class="status"><span class="status-mark" aria-hidden="true"></span>Waiting</span><span class="faint">Hollow ring, no glow</span><code class="faint">--color-status-waiting</code></div>
+          <div class="panel" data-status="running"><span class="status"><span class="status-mark" aria-hidden="true"></span>Running</span><span class="faint">Open arc, turns while running</span><code class="faint">--color-status-running</code></div>
+          <div class="panel" data-status="done"><span class="status"><span class="status-mark" aria-hidden="true"></span>Done</span><span class="faint">Disc with a check</span><code class="faint">--color-status-done</code></div>
+          <div class="panel" data-status="reused"><span class="status"><span class="status-mark" aria-hidden="true"></span>Reused</span><span class="faint">Dashed ring, no glow: nothing spent</span><code class="faint">--color-status-reused</code></div>
+          <div class="panel" data-status="paused"><span class="status"><span class="status-mark" aria-hidden="true"></span>Paused at gate</span><span class="faint">Two bars, pulses once</span><code class="faint">--color-status-paused</code></div>
+          <div class="panel" data-status="failed"><span class="status"><span class="status-mark" aria-hidden="true"></span>Failed</span><span class="faint">Diamond with "!"</span><code class="faint">--color-status-failed</code></div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn" data-demo="land">Replay a status change</button>
+          <button type="button" class="btn" data-demo="pulse">Replay the gate pulse</button>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="phase-title">
+        <h3 id="phase-title">Phase signal hues</h3>
+        <div class="phases">
+          <div class="panel" data-phase="words"><span class="phase-stripe"></span><strong class="phase-label">Words</strong><span class="faint">Brief, script, translation, storyboard</span></div>
+          <div class="panel" data-phase="voice"><span class="phase-stripe"></span><strong class="phase-label">Voice</strong><span class="faint">Narration, fit planning</span></div>
+          <div class="panel" data-phase="picture"><span class="phase-stripe"></span><strong class="phase-label">Picture</strong><span class="faint">Keyframes, video</span></div>
+          <div class="panel" data-phase="sound"><span class="phase-stripe"></span><strong class="phase-label">Sound</strong><span class="faint">Music, assembly</span></div>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="color-title">
+        <h3 id="color-title">Colour tokens</h3>
+        <p class="muted">Ratios are measured live against <code>--color-bg</code> (fills against their text).</p>
+        <div class="swatches" data-swatches></div>
+      </section>
+
+      <section class="specimen" aria-labelledby="type-title">
+        <h3 id="type-title">Type</h3>
+        <div class="panel" style="display: grid; gap: var(--space-3)">
+          <span class="label">Display · Mona Sans, expanded</span>
+          <p style="font-family: var(--font-display); font-size: var(--text-3xl); font-weight: var(--weight-display); font-stretch: var(--stretch-display); letter-spacing: var(--tracking-display); line-height: var(--leading-tight)">Run 7</p>
+          <p style="font-family: var(--font-display); font-size: var(--text-2xl); font-weight: var(--weight-display); font-stretch: var(--stretch-display); line-height: var(--leading-tight)">Keyframes</p>
+          <p style="font-size: var(--text-xl); font-weight: var(--weight-strong)">Paused at the keyframes gate</p>
+          <p>Body text in Mona Sans at <code>--text-md</code>. Approve the keyframes to continue, or redo a single shot.</p>
+          <span class="label">Label</span>
+          <span class="label">Numerals · JetBrains Mono, tabular</span>
+          <p class="numeral" style="font-size: var(--text-lg)">00:41:07 · 4/11 clips · GPU 12m 05s · 1280×720</p>
+          <span class="label">Amharic content (artifact text only, system font)</span>
+          <p class="sample-am" lang="am">ሰላም፣ እንኳን ደህና መጡ።</p>
+        </div>
+        <div class="scale" data-type-scale></div>
+      </section>
+
+      <section class="specimen" aria-labelledby="space-title">
+        <h3 id="space-title">Space, shape and depth</h3>
+        <div class="scale" data-space-scale></div>
+        <div class="row radii">
+          <div style="border-radius: var(--radius-1)">radius-1</div>
+          <div style="border-radius: var(--radius-2)">radius-2</div>
+          <div style="border-radius: var(--radius-3)">radius-3</div>
+          <div style="border-radius: var(--radius-round)">round</div>
+        </div>
+        <div class="row">
+          <div class="panel">panel</div>
+          <div class="panel panel-raised">panel-raised</div>
+          <div class="well">well</div>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="motion-title">
+        <h3 id="motion-title">Motion</h3>
+        <p class="muted">Motion runs only when reduced motion is off; otherwise everything rests in its final state.</p>
+        <div class="motion-list" data-motion></div>
+        <div class="row"><button type="button" class="btn" data-demo="travel">Play the motion tokens</button></div>
+      </section>
+
+      <section class="specimen" aria-labelledby="ring-title">
+        <h3 id="ring-title">Progress ring</h3>
+        <div class="row">
+          <span class="ring" data-phase="picture"><progress class="ring-progress" value="0" max="11" aria-label="Clips rendered" aria-valuetext="0 of 11 clips" data-demo-ring></progress><span class="ring-content" aria-hidden="true">0/11</span></span>
+          <span class="ring" data-status="running"><progress class="ring-progress" value="36" max="100" aria-label="Stage progress" aria-valuetext="36%"></progress><span class="ring-content" aria-hidden="true">36%</span></span>
+          <span class="ring" data-status="done"><progress class="ring-progress" value="100" max="100" aria-label="Finished" aria-valuetext="100%"></progress><span class="ring-content" aria-hidden="true">100%</span></span>
+          <button type="button" class="btn" data-demo="ring">Render one more clip</button>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="button-title">
+        <h3 id="button-title">Buttons</h3>
+        <div class="row">
+          <button type="button" class="btn btn-primary">Start run</button>
+          <button type="button" class="btn">Resume</button>
+          <button type="button" class="btn btn-quiet">Show logs</button>
+          <button type="button" class="btn btn-danger">Stop now</button>
+          <button type="button" class="btn" disabled>Approve</button>
+          <button type="button" class="btn btn-icon" aria-label="Redo shot"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8a4.5 4.5 0 1 0 1.3-3.2M3.5 2.5v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="input-title">
+        <h3 id="input-title">Inputs</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="f-title">Project title</label>
+            <input id="f-title" class="input" type="text" value="Coffee origins" />
+          </div>
+          <div class="field">
+            <label for="f-width">Width</label>
+            <input id="f-width" class="input input-numeral" type="number" value="1280" min="256" step="16" aria-describedby="f-width-hint" />
+            <span id="f-width-hint" class="field-hint">Pixels, a multiple of 16.</span>
+          </div>
+          <div class="field">
+            <label for="f-provider">Video provider</label>
+            <select id="f-provider" class="select">
+              <option>comfyui · wan</option>
+              <option>comfyui · ltx</option>
+              <option>fake</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-steps">Steps</label>
+            <input id="f-steps" class="input input-numeral" type="number" value="-4" aria-invalid="true" aria-describedby="f-steps-error" />
+            <span id="f-steps-error" class="field-error">Steps must be at least 1.</span>
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label for="f-notes">Style notes</label>
+            <textarea id="f-notes" class="textarea" placeholder="Warm light, slow camera, film grain"></textarea>
+          </div>
+          <label class="row"><input type="checkbox" checked /> Pause at the keyframes gate</label>
+        </div>
+      </section>
+
+      <section class="specimen" aria-labelledby="overlay-title">
+        <h3 id="overlay-title">Dialog and toast</h3>
+        <div class="row">
+          <button type="button" class="btn" command="show-modal" commandfor="stop-dialog" data-toast-return>Stop run…</button>
+          <button type="button" class="btn" data-toast="done">Toast: run finished</button>
+          <button type="button" class="btn" data-toast="paused">Toast: paused at gate</button>
+          <button type="button" class="btn" data-toast="failed">Toast: stage failed</button>
+        </div>
+        <dialog id="stop-dialog" class="dialog" aria-labelledby="stop-title" aria-describedby="stop-body" closedby="any">
+          <h1 id="stop-title">Stop this run?</h1>
+          <p id="stop-body" class="muted">The clip in progress finishes first, so no finished work is lost. Stop now discards that one clip.</p>
+          <form method="dialog" class="dialog-actions">
+            <button class="btn btn-danger" value="stop-now">Stop now</button>
+            <button class="btn" value="stop">Stop after this clip</button>
+            <button class="btn btn-primary" value="keep" autofocus>Keep running</button>
+          </form>
+        </dialog>
+      </section>
+    </template>
+
+    <script type="module">
+      import { showToast, setRing, watchRings } from "./console.js";
+
+      // Stamp the specimen into both theme sheets, keeping ids unique per sheet.
+      const template = document.getElementById("specimen");
+      const refs = ["for", "aria-labelledby", "aria-describedby", "commandfor"];
+      for (const sheet of document.querySelectorAll(".sheet")) {
+        const suffix = `-${sheet.dataset.scheme}`;
+        const copy = template.content.cloneNode(true);
+        for (const el of copy.querySelectorAll("[id]")) el.id += suffix;
+        for (const attr of refs) {
+          for (const el of copy.querySelectorAll(`[${attr}]`)) {
+            el.setAttribute(attr, el.getAttribute(attr).split(" ").map((id) => id + suffix).join(" "));
+          }
+        }
+        sheet.append(copy);
+      }
+      watchRings();
+
+      // Colour swatches with live contrast.
+      const tokens = [
+        ["bg", "surface"], ["surface"], ["raised"], ["inset"], ["selected"],
+        ["line"], ["line-strong"], ["text"], ["text-muted"], ["text-faint"],
+        ["accent"], ["on-accent", "accent"], ["focus"],
+        ["status-waiting"], ["status-running"], ["status-done"], ["status-reused"],
+        ["status-paused"], ["status-failed"], ["on-failed", "status-failed"],
+        ["phase-words"], ["phase-voice"], ["phase-picture"], ["phase-sound"],
+      ];
+      const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const rgb = (css) => {
+        probe.clearRect(0, 0, 1, 1);
+        probe.fillStyle = css;
+        probe.fillRect(0, 0, 1, 1);
+        return [...probe.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      };
+      const lum = (c) => {
+        const [r, g, b] = c.map((v) => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      for (const box of document.querySelectorAll("[data-swatches]")) {
+        for (const [name, against = "bg"] of tokens) {
+          const swatch = document.createElement("div");
+          swatch.className = "swatch";
+          swatch.style.setProperty("--swatch", `var(--color-${name})`);
+          swatch.innerHTML = `<span class="chip"></span><code></code><span class="numeral faint"></span>`;
+          swatch.querySelector("code").textContent = `--color-${name}`;
+          box.append(swatch);
+          const chip = swatch.querySelector(".chip");
+          const colour = rgb(getComputedStyle(chip).backgroundColor);
+          chip.style.backgroundColor = `var(--color-${against})`;
+          const base = rgb(getComputedStyle(chip).backgroundColor);
+          chip.style.backgroundColor = "";
+          swatch.querySelector(".numeral").textContent = `${ratio(colour, base).toFixed(2)} : 1 on ${against}`;
+        }
+      }
+
+      // Type, space and motion scales.
+      for (const box of document.querySelectorAll("[data-type-scale]")) {
+        for (const step of ["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl"]) {
+          box.insertAdjacentHTML("beforeend", `<code class="faint">--text-${step}</code><span style="font-size: var(--text-${step}); line-height: var(--leading-tight)">Stage</span>`);
+        }
+      }
+      for (const box of document.querySelectorAll("[data-space-scale]")) {
+        for (let i = 1; i <= 8; i++) {
+          box.insertAdjacentHTML("beforeend", `<code class="faint">--space-${i}</code><span class="bar" style="inline-size: var(--space-${i})"></span>`);
+        }
+      }
+      const motion = [
+        ["--duration-instant", "--ease-out"], ["--duration-quick", "--ease-out"],
+        ["--duration-base", "--ease-out"], ["--duration-slow", "--ease-in-out"],
+        ["--duration-slow", "--ease-signal"],
+      ];
+      for (const box of document.querySelectorAll("[data-motion]")) {
+        for (const [duration, ease] of motion) {
+          box.insertAdjacentHTML("beforeend", `<code class="faint">${duration} · ${ease}</code><span class="motion-track" style="--travel-duration: var(${duration}); --travel-ease: var(${ease})"><span></span></span>`);
+        }
+      }
+
+      // Demos.
+      const notes = {
+        done: { title: "Run finished", body: "final.mp4 is ready (1:04, English and Amharic)." },
+        paused: { title: "Paused at the keyframes gate", body: "Review 11 keyframes, then approve or reject." },
+        failed: { title: "Video failed", body: "ComfyUI ran out of GPU memory on clip 5." },
+      };
+      document.addEventListener("click", (event) => {
+        const button = event.target instanceof Element ? event.target.closest("button") : null;
+        if (!button) return;
+        const sheet = button.closest(".sheet");
+        if (button.dataset.toast) showToast({ ...notes[button.dataset.toast], status: button.dataset.toast });
+        const demo = button.dataset.demo;
+        if (demo === "ring") {
+          const ring = sheet.querySelector("[data-demo-ring]");
+          const next = (Number(ring.value) + 1) % (ring.max + 1);
+          setRing(ring, next, `${next}/${ring.max}`);
+          ring.setAttribute("aria-valuetext", `${next} of ${ring.max} clips`);
+        }
+        if (demo === "travel") {
+          for (const track of sheet.querySelectorAll(".motion-track")) {
+            track.removeAttribute("data-playing");
+            void track.offsetWidth;
+            track.setAttribute("data-playing", "");
+          }
+        }
+        if (demo === "land" || demo === "pulse") {
+          const selector = demo === "land" ? ".status-grid .panel" : '.status-grid [data-status="paused"]';
+          for (const panel of sheet.querySelectorAll(selector)) {
+            const fresh = panel.cloneNode(true);
+            if (demo === "land") fresh.setAttribute("data-changed", "");
+            panel.replaceWith(fresh);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
