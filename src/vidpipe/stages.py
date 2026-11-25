@@ -36,6 +36,8 @@ from vidpipe.contracts import (
     TTSProvider,
     TTSRequest,
 )
+from vidpipe.fit import FIT_VERSION, NarrationInput, limits_for, plan_fit
+from vidpipe.fit_inputs import collect_shots, translation_files
 from vidpipe.models import (
     Brief,
     FitPlan,
@@ -47,7 +49,6 @@ from vidpipe.models import (
     ScriptDraft,
     ScriptLine,
     Shot,
-    ShotPlan,
     Storyboard,
     StoryboardDraft,
 )
@@ -338,42 +339,57 @@ class NarrationStage(Stage):
 
 
 class FitPlanningStage(Stage):
-    """Sizes each shot's clip to the longest narration across languages (``visuals: shared``)."""
+    """Plans each shot's clips from the real narration durations (see :mod:`vidpipe.fit`)."""
 
     name = "fit-planning"
 
-    def problems(self, ctx: StageContext) -> list[str]:
-        visuals = ctx.project.config.visuals
-        if visuals.value != "shared":
-            return [f"visuals: {visuals.value} is not supported yet (only 'shared')"]
-        return []
-
     def run(self, ctx: StageContext) -> list[str]:
-        narration = ctx.project.read_model("narration.json", Narration)
+        project = ctx.project
+        narration = project.read_model("narration.json", Narration)
         caps = ctx.provider("video", ImageToVideoProvider).capabilities
+        config = project.config
+        measured = {(c.language, c.shot_id): c.duration_s for c in narration.clips}
+        shots = collect_shots(
+            project,
+            project.read_model("storyboard.json", Storyboard),
+            lambda lang, shot_id, text: NarrationInput(text, measured[lang, shot_id]),
+        )
 
         def make() -> Made:
-            shots: list[ShotPlan] = []
-            for shot in ctx.project.read_model("storyboard.json", Storyboard).shots:
-                longest = max(c.duration_s for c in narration.clips if c.shot_id == shot.id)
-                seconds = max(caps.min_seconds, math.ceil(longest * 4) / 4)
-                if seconds > caps.max_seconds:
-                    raise StageError(
-                        f"shot {shot.id} narration is {longest:.2f}s but the video provider "
-                        f"makes at most {caps.max_seconds}s per clip "
-                        "(continuation clips are a later ticket)"
-                    )
-                shots.append(ShotPlan(shot_id=shot.id, clip_seconds=seconds))
-            return Made([ctx.project.write_model("fit_plan.json", FitPlan(shots=shots))])
+            plan = plan_fit(
+                shots,
+                languages=config.languages,
+                primary_language=config.primary_language,
+                visuals=config.visuals,
+                limits=limits_for(caps),
+            )
+            if plan.problems:
+                raise StageError("; ".join(plan.problems))
+            return Made([project.write_model("fit_plan.json", plan)])
 
         made = ctx.produce(
             "fit_plan",
             inputs=Inputs(
-                files=["narration.json", "storyboard.json"],
-                values={"visuals": ctx.project.config.visuals, "video_capabilities": caps},
+                files=["narration.json", "storyboard.json", *translation_files(project)],
+                values={
+                    "visuals": config.visuals,
+                    "languages": config.languages,
+                    "video_capabilities": caps,
+                    "fit_version": FIT_VERSION,
+                },
             ),
             make=make,
         )
+        # Continuation clips are planned (see `vidpipe plan`) but generating them is ticket 12.
+        # Stop here, before any GPU work, rather than render frozen frames.
+        planned = project.read_model("fit_plan.json", FitPlan)
+        needing = [s.shot_id for s in planned.shots if s.continuation_clips]
+        if needing:
+            raise StageError(
+                f"shots {needing} need continuation clips, which cannot be generated yet; "
+                "`vidpipe plan` shows them. Shorten those narration lines (a shot plays at most "
+                "one clip, slowed by up to 1.3x) and run again"
+            )
         return _rels(ctx, made)
 
 
@@ -411,6 +427,11 @@ class KeyframesStage(Stage):
 
 
 class VideoStage(Stage):
+    """Generates each shot's first clip, from its keyframe, once per visual set in the fit plan.
+
+    Continuation clips are planned (``fit_plan.json``) but not generated yet.
+    """
+
     name = "video"
 
     def run(self, ctx: StageContext) -> list[str]:
@@ -420,32 +441,45 @@ class VideoStage(Stage):
         items: list[MediaItem] = []
         for shot in ctx.project.read_model("storyboard.json", Storyboard).shots:
             image = ctx.project.build / keyframes.for_shot(shot.id)
-            key = f"video/shot_{shot.id:02d}"
-            seconds = plan[shot.id].clip_seconds
+            for visual_set in plan[shot.id].visual_sets.values():
+                # ``shared`` keeps the plain key; per-language sets live under their language.
+                unit = f"shot_{shot.id:02d}"
+                key = (
+                    f"video/{unit}"
+                    if visual_set.id == "shared"
+                    else f"video/{visual_set.id}/{unit}"
+                )
+                seconds = visual_set.clips[0].seconds
 
-            def make(
-                shot: Shot = shot, image: Path = image, key: str = key, seconds: float = seconds
-            ) -> Made:
-                result = provider.animate(
-                    ImageToVideoRequest(
-                        image=image,
-                        prompt=shot.visual,
-                        motion_type=shot.motion_type,
-                        duration_s=seconds,
-                        seed=shot.id,
-                        output_path=ctx.project.artifact_path(f"{key}.mp4"),
+                def make(
+                    shot: Shot = shot, image: Path = image, key: str = key, seconds: float = seconds
+                ) -> Made:
+                    result = provider.animate(
+                        ImageToVideoRequest(
+                            image=image,
+                            prompt=shot.visual,
+                            motion_type=shot.motion_type,
+                            duration_s=seconds,
+                            seed=shot.id,
+                            output_path=ctx.project.artifact_path(f"{key}.mp4"),
+                        )
+                    )
+                    return Made([result.path], data={"duration_s": result.duration_s})
+
+                made = ctx.produce(
+                    key,
+                    inputs=Inputs(files=[image], values={"prompt": shot.visual}),
+                    parameters={"motion_type": shot.motion_type.value, "duration_s": seconds},
+                    seed=shot.id,
+                    make=make,
+                )
+                items.append(
+                    MediaItem(
+                        shot_id=shot.id,
+                        visual_set=visual_set.id,
+                        path=made.paths[0].relative_to(ctx.project.build).as_posix(),
                     )
                 )
-                return Made([result.path], data={"duration_s": result.duration_s})
-
-            made = ctx.produce(
-                key,
-                inputs=Inputs(files=[image], values={"prompt": shot.visual}),
-                parameters={"motion_type": shot.motion_type.value, "duration_s": seconds},
-                seed=shot.id,
-                make=make,
-            )
-            items.append(_item(ctx, shot.id, made.paths[0]))
         return _write_index(ctx, "video.json", items)
 
 
@@ -455,7 +489,9 @@ class MusicStage(Stage):
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("music", MusicProvider)
         brief = ctx.project.read_model("brief.json", Brief)
-        total = ctx.project.read_model("fit_plan.json", FitPlan).total_seconds
+        # Whole seconds: the render is trimmed to each language, and a small narration edit must
+        # not regenerate the music.
+        total = float(math.ceil(ctx.project.read_model("fit_plan.json", FitPlan).total_seconds))
         prompt = f"Instrumental score for: {brief.title}"
 
         def make() -> Made:
@@ -492,14 +528,16 @@ class AssemblyStage(Stage):
             segments = [
                 ShotSegment(
                     shot_id=shot.id,
-                    video=project.build / video.for_shot(shot.id),
+                    video=project.build
+                    / video.for_shot(shot.id, plan[shot.id].languages[lang].visual_set),
                     narration=project.build
                     / next(
                         c.path
                         for c in narration.clips
                         if c.shot_id == shot.id and c.language == lang
                     ),
-                    seconds=plan[shot.id].clip_seconds,
+                    seconds=plan[shot.id].languages[lang].seconds,
+                    speed=plan[shot.id].languages[lang].clips[0].speed,
                 )
                 for shot in project.read_model("storyboard.json", Storyboard).shots
             ]
@@ -530,7 +568,10 @@ class AssemblyStage(Stage):
                         *(s.narration for s in render.segments),
                         *([render.music] if render.music else []),
                     ],
-                    values={"seconds": [s.seconds for s in render.segments]},
+                    values={
+                        "seconds": [s.seconds for s in render.segments],
+                        "speeds": [s.speed for s in render.segments],
+                    },
                 ),
                 parameters={
                     "language": render.language,

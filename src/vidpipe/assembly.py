@@ -23,7 +23,10 @@ class ShotSegment(BaseModel):
     shot_id: int
     video: Path
     narration: Path
+    #: How long the shot lasts in the render (the narration's length).
     seconds: float
+    #: Playback rate of the video clip: below 1 plays it slower so it lasts longer.
+    speed: float = 1.0
 
 
 class LanguageRender(BaseModel):
@@ -91,7 +94,8 @@ class FfmpegAssembler(Assembler):
         parts: list[str] = []
         for i, seg in enumerate(render.segments):
             parts.append(
-                f"[{i}:v]fps={job.fps},scale={job.width}:{job.height},setsar=1,"
+                f"[{i}:v]setpts=PTS/{seg.speed},fps={job.fps},scale={job.width}:{job.height},"
+                "setsar=1,"
                 f"tpad=stop_mode=clone:stop_duration={seg.seconds},trim=duration={seg.seconds},"
                 f"setpts=PTS-STARTPTS[v{i}]"
             )

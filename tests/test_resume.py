@@ -168,9 +168,10 @@ def test_swapping_a_provider_reruns_that_stage_and_what_depends_on_it(
     recorder = Recorder()
     result = pipeline.run(project, until="music", registry=RecordingRegistry(recorder))
 
-    # The Amharic text changed, so it is narrated again; the fake narrator's audio and durations
-    # depend only on the language, so the new clips are byte-identical and nothing later reruns.
-    assert ran_stages(result) == {"translation", "narration"}
+    # The Amharic text changed, so it is narrated again and the fit plan (which records the text it
+    # cut) is re-derived; the fake narrator's audio and durations depend only on the language, so
+    # the new clips are byte-identical and nothing after the plan reruns.
+    assert ran_stages(result) == {"translation", "narration", "fit-planning"}
     assert recorder.stems(ProviderKind.TTS) == ["am/shot_01", "am/shot_02", "am/shot_03"]
     assert recorder.of(ProviderKind.KEYFRAMER) == []
     assert recorder.of(ProviderKind.TEXT) == []

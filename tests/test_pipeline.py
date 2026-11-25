@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import wave
 from pathlib import Path
@@ -57,17 +58,24 @@ def test_run_through_music_produces_every_stage_artifact(make_project: MakeProje
         with wave.open(str(build / clip["path"])) as wav:
             assert wav.getnframes() / wav.getframerate() == pytest.approx(clip["duration_s"])
 
-    # Fit planning: shared visuals are sized to the longer narration per shot.
-    for shot in read_json(build / "fit_plan.json")["shots"]:
+    # Fit planning: shared visuals are sized to the longer narration per shot, and every shot
+    # lasts exactly as long as the narration of the language being rendered.
+    plan = read_json(build / "fit_plan.json")
+    for shot in plan["shots"]:
         longest = max(c["duration_s"] for c in narration if c["shot_id"] == shot["shot_id"])
-        assert shot["clip_seconds"] >= longest
+        clip = shot["visual_sets"]["shared"]["clips"][0]["seconds"]
+        assert longest <= clip < longest + 0.25 + 1e-6
+        for clip_s in (c for c in narration if c["shot_id"] == shot["shot_id"]):
+            assert shot["languages"][clip_s["language"]]["seconds"] == pytest.approx(
+                clip_s["duration_s"]
+            )
 
     # Keyframes and video clips exist per shot; the music covers the whole timeline.
     for item in read_json(build / "keyframes.json")["items"]:
         assert (build / item["path"]).read_bytes().startswith(b"\x89PNG")
     assert len(read_json(build / "video.json")["items"]) == 3
     music = read_json(build / "music.json")["items"][0]["path"]
-    total = sum(s["clip_seconds"] for s in read_json(build / "fit_plan.json")["shots"])
+    total = math.ceil(max(plan["render_seconds"].values()))  # covers the longest render
     with wave.open(str(build / music)) as wav:
         assert wav.getnframes() / wav.getframerate() == pytest.approx(total)
 
@@ -133,11 +141,9 @@ def test_full_run_renders_a_playable_video_per_language(make_project: MakeProjec
 
     assert run_cli("run", str(project)) == 0
 
-    expected = sum(
-        s["clip_seconds"] for s in read_json(project / "build" / "fit_plan.json")["shots"]
-    )
+    expected = read_json(project / "build" / "fit_plan.json")["render_seconds"]
     for lang in ("en", "am"):
         probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
         kinds = sorted(s["codec_type"] for s in probe["streams"])
         assert kinds == ["audio", "video"]
-        assert float(probe["format"]["duration"]) == pytest.approx(expected, abs=0.2)
+        assert float(probe["format"]["duration"]) == pytest.approx(expected[lang], abs=0.2)
