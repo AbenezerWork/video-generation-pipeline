@@ -1,2 +1,92 @@
 <!doctype html>
-<html lang="en"><title>vidpipe</title></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>try{const v=localStorage.getItem("vidpipe-color-scheme");if(v==="light"||v==="dark")document.querySelector('meta[name="color-scheme"]').content=v}catch{}</script>
+    <link rel="icon" href="data:," />
+    <title>Run · vidpipe</title>
+    <link rel="preload" href="/static/fonts/MonaSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/static/tokens.css" />
+    <link rel="stylesheet" href="/static/console.css" />
+    <link rel="stylesheet" href="/static/run.css" />
+    <script type="module" src="/static/theme.js"></script>
+    <script type="module" src="/static/run.js"></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="wordmark">
+        <strong>vidpipe</strong>
+        <h1 id="project-name">Project</h1>
+      </div>
+      <!-- Views: the Run and Config tabs go here (Config view, ticket 09). -->
+      <div class="run-summary" id="run-summary">
+        <span class="status" data-status="waiting" id="run-status">
+          <span class="status-mark" aria-hidden="true"></span><span class="status-text">Loading</span>
+        </span>
+        <span class="muted" id="run-detail"></span>
+        <span class="faint" id="connection" hidden>Reconnecting…</span>
+      </div>
+      <!-- Run controls go here: start, stop, resume (ticket 06). -->
+      <button type="button" class="btn btn-quiet theme-toggle" data-theme-toggle>
+        <span class="theme-to-light">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="currentColor" /><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3" /></g></svg>
+          Switch to light theme
+        </span>
+        <span class="theme-to-dark">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7Z" fill="currentColor" /></svg>
+          Switch to dark theme
+        </span>
+      </button>
+    </header>
+
+    <main class="run-view">
+      <h2 class="visually-hidden" id="rail-title">Stages</h2>
+      <div
+        class="rail"
+        id="rail"
+        role="tablist"
+        aria-labelledby="rail-title"
+        aria-orientation="vertical"
+        focusgroup="tablist nomemory"
+      ></div>
+
+      <section class="stage-detail" id="stage-detail" role="tabpanel" tabindex="0">
+        <div class="stage-detail-inner">
+          <p class="label phase-label" id="detail-phase"></p>
+          <h2 id="detail-title">Stage</h2>
+          <dl class="facts">
+            <div><dt class="label">Status</dt><dd id="detail-status"></dd></div>
+            <div><dt class="label">Provider</dt><dd class="numeral" id="detail-provider"></dd></div>
+            <div><dt class="label">Progress</dt><dd class="numeral" id="detail-progress"></dd></div>
+            <div><dt class="label">Time</dt><dd class="numeral" id="detail-time"></dd></div>
+          </dl>
+          <p class="muted" id="detail-note"></p>
+          <!-- Stage outputs, timing and logs go here (ticket 07); gate review and redo (08). -->
+        </div>
+      </section>
+    </main>
+
+    <template id="stage-tab">
+      <button type="button" role="tab" class="rail-stage">
+        <span class="phase-stripe"></span>
+        <span class="stage-name">
+          <span class="stage-label"></span>
+          <span class="faint numeral stage-provider"></span>
+        </span>
+        <span class="stage-end">
+          <span class="numeral faint stage-time"></span>
+          <span class="ring" hidden>
+            <progress class="ring-progress" value="0" max="1" aria-hidden="true"></progress>
+            <span class="ring-content" aria-hidden="true"></span>
+          </span>
+          <span class="visually-hidden stage-progress"></span>
+          <span class="status"><span class="status-mark" aria-hidden="true"></span><span class="status-text"></span></span>
+        </span>
+      </button>
+    </template>
+
+    <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>
