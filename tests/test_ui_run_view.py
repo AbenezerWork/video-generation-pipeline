@@ -176,6 +176,8 @@ def test_a_run_whose_process_died_shows_as_failed(
         failed = stream.next().data
         assert failed["status"] == "failed"
         assert "ended unexpectedly" in failed["error"]["message"]
+        assert failed["error"]["stage"] == "script"
+        assert by_stage(failed)["script"]["status"] == "failed"  # no longer shown as running
         stream.close()
     finally:
         writer.finish()

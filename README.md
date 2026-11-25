@@ -107,7 +107,8 @@ run as the record of how the last run ended. `manifest.json` is unchanged.
 
 Read it with `vidpipe.runstate.read_run_state(project_dir)`, which retries the brief access denial
 a rename can cause on Windows. A record still saying `running` or `stopping` whose process is gone
-(killed, crashed) comes back as `failed` with an error saying so; the file is left as it is.
+(killed, crashed) comes back as `failed` with an error saying so, and the stage it was in as `failed`;
+the file is left as it is.
 
 ## Gates, --auto and redo
 

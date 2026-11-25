@@ -148,7 +148,8 @@ def read_run_state(project_dir: Path) -> RunState | None:
     """The last run state of a project (``None`` if no run has recorded one).
 
     A record still saying ``running`` or ``stopping`` whose process is gone (killed, crashed) is
-    returned as ``failed``, with an error saying the process ended; the file is left as it is.
+    returned as ``failed``, with an error saying the process ended and the stage it was in marked
+    ``failed``; the file is left as it is.
     """
     path = project_dir / "build" / RUN_STATE_FILENAME
     state = None
@@ -164,6 +165,8 @@ def read_run_state(project_dir: Path) -> RunState | None:
         return None
     if state.status in ACTIVE and not _alive(state.pid):
         state.status = RunStatus.FAILED
+        if state.current_stage is not None:  # the stage it was in failed with it
+            state.stage(state.current_stage).status = StageStatus.FAILED
         state.error = RunError(
             stage=state.current_stage, message=f"the run's process ({state.pid}) ended unexpectedly"
         )
