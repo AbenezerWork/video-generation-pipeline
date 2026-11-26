@@ -220,6 +220,39 @@ def test_amharic_render_uses_english_cues_timed_to_its_own_shots(make_project: M
 
 
 @pytest.mark.needs_ffmpeg
+@pytest.mark.parametrize("target", [None, -18.0])
+def test_final_mix_is_normalized_to_the_loudness_target(
+    make_project: MakeProject, target: float | None
+) -> None:
+    project = make_project(**({"mix": {"loudness_lufs": target}} if target is not None else {}))
+    assert run_cli("run", str(project)) == 0
+    tool = find_tool("ffmpeg")
+    assert tool is not None
+    result = subprocess.run(
+        [
+            tool,
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(project / "out/demo_am.mp4"),
+            "-vn",
+            "-af",
+            "loudnorm=print_format=json",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    stats = json.loads(result.stderr[result.stderr.rindex("{") :])
+    assert float(stats["input_i"]) == pytest.approx(target or -14.0, abs=1.0)
+    assert float(stats["input_tp"]) <= -1.0
+
+
+@pytest.mark.needs_ffmpeg
 def test_music_level_drops_under_narration(make_project: MakeProject) -> None:
     # Each shot: 2 s of narration, then 2 s of silence, so the music is heard both ways.
     project = make_project(

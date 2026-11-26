@@ -516,6 +516,8 @@ within the 90 s limit (fit-planning refuses longer plans, and assembly checks ag
 - **Audio.** The shots' narration is joined, and the music sits under it at `mix.music_level` and is
   pushed down by a sidechain compressor keyed on the narration (`mix.duck_ratio`; threshold -30 dB,
   attack 20 ms, release 400 ms), so the music drops while someone speaks and swells back in the gaps.
+  FFmpeg measures the final mix and applies two-pass loudness normalization at `mix.loudness_lufs`
+  (default -14 LUFS) with a -1 dBTP true-peak target.
 - **Subtitles.** One cue per fit-plan segment (`segments[].text/start_s/end_s`, offset to the shot's
   place in the render). The SRT is written whether or not it is burned in; `subtitles.burn_in: false`
   keeps only the sidecar. Burning uses ffmpeg's `subtitles` filter (libass) with the fonts folder given
@@ -531,6 +533,7 @@ subtitles:
   fonts: {am: Noto Sans Ethiopic}    # font family per language; others use the system default font
   font_size: 20                      # libass units: the video's height is 288, so it scales with it
 mix:
+  loudness_lufs: -14     # final stereo mix, two-pass loudnorm at -1 dBTP
   music_level: 0.4
   duck_ratio: 8
 ```

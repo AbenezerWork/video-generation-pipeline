@@ -111,6 +111,8 @@ class MixConfig(BaseModel):
     music_level: float = Field(default=0.4, gt=0, le=2)
     #: How hard narration pushes the music down (a sidechain compressor's ratio: higher is deeper).
     duck_ratio: float = Field(default=8.0, ge=1, le=20)
+    #: Integrated loudness target for the final mix, in LUFS.
+    loudness_lufs: float = Field(default=-14.0, ge=-70, le=-5)
 
 
 #: What the end card says when ``end_card.text`` does not name the language: a headline line, then

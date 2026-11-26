@@ -12,6 +12,8 @@ and needs no ffmpeg); the assembler only burns it in.
 from __future__ import annotations
 
 import functools
+import json
+import math
 import os
 import shutil
 import subprocess
@@ -67,6 +69,7 @@ class MixSettings(BaseModel):
     music_level: float = 0.4
     #: Ratio of the sidechain compressor that pushes the music down under narration.
     duck_ratio: float = 8.0
+    loudness_lufs: float = -14.0
 
 
 class EndCard(BaseModel):
@@ -187,6 +190,7 @@ def ffmpeg_filters(ffmpeg: str) -> frozenset[str]:
 REQUIRED_FILTERS = {
     "subtitles": "burned-in subtitles need ffmpeg built with libass",
     "sidechaincompress": "ducking the music under narration needs it",
+    "loudnorm": "the final mix uses two-pass loudness normalization",
 }
 
 
@@ -219,7 +223,8 @@ class FfmpegAssembler(Assembler):
         written: list[Path] = []
         for render in job.renders:
             render.output.parent.mkdir(parents=True, exist_ok=True)
-            command = [ffmpeg, "-y", "-v", "error", *self.arguments(job, render)]
+            normalization = self._measure(ffmpeg, job, render)
+            command = [ffmpeg, "-y", "-v", "error", *self.arguments(job, render, normalization)]
             result = subprocess.run(
                 command, capture_output=True, text=True, encoding="utf-8", errors="replace"
             )
@@ -228,18 +233,19 @@ class FfmpegAssembler(Assembler):
             written.append(render.output)
         return written
 
-    def arguments(self, job: AssemblyJob, render: LanguageRender) -> list[str]:
+    def arguments(
+        self, job: AssemblyJob, render: LanguageRender, normalization: str | None = None
+    ) -> list[str]:
         """ffmpeg arguments (after the binary) rendering one language."""
         clips = [clip for segment in render.segments for clip in segment.clips]
         args: list[str] = []
         for clip in clips:
             args += ["-i", str(clip.video)]
-        for segment in render.segments:
-            args += ["-i", str(segment.narration)]
-        total = sum(s.seconds for s in render.segments)
+        audio_args, audio_parts, audio_label, total = self._audio(job, render, first=len(clips))
+        args += audio_args
 
         parts: list[str] = []
-        pairs: list[str] = []
+        shots: list[str] = []
         next_clip = 0
         for i, seg in enumerate(render.segments):
             shot_clips: list[str] = []
@@ -256,18 +262,13 @@ class FfmpegAssembler(Assembler):
                 f"{source}tpad=stop_mode=clone:stop_duration={seg.seconds},"
                 f"trim=duration={seg.seconds},setpts=PTS-STARTPTS[v{i}]"
             )
-            parts.append(
-                f"[{len(clips) + i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,"
-                f"atrim=duration={seg.seconds},asetpts=PTS-STARTPTS[a{i}]"
-            )
-            pairs.append(f"[v{i}][a{i}]")
+            shots.append(f"[v{i}]")
         n = len(render.segments)
         card = render.end_card
         burn = render.subtitles is not None and render.subtitles.burn_in
         shots_label = "shots" if card else "vout"
         video_label = "joined" if burn else shots_label
-        spoken_label = "spoken" if card else "narration"
-        parts.append(f"{''.join(pairs)}concat=n={n}:v=1:a=1[{video_label}][{spoken_label}]")
+        parts.append(f"{''.join(shots)}concat=n={n}:v=1:a=0[{video_label}]")
         if render.subtitles is not None and burn:
             track = render.subtitles
             filter_ = subtitles_filter(
@@ -285,21 +286,88 @@ class FfmpegAssembler(Assembler):
                 f"setsar=1,{ass_filter(card.ass, fonts_dir=card.fonts_dir)}[card]"
             )
             parts.append("[shots][card]concat=n=2:v=1:a=0[vout]")
-            total += card.seconds
-            parts.append(f"[spoken]apad=whole_dur={total}[narration]")
 
-        audio_label = "narration"
-        if render.music is not None:
-            args += ["-i", str(render.music)]
-            parts += self._mix(
-                job, total, music_input=len(clips) + n, fade_out_s=card.seconds if card else 0.0
-            )
-            audio_label = "mix"
+        parts += audio_parts
+        if normalization is not None:
+            parts.append(f"[{audio_label}]{normalization},aresample=48000[normalized]")
+            audio_label = "normalized"
 
         args += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", f"[{audio_label}]"]
         args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-t", f"{total}"]
         args += ["-movflags", "+faststart", str(render.output)]
         return args
+
+    def _audio(
+        self, job: AssemblyJob, render: LanguageRender, *, first: int = 0
+    ) -> tuple[list[str], list[str], str, float]:
+        args: list[str] = []
+        parts: list[str] = []
+        total = sum(s.seconds for s in render.segments)
+        for i, segment in enumerate(render.segments):
+            args += ["-i", str(segment.narration)]
+            parts.append(
+                f"[{first + i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,"
+                f"atrim=duration={segment.seconds},asetpts=PTS-STARTPTS[a{i}]"
+            )
+        n = len(render.segments)
+        card = render.end_card
+        spoken = "".join(f"[a{i}]" for i in range(n))
+        parts.append(f"{spoken}concat=n={n}:v=0:a=1[{'spoken' if card else 'narration'}]")
+        if card is not None:
+            total += card.seconds
+            parts.append(f"[spoken]apad=whole_dur={total}[narration]")
+        if render.music is None:
+            return args, parts, "narration", total
+        args += ["-i", str(render.music)]
+        parts += self._mix(
+            job, total, music_input=first + n, fade_out_s=card.seconds if card else 0.0
+        )
+        return args, parts, "mix", total
+
+    def _measure(self, ffmpeg: str, job: AssemblyJob, render: LanguageRender) -> str | None:
+        """Measure the exact audio graph, then pass its statistics to the final render."""
+        args, parts, label, _ = self._audio(job, render)
+        target = f"loudnorm=I={job.mix.loudness_lufs}:TP=-1:LRA=11"
+        parts.append(f"[{label}]{target}:print_format=json[analysis]")
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-nostats",
+                *args,
+                "-filter_complex",
+                ";".join(parts),
+                "-map",
+                "[analysis]",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode != 0:
+            raise AssemblyError(f"loudnorm failed for {render.language}: {result.stderr.strip()}")
+        try:
+            stats = json.loads(result.stderr[result.stderr.rindex("{") :])
+            measured = {
+                "measured_I": float(stats["input_i"]),
+                "measured_TP": float(stats["input_tp"]),
+                "measured_LRA": float(stats["input_lra"]),
+                "measured_thresh": float(stats["input_thresh"]),
+                "offset": float(stats["target_offset"]),
+            }
+        except (ValueError, KeyError, TypeError) as exc:
+            raise AssemblyError(
+                f"loudnorm returned invalid statistics for {render.language}"
+            ) from exc
+        if not math.isfinite(measured["measured_I"]):
+            return None  # no measurable signal in the mix
+        if not all(math.isfinite(value) for value in measured.values()):
+            raise AssemblyError(f"loudnorm returned invalid statistics for {render.language}")
+        return ":".join([target, "linear=true", *(f"{k}={v}" for k, v in measured.items())])
 
     @staticmethod
     def _clip_chain(job: AssemblyJob, clip: ClipPlay, index: int, label: str, *, trim: bool) -> str:

@@ -65,6 +65,13 @@
           "minimum": 1,
           "title": "Duck Ratio",
           "type": "number"
+        },
+        "loudness_lufs": {
+          "default": -14.0,
+          "maximum": -5,
+          "minimum": -70,
+          "title": "Loudness Lufs",
+          "type": "number"
         }
       },
       "title": "MixConfig",

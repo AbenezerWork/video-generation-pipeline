@@ -1045,7 +1045,9 @@ class AssemblyStage(Stage):
                 height=render_height,
                 fps=config.fps,
                 mix=MixSettings(
-                    music_level=config.mix.music_level, duck_ratio=config.mix.duck_ratio
+                    music_level=config.mix.music_level,
+                    duck_ratio=config.mix.duck_ratio,
+                    loudness_lufs=config.mix.loudness_lufs,
                 ),
             )
             return Made([*ctx.assembler.assemble(job), track.srt])
@@ -1079,6 +1081,7 @@ class AssemblyStage(Stage):
                 "margin_v": track.margin_v,
                 "music_level": config.mix.music_level,
                 "duck_ratio": config.mix.duck_ratio,
+                "loudness_lufs": config.mix.loudness_lufs,
                 **(
                     {
                         "end_card": {
