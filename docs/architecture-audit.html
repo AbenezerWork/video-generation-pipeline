@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vidpipe Architecture Guide</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1b2a24;
+    --muted: #52645b;
+    --paper: #f5f6f1;
+    --card: #ffffff;
+    --line: #d6ddd4;
+    --accent: #17634e;
+    --accent-soft: #e3f1e8;
+    --warn: #9a3b1f;
+    --warn-soft: #fbe9e2;
+    --mid: #8a5a00;
+    --mid-soft: #fbf1db;
+    --words: #2f6fb0;
+    --voice: #7d4fb0;
+    --picture: #b0532f;
+    --sound: #17634e;
+    font: 100%/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e4ebe6;
+      --muted: #a3b3aa;
+      --paper: #121815;
+      --card: #1a221e;
+      --line: #2f3b35;
+      --accent: #6fcca8;
+      --accent-soft: #1d3329;
+      --warn: #f19a7c;
+      --warn-soft: #3a221b;
+      --mid: #e8bf68;
+      --mid-soft: #362c17;
+      --words: #7fb2ea;
+      --voice: #c4a1ec;
+      --picture: #f0a283;
+      --sound: #6fcca8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); }
+  main { width: min(68rem, calc(100% - 2rem)); margin: 0 auto; padding: 3rem 0 4rem; }
+  h1, h2, h3, h4, p { margin: 0; }
+  h1 { font: 700 clamp(2.2rem, 5.5vw, 3.6rem)/1.05 Georgia, serif; letter-spacing: -.03em; }
+  h2 { font: 700 clamp(1.5rem, 3.5vw, 2rem)/1.2 Georgia, serif; }
+  h3 { font-size: 1.05rem; line-height: 1.3; }
+  code { font: .88em/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--accent-soft); padding: .05em .3em; border-radius: .25em; overflow-wrap: anywhere; }
+  a { color: var(--accent); text-underline-offset: .18em; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: .25rem; }
+
+  /* Header */
+  .lede { max-width: 62ch; margin-block-start: 1rem; font-size: 1.12rem; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .75rem; margin-block-start: 1.75rem; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: .9rem 1rem; }
+  .stat b { display: block; font: 700 1.9rem/1.1 Georgia, serif; color: var(--accent); }
+  .stat span { color: var(--muted); font-size: .92rem; }
+  nav { display: flex; flex-wrap: wrap; gap: .5rem; margin-block-start: 1.5rem; }
+  nav a { text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: .3rem .85rem; font-size: .92rem; }
+  nav a:hover { border-color: var(--accent); }
+
+  /* Sections */
+  section { margin-block-start: 3.5rem; }
+  .section-intro { max-width: 62ch; margin-block: .5rem 1.4rem; color: var(--muted); }
+  .eyebrow { display: block; font: 700 .78rem/1 system-ui; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-block-end: .5rem; }
+
+  /* Pipeline phases */
+  .phases { display: grid; gap: 1rem; }
+  .phase { background: var(--card); border: 1px solid var(--line); border-inline-start: .35rem solid var(--tone); border-radius: .9rem; padding: 1.1rem 1.2rem; }
+  .phase > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .75rem; margin-block-end: .85rem; }
+  .phase > header h3 { color: var(--tone); font-size: 1.15rem; }
+  .phase > header p { color: var(--muted); font-size: .95rem; }
+  .phase.words { --tone: var(--words); }
+  .phase.voice { --tone: var(--voice); }
+  .phase.picture { --tone: var(--picture); }
+  .phase.sound { --tone: var(--sound); }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr)); gap: .65rem; }
+  .steps li { border: 1px solid var(--line); border-radius: .65rem; padding: .7rem .8rem; }
+  .steps .num { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--tone); color: var(--card); font: 700 .8rem/1 system-ui; margin-inline-end: .4rem; }
+  .steps h4 { display: inline; font-size: 1rem; }
+  .steps p { margin-block-start: .4rem; color: var(--muted); font-size: .93rem; }
+  .uses { display: block; margin-block-start: .45rem; font-size: .82rem; color: var(--tone); font-weight: 600; }
+  .helpers { margin-block-start: 1rem; background: var(--card); border: 1px dashed var(--line); border-radius: .9rem; padding: 1rem 1.2rem; }
+  .helpers h3 { margin-block-end: .6rem; }
+  .helpers ul { margin: 0; padding-inline-start: 1.1rem; display: grid; gap: .35rem; }
+  .helpers li span { color: var(--muted); }
+
+  /* Findings */
+  .findings { display: grid; gap: .9rem; }
+  .finding { background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: 1.1rem 1.2rem; }
+  .finding > header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
+  .badge { font: 700 .74rem/1 system-ui; letter-spacing: .04em; text-transform: uppercase; padding: .35rem .55rem; border-radius: 999px; }
+  .badge.high { color: var(--warn); background: var(--warn-soft); }
+  .badge.medium { color: var(--mid); background: var(--mid-soft); }
+  .qa { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: .5rem 1.25rem; margin-block-start: .8rem; }
+  .qa h4 { font-size: .8rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-block-end: .2rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-block-start: .85rem; }
+  .chip { font-size: .8rem; border: 1px solid var(--line); border-radius: 999px; padding: .15rem .6rem; color: var(--muted); }
+  .src { margin-block-start: .7rem; font-size: .88rem; color: var(--muted); }
+
+  /* How a run works */
+  .timeline { list-style: none; margin: 0; padding: 0; counter-reset: step; display: grid; gap: .75rem; }
+  .timeline > li { counter-increment: step; display: grid; grid-template-columns: 2.4rem 1fr; gap: .8rem; background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: 1rem 1.1rem; }
+  .timeline > li::before { content: counter(step); display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 1rem/1 Georgia, serif; }
+  .timeline p { margin-block-start: .3rem; color: var(--muted); }
+  .timeline details { margin-block-start: .5rem; }
+  .timeline summary { cursor: pointer; font-size: .9rem; color: var(--accent); font-weight: 600; }
+  .timeline details p { color: var(--ink); font-size: .93rem; }
+
+  /* Interfaces */
+  .group + .group { margin-block-start: 1.6rem; }
+  .group > h3 { margin-block-end: .2rem; }
+  .group > p { color: var(--muted); margin-block-end: .75rem; font-size: .95rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .8rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .55rem; }
+  .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .35rem .75rem; font-size: .93rem; }
+  .card dt { font-weight: 700; color: var(--muted); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; padding-block-start: .15rem; }
+  .card dd { margin: 0; }
+  .card .src { margin-block-start: auto; padding-block-start: .3rem; }
+
+  /* File tree */
+  .tree { background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: .4rem 1.1rem; }
+  .tree details { border-block-end: 1px solid var(--line); }
+  .tree details:last-child { border-block-end: 0; }
+  .tree summary { cursor: pointer; padding: .85rem 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .75rem; }
+  .tree summary strong { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .98rem; }
+  .tree summary span { color: var(--muted); font-size: .93rem; }
+  .tree ul { list-style: none; margin: 0 0 1rem; padding: 0 0 0 1rem; border-inline-start: 2px solid var(--accent-soft); display: grid; gap: .45rem; }
+  .tree li { display: grid; grid-template-columns: minmax(0, 17rem) minmax(0, 1fr); gap: .2rem 1rem; font-size: .93rem; }
+  .tree li > span { color: var(--muted); }
+  @media (max-width: 40rem) { .tree li { grid-template-columns: 1fr; } .tree li > span { padding-inline-start: .4rem; } }
+
+  /* Next steps */
+  .next { background: var(--accent-soft); border-radius: .9rem; padding: 1.3rem 1.4rem; }
+  .next ol { margin: .8rem 0 0; padding-inline-start: 1.3rem; display: grid; gap: .45rem; }
+  .next .src { margin-block-start: 1rem; }
+
+  @media print {
+    :root { color-scheme: light; }
+    main { width: 100%; padding: 0; }
+    .tree details { display: block; }
+    .phase, .finding, .card, .timeline > li { break-inside: avoid; }
+    nav { display: none; }
+  }
+</style>
+<main>
+  <header>
+    <span class="eyebrow">Architecture guide · current checkout</span>
+    <h1>How Vidpipe works</h1>
+    <p class="lede">Vidpipe turns a short written brief into a narrated video in two languages. You give it a project folder; it walks the work through ten stages, asks a different tool for each job, and remembers what it already made so it never redoes work for nothing.</p>
+    <div class="stats" role="list">
+      <div class="stat" role="listitem"><b>10</b><span>stages, from brief to finished video</span></div>
+      <div class="stat" role="listitem"><b>8</b><span>outside tools and services it talks to</span></div>
+      <div class="stat" role="listitem"><b>2</b><span>languages rendered: English and Amharic</span></div>
+      <div class="stat" role="listitem"><b>5</b><span>audit findings worth fixing</span></div>
+    </div>
+    <nav aria-label="On this page">
+      <a href="#journey">The journey</a>
+      <a href="#findings">What needs attention</a>
+      <a href="#under-the-hood">Under the hood</a>
+      <a href="#outside">Outside connections</a>
+      <a href="#files">Where things live</a>
+      <a href="#next">What to do next</a>
+    </nav>
+  </header>
+
+  <section id="journey" aria-labelledby="journey-h">
+    <span class="eyebrow">Part 1</span>
+    <h2 id="journey-h">The journey from brief to video</h2>
+    <p class="section-intro">Every run goes through the same ten stages, in order. They fall into four phases: write the words, give them a voice, make the pictures, then add music and put it all together.</p>
+
+    <div class="phases">
+      <article class="phase words">
+        <header><h3>Write the words</h3><p>Turn an idea into a script and a shot list.</p></header>
+        <ol class="steps">
+          <li><span class="num">1</span><h4>Brief</h4><p>Reads what you want the video to be from <code>brief.md</code>.</p></li>
+          <li><span class="num">2</span><h4>Script</h4><p>Writes the narration lines.</p><span class="uses">Uses a text AI (Gemini, Claude or Codex)</span></li>
+          <li><span class="num">3</span><h4>Translation</h4><p>Writes the Amharic version, then translates it back to catch drift.</p><span class="uses">Uses a text AI</span></li>
+          <li><span class="num">4</span><h4>Storyboard</h4><p>Splits the script into shots, each with a camera move.</p><span class="uses">Uses a text AI and the project bible</span></li>
+        </ol>
+      </article>
+
+      <article class="phase voice">
+        <header><h3>Give it a voice</h3><p>Record the narration and make the timing fit.</p></header>
+        <ol class="steps" start="5">
+          <li><span class="num">5</span><h4>Narration</h4><p>Speaks each line in each language and measures how long it takes.</p><span class="uses">Uses Edge TTS (English), Addis AI (Amharic)</span></li>
+          <li><span class="num">6</span><h4>Fit planning</h4><p>Matches each shot's length to its narration, using a small speed change or an extra clip.</p></li>
+        </ol>
+      </article>
+
+      <article class="phase picture">
+        <header><h3>Make the pictures</h3><p>Draw a still for every shot, then bring it to life.</p></header>
+        <ol class="steps" start="7">
+          <li><span class="num">7</span><h4>Keyframes</h4><p>Draws one still per shot, using the bible's character and location references.</p><span class="uses">Uses FLUX.2 in ComfyUI</span></li>
+          <li><span class="num">8</span><h4>Moving shots</h4><p>Animates each still. A longer shot continues from the previous clip's last frame.</p><span class="uses">Uses Wan 2.2 in ComfyUI</span></li>
+        </ol>
+      </article>
+
+      <article class="phase sound">
+        <header><h3>Score and finish</h3><p>Add music and assemble the final cut.</p></header>
+        <ol class="steps" start="9">
+          <li><span class="num">9</span><h4>Music</h4><p>Composes an instrumental score long enough for the longest version.</p><span class="uses">Uses ACE-Step in ComfyUI</span></li>
+          <li><span class="num">10</span><h4>Assembly</h4><p>Joins the clips, lowers the music under the voice and burns in subtitles. One MP4 and SRT per language.</p><span class="uses">Uses FFmpeg</span></li>
+        </ol>
+      </article>
+    </div>
+
+    <div class="helpers">
+      <h3>Behind every stage</h3>
+      <ul>
+        <li><strong>The runner</strong> <span>decides the order, pauses for your approval, and handles partial runs and single-shot redos.</span></li>
+        <li><strong>The provider registry and doctor</strong> <span>pick the tool your YAML names for each stage, and check that tool is actually installed.</span></li>
+        <li><strong>The ledger</strong> <span>remembers what each stage made, from which inputs, so unchanged work is reused.</span></li>
+        <li><strong>The ComfyUI adapter</strong> <span>sends image, video and music jobs to ComfyUI, retries failures and frees GPU memory.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="findings" aria-labelledby="findings-h">
+    <span class="eyebrow">Part 2</span>
+    <h2 id="findings-h">What needs attention</h2>
+    <p class="section-intro">The audit found five problems. Two are high priority because they can silently produce wrong output. Each one below says what happens, why it matters, and what to change.</p>
+
+    <div class="findings">
+      <article class="finding">
+        <header><span class="badge high">High</span><h3>Changed files can be reused as if nothing changed</h3></header>
+        <div class="qa">
+          <div><h4>What happens</h4><p>When deciding to reuse an output, Vidpipe checks its inputs and that the file exists, but not that the file's contents still match. Replacing a file with different bytes of the same size was still reused.</p></div>
+          <div><h4>The fix</h4><p>Check the stored hash before reusing an output, write outputs atomically, and give deliberate translation edits their own path.</p></div>
+        </div>
+        <div class="chips" aria-label="Affected parts"><span class="chip">All ten stages</span><span class="chip">Ledger</span></div>
+        <p class="src">Code: <a href="../src/vidpipe/artifacts.py">artifact store</a></p>
+      </article>
+
+      <article class="finding">
+        <header><span class="badge high">High</span><h3>Two runs at once can lose work</h3></header>
+        <div class="qa">
+          <div><h4>What happens</h4><p>Two runs on the same project each saved a ledger record, and only the second survived. The demo script locks the GPU for its own callers, but the main CLI doesn't, so runs can still overlap on ComfyUI.</p></div>
+          <div><h4>The fix</h4><p>Allow only one writer per project across run, redo and approve, and coordinate GPU work per ComfyUI server.</p></div>
+        </div>
+        <div class="chips" aria-label="Affected parts"><span class="chip">All ten stages</span><span class="chip">Runner</span><span class="chip">Ledger</span><span class="chip">ComfyUI adapter</span></div>
+        <p class="src">Code: <a href="../src/vidpipe/artifacts.py">ledger</a> · <a href="../examples/coffee-origin/run-gpu.ps1">GPU wrapper</a> · <a href="../src/vidpipe/comfy/provider.py">ComfyUI lifecycle</a></p>
+      </article>
+
+      <article class="finding">
+        <header><span class="badge medium">Medium</span><h3>Narration can only use one voice tool</h3></header>
+        <div class="qa">
+          <div><h4>What happens</h4><p>The narration stage picks one adapter for every language. The Addis adapter works around this by passing English to Edge TTS, so the doctor only checked Edge and missed a missing Addis key.</p></div>
+          <div><h4>The fix</h4><p>Let the config pick a voice provider per language (keeping today's single setting as the default), and let each adapter declare what it needs.</p></div>
+        </div>
+        <div class="chips" aria-label="Affected parts"><span class="chip">Narration</span><span class="chip">Fit planning</span><span class="chip">Assembly</span><span class="chip">Doctor</span></div>
+        <p class="src">Code: <a href="../src/vidpipe/stages.py">narration stage</a> · <a href="../src/vidpipe/providers/addis.py">Addis adapter</a> · <a href="../src/vidpipe/doctor.py">doctor</a></p>
+      </article>
+
+      <article class="finding">
+        <header><span class="badge medium">Medium</span><h3>Partial runs check stages they won't run</h3></header>
+        <div class="qa">
+          <div><h4>What happens</h4><p><code>plan --until brief</code> failed because the music provider was misconfigured, even though music wasn't part of the run. The planner checks every stage before looking at the requested range.</p></div>
+          <div><h4>The fix</h4><p>Only resolve providers for the stages being run, and use that resolved plan during execution.</p></div>
+        </div>
+        <div class="chips" aria-label="Affected parts"><span class="chip">Brief</span><span class="chip">Music</span><span class="chip">Runner</span><span class="chip">Provider registry</span></div>
+        <p class="src">Code: <a href="../src/vidpipe/pipeline.py">plan and provider resolution</a></p>
+      </article>
+
+      <article class="finding">
+        <header><span class="badge medium">Medium</span><h3>Style text leaks into unrelated shots</h3></header>
+        <div class="qa">
+          <div><h4>What happens</h4><p>The bible's style description goes into every storyboard and keyframe prompt. When it mentioned brewing, unrelated keyframes gained inset brewing images. A plain full-frame style description cleared them.</p></div>
+          <div><h4>The fix</h4><p>Keep only the look (lighting, lens, treatment) in the bible, describe each action in its own shot, and review stills before animating.</p></div>
+        </div>
+        <div class="chips" aria-label="Affected parts"><span class="chip">Storyboard</span><span class="chip">Keyframes</span><span class="chip">Moving shots</span></div>
+        <p class="src">Code: <a href="../src/vidpipe/stages.py">storyboard prompt</a> · <a href="../src/vidpipe/bible.py">keyframe prompt</a></p>
+      </article>
+    </div>
+  </section>
+
+  <section id="under-the-hood" aria-labelledby="hood-h">
+    <span class="eyebrow">Part 3</span>
+    <h2 id="hood-h">Under the hood: what a run actually does</h2>
+    <p class="section-intro">Six things happen every time you type <code>vidpipe run</code>. Open the details for the function names.</p>
+
+    <ol class="timeline">
+      <li><div><h3>It reads your project and makes a plan</h3><p>The project folder is loaded, a tool is picked for each stage, and it checks each tool can do what the stage needs.</p>
+        <details><summary>Details</summary><p><code>cli.main()</code> parses the command. <code>Project</code> loads the YAML and roots all paths. <code>pipeline.plan()</code> builds adapters from the registry and checks capabilities. <code>plan --json</code> adds a time and cost estimate.</p></details></div></li>
+      <li><div><h3>It runs the stages one by one</h3><p>Each stage reads the previous stage's files and writes its own. Where you've asked for approval, it pauses.</p>
+        <details><summary>Details</summary><p><code>pipeline.run()</code> creates a stage context. Stages read typed models from <code>build/</code> and register work through <code>StageContext.produce()</code>. The manifest tracks stage status, and approvals are tied to hashes of the approved outputs.</p></details></div></li>
+      <li><div><h3>It skips anything already made</h3><p>Before generating, it checks whether the same inputs already produced an output. A redo of one shot only changes that shot.</p>
+        <details><summary>Details</summary><p>The store fingerprints upstream files and values, provider identity and options, parameters and seed. It records file hashes, wall time, GPU time and retries. Redo bumps a shot's seed counter, so only that keyframe and its clips change.</p></details></div></li>
+      <li><div><h3>It fits the voice to the picture</h3><p>Using the real narration lengths, it splits lines at natural pauses and decides each shot's speed or whether it needs an extra clip.</p>
+        <details><summary>Details</summary><p>Shared visuals can serve both languages with per-language timings. A continuation clip starts from the final frame FFmpeg extracts from the previous clip.</p></details></div></li>
+      <li><div><h3>It sends media jobs to ComfyUI</h3><p>Image, video and music jobs are ComfyUI graphs. Vidpipe fills in the prompt, seed and images, waits for the result and retries if needed.</p>
+        <details><summary>Details</summary><p>A YAML mapping names each graph's inputs, outputs, capabilities and retry settings. The job runner polls ComfyUI, collects outputs, records attempts, and can step down once after running out of GPU memory.</p></details></div></li>
+      <li><div><h3>It assembles one video per language</h3><p>FFmpeg joins the shots, lowers the music under the voice and adds subtitles.</p>
+        <details><summary>Details</summary><p>The stage builds an <code>AssemblyJob</code> from the fit plan and media indexes. FFmpeg trims, retimes and joins shots, ducks the score and renders subtitles, with SRT sidecars next to each MP4.</p></details></div></li>
+    </ol>
+  </section>
+
+  <section id="outside" aria-labelledby="outside-h">
+    <span class="eyebrow">Part 4</span>
+    <h2 id="outside-h">Who Vidpipe talks to</h2>
+    <p class="section-intro">Eight connections cross the boundary of Vidpipe. They're grouped by who is on the other side.</p>
+
+    <div class="group">
+      <h3>You</h3>
+      <p>How you drive Vidpipe and what you get back.</p>
+      <div class="cards">
+        <article class="card"><h4>Command line</h4><dl>
+          <dt>Does</dt><dd><code>run</code>, <code>plan</code>, <code>doctor</code>, <code>redo shot</code>, <code>approve</code></dd>
+          <dt>How</dt><dd>Project path and flags in; reports on stdout, errors on stderr, status as the exit code. <code>plan --json</code> gives structured output.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/cli.py">cli.py</a></p></article>
+        <article class="card"><h4>Project folder</h4><dl>
+          <dt>In</dt><dd>Markdown brief, YAML config and bible, optional reference images.</dd>
+          <dt>Out</dt><dd>Working files in <code>build/</code>; one MP4 and SRT per language in <code>out/</code>.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/project.py">project.py</a> · <a href="../src/vidpipe/models.py">models.py</a></p></article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Online AI services</h3>
+      <p>Writing and speaking happen through services on the internet.</p>
+      <div class="cards">
+        <article class="card"><h4>Gemini CLI, Claude Code, Codex CLI</h4><dl>
+          <dt>Does</dt><dd>Script, storyboard, translation and its back-check.</dd>
+          <dt>How</dt><dd>Runs the signed-in CLI in an empty temp folder, sends the prompt on stdin, reads JSON or text back (Codex can also use a scratch file), then validates it against the stage's schema.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/providers/cli_text.py">cli_text.py</a> · <a href="../src/vidpipe/translate.py">translate.py</a></p></article>
+        <article class="card"><h4>Microsoft Edge TTS</h4><dl>
+          <dt>Does</dt><dd>English and Amharic narration by default.</dd>
+          <dt>How</dt><dd>The <code>edge-tts</code> library sends text, voice and prosody over the network; the MP3 is saved and measured locally.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/providers/edge.py">edge.py</a></p></article>
+        <article class="card"><h4>Addis Voices 2</h4><dl>
+          <dt>Does</dt><dd>Amharic narration in this checkout; English still goes to Edge.</dd>
+          <dt>How</dt><dd>HTTPS JSON to <code>POST /api/v1/voice/generations</code> with the <code>ADDIS_API_KEY</code> header and a stable request ID per clip. The MP3 comes from a signed URL, fetched without the key.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/providers/addis.py">addis.py</a></p></article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Local engines on this machine</h3>
+      <p>Pictures, motion, music and the final cut are made locally.</p>
+      <div class="cards">
+        <article class="card"><h4>ComfyUI</h4><dl>
+          <dt>Does</dt><dd>FLUX.2 stills, Wan moving shots, ACE-Step music.</dd>
+          <dt>How</dt><dd>HTTP: images to <code>/upload/image</code>, graphs to <code>/prompt</code>, polling <code>/history/{id}</code> and <code>/queue</code>, files from <code>/view</code>. Can cancel and free memory; the doctor reads its node and model lists.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/comfy/client.py">comfy/client.py</a> · <a href="workflows/README.md">workflow format</a></p></article>
+        <article class="card"><h4>FFmpeg and ffprobe</h4><dl>
+          <dt>Does</dt><dd>Final assembly, last-frame extraction, checking clip lengths.</dd>
+          <dt>How</dt><dd>Local programs found through <code>VIDPIPE_FFMPEG_DIR</code> or <code>PATH</code>, given file paths and filter arguments; ffprobe returns media details as data.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/assembly.py">assembly.py</a> · <a href="../src/vidpipe/providers/comfy_i2v.py">comfy_i2v.py</a></p></article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Other developers</h3>
+      <p>Ways to use or extend Vidpipe from code.</p>
+      <div class="cards">
+        <article class="card"><h4>Python API and plugins</h4><dl>
+          <dt>Does</dt><dd>Call <code>plan()</code>, <code>run()</code>, <code>redo()</code>, <code>approve()</code> directly, or add new providers.</dd>
+          <dt>How</dt><dd>Plugins register through the <code>vidpipe.providers</code> entry-point group and exchange typed requests, results and capabilities. The song contract exists but only has a fake adapter so far.</dd>
+        </dl><p class="src"><a href="../src/vidpipe/pipeline.py">pipeline.py</a> · <a href="../src/vidpipe/contracts.py">contracts.py</a> · <a href="../src/vidpipe/registry.py">registry.py</a></p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="files" aria-labelledby="files-h">
+    <span class="eyebrow">Part 5</span>
+    <h2 id="files-h">Where things live</h2>
+    <p class="section-intro">The repository at a glance. Open a folder to see each file and what it's for.</p>
+
+    <div class="tree">
+      <details open>
+        <summary><strong>src/vidpipe/</strong><span>The pipeline itself</span></summary>
+        <ul>
+          <li><a href="../src/vidpipe/__init__.py"><code>__init__.py</code></a><span>Package version and metadata.</span></li>
+          <li><a href="../src/vidpipe/__main__.py"><code>__main__.py</code></a><span>Lets <code>python -m vidpipe</code> run the CLI.</span></li>
+          <li><a href="../src/vidpipe/cli.py"><code>cli.py</code></a><span>Reads commands, asks for approvals, prints results.</span></li>
+          <li><a href="../src/vidpipe/pipeline.py"><code>pipeline.py</code></a><span>Plans and runs stages; handles approvals and shot redo.</span></li>
+          <li><a href="../src/vidpipe/stages.py"><code>stages.py</code></a><span>The ten stages themselves.</span></li>
+          <li><a href="../src/vidpipe/project.py"><code>project.py</code></a><span>Loads the project and knows where files go.</span></li>
+          <li><a href="../src/vidpipe/config.py"><code>config.py</code></a><span>Checks the YAML: providers, languages, visuals, render settings.</span></li>
+          <li><a href="../src/vidpipe/models.py"><code>models.py</code></a><span>Shapes of saved data: scripts, shots, timing plans, indexes.</span></li>
+          <li><a href="../src/vidpipe/contracts.py"><code>contracts.py</code></a><span>What every provider must accept, return and declare.</span></li>
+          <li><a href="../src/vidpipe/registry.py"><code>registry.py</code></a><span>Lists built-in providers and finds installed plugins.</span></li>
+          <li><a href="../src/vidpipe/chain.py"><code>chain.py</code></a><span>Builds provider choices and text fallback chains.</span></li>
+          <li><a href="../src/vidpipe/artifacts.py"><code>artifacts.py</code></a><span>The ledger: fingerprints, reuse, timings and rerolls.</span></li>
+          <li><a href="../src/vidpipe/gates.py"><code>gates.py</code></a><span>Saves approvals tied to the approved output.</span></li>
+          <li><a href="../src/vidpipe/doctor.py"><code>doctor.py</code></a><span>Checks tools, fonts, ComfyUI and dependencies.</span></li>
+          <li><a href="../src/vidpipe/text.py"><code>text.py</code></a><span>Validates AI text replies and handles fallbacks.</span></li>
+          <li><a href="../src/vidpipe/translate.py"><code>translate.py</code></a><span>Translation and the back-translation check.</span></li>
+          <li><a href="../src/vidpipe/bible.py"><code>bible.py</code></a><span>Style, cast and references; builds keyframe prompts.</span></li>
+          <li><a href="../src/vidpipe/fit.py"><code>fit.py</code></a><span>Works out speed, clip lengths and extra clips.</span></li>
+          <li><a href="../src/vidpipe/fit_inputs.py"><code>fit_inputs.py</code></a><span>Gathers what the fit planner and estimates need.</span></li>
+          <li><a href="../src/vidpipe/segmentation.py"><code>segmentation.py</code></a><span>Finds natural pauses to split narration.</span></li>
+          <li><a href="../src/vidpipe/estimate.py"><code>estimate.py</code></a><span>Time and cost forecasts for <code>plan</code>.</span></li>
+          <li><a href="../src/vidpipe/assembly.py"><code>assembly.py</code></a><span>Runs FFmpeg for frames, mixing and the final render.</span></li>
+          <li><a href="../src/vidpipe/subtitles.py"><code>subtitles.py</code></a><span>Subtitle timing, SRT files and fonts.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>src/vidpipe/comfy/</strong><span>Talking to ComfyUI</span></summary>
+        <ul>
+          <li><a href="../src/vidpipe/comfy/__init__.py"><code>__init__.py</code></a><span>Marks the package.</span></li>
+          <li><a href="../src/vidpipe/comfy/client.py"><code>client.py</code></a><span>Uploads, submits, polls and downloads over HTTP.</span></li>
+          <li><a href="../src/vidpipe/comfy/jobs.py"><code>jobs.py</code></a><span>Retries, cancellation and the one out-of-memory step-down.</span></li>
+          <li><a href="../src/vidpipe/comfy/provider.py"><code>provider.py</code></a><span>Shared base for image, video and music providers.</span></li>
+          <li><a href="../src/vidpipe/comfy/workflow.py"><code>workflow.py</code></a><span>Reads mappings and fills in graph inputs.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>src/vidpipe/providers/</strong><span>One adapter per outside tool</span></summary>
+        <ul>
+          <li><a href="../src/vidpipe/providers/__init__.py"><code>__init__.py</code></a><span>Loads the built-in adapters.</span></li>
+          <li><a href="../src/vidpipe/providers/cli_text.py"><code>cli_text.py</code></a><span>Gemini, Claude and Codex as text providers.</span></li>
+          <li><a href="../src/vidpipe/providers/edge.py"><code>edge.py</code></a><span>Edge TTS narration.</span></li>
+          <li><a href="../src/vidpipe/providers/addis.py"><code>addis.py</code></a><span>Addis Voices 2 for Amharic; English goes to Edge.</span></li>
+          <li><a href="../src/vidpipe/providers/comfy_keyframer.py"><code>comfy_keyframer.py</code></a><span>FLUX.2 stills with bible references.</span></li>
+          <li><a href="../src/vidpipe/providers/comfy_i2v.py"><code>comfy_i2v.py</code></a><span>Wan animation; checks the clips it gets back.</span></li>
+          <li><a href="../src/vidpipe/providers/comfy_music.py"><code>comfy_music.py</code></a><span>ACE-Step instrumental music.</span></li>
+          <li><a href="../src/vidpipe/providers/fakes.py"><code>fakes.py</code></a><span>Fast fake providers for tests, including the song stub.</span></li>
+          <li><a href="../src/vidpipe/providers/_audio.py"><code>_audio.py</code></a><span>Measures audio length without FFmpeg.</span></li>
+          <li><a href="../src/vidpipe/providers/_media.py"><code>_media.py</code></a><span>Makes tiny test media for the fakes.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>workflows/</strong><span>ComfyUI graphs and how to fill them</span></summary>
+        <ul>
+          <li><a href="workflows/README.md"><code>README.md</code></a><span>How mappings and graphs work.</span></li>
+          <li><a href="workflows/keyframe_flux2_klein_4b.mapping.yaml"><code>keyframe_flux2_klein_4b.mapping.yaml</code></a><span>Keyframe mapping; picks a graph by reference count.</span></li>
+          <li><a href="workflows/keyframe_flux2_klein_4b_t2i.json"><code>keyframe_flux2_klein_4b_t2i.json</code></a><span>Still from text only.</span></li>
+          <li><a href="workflows/keyframe_flux2_klein_4b_ref1.json"><code>keyframe_flux2_klein_4b_ref1.json</code></a><span>Still with one reference image.</span></li>
+          <li><a href="workflows/keyframe_flux2_klein_4b_ref2.json"><code>keyframe_flux2_klein_4b_ref2.json</code></a><span>Still with two reference images.</span></li>
+          <li><a href="workflows/video_wan22_ti2v_5b.mapping.yaml"><code>video_wan22_ti2v_5b.mapping.yaml</code></a><span>Video mapping, clip limits and resolution fallback.</span></li>
+          <li><a href="workflows/video_wan22_ti2v_5b.json"><code>video_wan22_ti2v_5b.json</code></a><span>Wan image-to-video graph.</span></li>
+          <li><a href="workflows/music_ace_step.mapping.yaml"><code>music_ace_step.mapping.yaml</code></a><span>Music mapping and duration limits.</span></li>
+          <li><a href="workflows/music_ace_step.json"><code>music_ace_step.json</code></a><span>ACE-Step instrumental graph.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>tests/</strong><span>Proof that it works</span></summary>
+        <ul>
+          <li><a href="tests/__init__.py"><code>__init__.py</code></a><span>Marks the package.</span></li>
+          <li><a href="tests/conftest.py"><code>conftest.py</code></a><span>Temporary projects and FFmpeg-aware fixtures.</span></li>
+          <li><a href="tests/cli_text_fixtures.py"><code>cli_text_fixtures.py</code></a><span>Fixtures for the text CLIs.</span></li>
+          <li><a href="tests/fake_cli.py"><code>fake_cli.py</code></a><span>A stand-in text CLI.</span></li>
+          <li><a href="tests/fake_comfyui.py"><code>fake_comfyui.py</code></a><span>A stand-in ComfyUI server.</span></li>
+          <li><a href="tests/recording.py"><code>recording.py</code></a><span>Records provider calls for checking.</span></li>
+          <li><a href="tests/test_assembly.py"><code>test_assembly.py</code></a><span>Renders, subtitles and the sound mix.</span></li>
+          <li><a href="tests/test_comfy_config.py"><code>test_comfy_config.py</code></a><span>ComfyUI settings and graph choice.</span></li>
+          <li><a href="tests/test_comfy_failures.py"><code>test_comfy_failures.py</code></a><span>Failures, retries and cancelling.</span></li>
+          <li><a href="tests/test_comfy_integration.py"><code>test_comfy_integration.py</code></a><span>Live keyframes on a real ComfyUI.</span></li>
+          <li><a href="tests/test_comfy_music.py"><code>test_comfy_music.py</code></a><span>Music, fake and live.</span></li>
+          <li><a href="tests/test_comfy_video.py"><code>test_comfy_video.py</code></a><span>Clips, continuations and recovery.</span></li>
+          <li><a href="tests/test_comfy_video_integration.py"><code>test_comfy_video_integration.py</code></a><span>Live Wan clips and continuations.</span></li>
+          <li><a href="tests/test_doctor.py"><code>test_doctor.py</code></a><span>Dependency checks.</span></li>
+          <li><a href="tests/test_fit_plan.py"><code>test_fit_plan.py</code></a><span>Timing, speed and extra clips.</span></li>
+          <li><a href="tests/test_gates.py"><code>test_gates.py</code></a><span>Approvals.</span></li>
+          <li><a href="tests/test_keyframes_bible.py"><code>test_keyframes_bible.py</code></a><span>References and per-shot keyframes.</span></li>
+          <li><a href="tests/test_narration_edge_tts.py"><code>test_narration_edge_tts.py</code></a><span>Edge narration and timing.</span></li>
+          <li><a href="tests/test_pipeline.py"><code>test_pipeline.py</code></a><span>Full run with fake providers.</span></li>
+          <li><a href="tests/test_plan_dry_run.py"><code>test_plan_dry_run.py</code></a><span>Plans and estimates, with no generation.</span></li>
+          <li><a href="tests/test_resume.py"><code>test_resume.py</code></a><span>Reuse, invalidation and resuming.</span></li>
+          <li><a href="tests/test_text_stages.py"><code>test_text_stages.py</code></a><span>Script and storyboard checks.</span></li>
+          <li><a href="tests/test_translation.py"><code>test_translation.py</code></a><span>Translation and drift review.</span></li>
+          <li><a href="tests/conformance/__init__.py"><code>conformance/__init__.py</code></a><span>Marks the contract tests.</span></li>
+          <li><a href="tests/conformance/suites.py"><code>conformance/suites.py</code></a><span>Shared checks every provider must pass.</span></li>
+          <li><a href="tests/conformance/test_cli_text.py"><code>conformance/test_cli_text.py</code></a><span>Text CLIs against the shared checks.</span></li>
+          <li><a href="tests/conformance/test_comfy_keyframer.py"><code>conformance/test_comfy_keyframer.py</code></a><span>The ComfyUI keyframer contract.</span></li>
+          <li><a href="tests/conformance/test_cost_model.py"><code>conformance/test_cost_model.py</code></a><span>Declared time and cost estimates.</span></li>
+          <li><a href="tests/conformance/test_providers.py"><code>conformance/test_providers.py</code></a><span>Every registered provider.</span></li>
+          <li><a href="tests/conformance/test_translation_text.py"><code>conformance/test_translation_text.py</code></a><span>Translation through text providers.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>examples/</strong><span>Projects you can run</span></summary>
+        <ul>
+          <li><a href="../examples/sample/brief.md"><code>sample/brief.md</code></a><span>Story for the no-GPU sample.</span></li>
+          <li><a href="../examples/sample/vidpipe.yaml"><code>sample/vidpipe.yaml</code></a><span>Uses fake providers.</span></li>
+          <li><a href="../examples/sample/bible.yaml"><code>sample/bible.yaml</code></a><span>Sample cast, places and style.</span></li>
+          <li><a href="../examples/sample/bible/protagonist.jpg"><code>sample/bible/protagonist.jpg</code></a><span>Sample character reference.</span></li>
+          <li><a href="../examples/coffee-origin/README.md"><code>coffee-origin/README.md</code></a><span>How to run the real bilingual demo.</span></li>
+          <li><a href="../examples/coffee-origin/brief.md"><code>coffee-origin/brief.md</code></a><span>The coffee-origin story.</span></li>
+          <li><a href="../examples/coffee-origin/vidpipe.yaml"><code>coffee-origin/vidpipe.yaml</code></a><span>Uses the real providers.</span></li>
+          <li><a href="../examples/coffee-origin/bible.yaml"><code>coffee-origin/bible.yaml</code></a><span>The demo's look and cast.</span></li>
+          <li><a href="../examples/coffee-origin/run-gpu.ps1"><code>coffee-origin/run-gpu.ps1</code></a><span>Keeps demo runs from sharing the GPU at once.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>docs/ and root files</strong><span>Setup, decisions, fonts and config</span></summary>
+        <ul>
+          <li><a href="README.md"><code>README.md</code></a><span>Usage, commands and provider setup.</span></li>
+          <li><a href="AGENTS.md"><code>AGENTS.md</code></a><span>Instructions for coding agents.</span></li>
+          <li><a href="pyproject.toml"><code>pyproject.toml</code></a><span>Package info, CLI entry point and tool settings.</span></li>
+          <li><a href="uv.lock"><code>uv.lock</code></a><span>Pinned Python dependencies.</span></li>
+          <li><a href=".gitignore"><code>.gitignore</code></a><span>Keeps generated files out of git.</span></li>
+          <li><a href=".gitattributes"><code>.gitattributes</code></a><span>Git file settings.</span></li>
+          <li><a href="assets/icon.svg"><code>assets/icon.svg</code></a><span>Project icon.</span></li>
+          <li><a href="assets/fonts/NotoSansEthiopic-Regular.ttf"><code>assets/fonts/NotoSansEthiopic-Regular.ttf</code></a><span>Amharic subtitle font.</span></li>
+          <li><a href="assets/fonts/NotoSansEthiopic-Bold.ttf"><code>assets/fonts/NotoSansEthiopic-Bold.ttf</code></a><span>Amharic subtitle font, bold.</span></li>
+          <li><a href="assets/fonts/OFL.txt"><code>assets/fonts/OFL.txt</code></a><span>Font license.</span></li>
+          <li><a href="assets/fonts/README.md"><code>assets/fonts/README.md</code></a><span>About the fonts.</span></li>
+          <li><a href="docs/setup.md"><code>docs/setup.md</code></a><span>Installing tools and models; running the doctor.</span></li>
+          <li><a href="docs/agents/domain.md"><code>docs/agents/domain.md</code></a><span>Domain docs convention.</span></li>
+          <li><a href="docs/agents/issue-tracker.md"><code>docs/agents/issue-tracker.md</code></a><span>Issue tracker convention.</span></li>
+          <li><a href="docs/agents/triage-labels.md"><code>docs/agents/triage-labels.md</code></a><span>Ticket labels.</span></li>
+          <li><a href="docs/adr/0001-keyframe-model.md"><code>docs/adr/0001-keyframe-model.md</code></a><span>Why FLUX.2 for keyframes, with measurements.</span></li>
+          <li><a href="docs/adr/assets/01-character-reference-sheet.jpg"><code>docs/adr/assets/01-character-reference-sheet.jpg</code></a><span>Character reference from the keyframe study.</span></li>
+          <li><a href="docs/adr/assets/02-five-shots-from-reference.jpg"><code>docs/adr/assets/02-five-shots-from-reference.jpg</code></a><span>Five shots from one reference.</span></li>
+          <li><a href="docs/adr/assets/03-ten-shot-soak-832x480.jpg"><code>docs/adr/assets/03-ten-shot-soak-832x480.jpg</code></a><span>Ten-shot soak test.</span></li>
+          <li><a href="docs/adr/assets/04-second-reference-location.jpg"><code>docs/adr/assets/04-second-reference-location.jpg</code></a><span>Two-reference location trial.</span></li>
+          <li><a href="docs/adr/assets/05-text-only-vs-with-reference.jpg"><code>docs/adr/assets/05-text-only-vs-with-reference.jpg</code></a><span>Text-only versus with a reference.</span></li>
+          <li><a href="docs/assets/keyframes-sample-project.jpg"><code>docs/assets/keyframes-sample-project.jpg</code></a><span>Sample project keyframes.</span></li>
+          <li><a href="docs/assets/keyframes-two-references.jpg"><code>docs/assets/keyframes-two-references.jpg</code></a><span>Keyframes with two references.</span></li>
+          <li><a href="architecture-audit.html"><code>architecture-audit.html</code></a><span>This page.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>.scratch/vidpipe/</strong><span>The spec and its fifteen tickets</span></summary>
+        <ul>
+          <li><a href=".scratch/vidpipe/spec.md"><code>spec.md</code></a><span>What the pipeline must do, and the decisions behind it.</span></li>
+          <li><a href=".scratch/vidpipe/issues/01-walking-skeleton.md"><code>issues/01-walking-skeleton.md</code></a><span>End-to-end run on fakes.</span></li>
+          <li><a href=".scratch/vidpipe/issues/02-artifact-hashing-resume.md"><code>issues/02-artifact-hashing-resume.md</code></a><span>Reuse and resume.</span></li>
+          <li><a href=".scratch/vidpipe/issues/03-gates-redo.md"><code>issues/03-gates-redo.md</code></a><span>Approvals and shot redo.</span></li>
+          <li><a href=".scratch/vidpipe/issues/04-fit-planner-plan.md"><code>issues/04-fit-planner-plan.md</code></a><span>Fit planning and dry runs.</span></li>
+          <li><a href=".scratch/vidpipe/issues/05-assembly-subtitles.md"><code>issues/05-assembly-subtitles.md</code></a><span>Assembly, ducking and subtitles.</span></li>
+          <li><a href=".scratch/vidpipe/issues/06-text-providers.md"><code>issues/06-text-providers.md</code></a><span>Script and storyboard providers.</span></li>
+          <li><a href=".scratch/vidpipe/issues/07-translation-amharic.md"><code>issues/07-translation-amharic.md</code></a><span>Amharic translation and drift review.</span></li>
+          <li><a href=".scratch/vidpipe/issues/08-edge-tts-narration.md"><code>issues/08-edge-tts-narration.md</code></a><span>Edge TTS narration.</span></li>
+          <li><a href=".scratch/vidpipe/issues/09-keyframe-spike.md"><code>issues/09-keyframe-spike.md</code></a><span>Keyframe model study.</span></li>
+          <li><a href=".scratch/vidpipe/issues/10-comfyui-keyframes-bible.md"><code>issues/10-comfyui-keyframes-bible.md</code></a><span>ComfyUI keyframes and the bible.</span></li>
+          <li><a href=".scratch/vidpipe/issues/11-image-to-video.md"><code>issues/11-image-to-video.md</code></a><span>Wan animation.</span></li>
+          <li><a href=".scratch/vidpipe/issues/12-continuation-oom.md"><code>issues/12-continuation-oom.md</code></a><span>Continuation clips and memory fallback.</span></li>
+          <li><a href=".scratch/vidpipe/issues/13-music-song.md"><code>issues/13-music-song.md</code></a><span>Music and the song stub.</span></li>
+          <li><a href=".scratch/vidpipe/issues/14-doctor-setup.md"><code>issues/14-doctor-setup.md</code></a><span>Doctor and setup guide.</span></li>
+          <li><a href=".scratch/vidpipe/issues/15-demo-run.md"><code>issues/15-demo-run.md</code></a><span>The bilingual demo.</span></li>
+        </ul>
+      </details>
+      <details>
+        <summary><strong>Made by a run</strong><span>Files that appear inside a project folder</span></summary>
+        <ul>
+          <li><span><code>build/brief.json</code>, <code>script.json</code>, <code>storyboard.json</code></span><span>The parsed brief, the script and the shot list.</span></li>
+          <li><span><code>build/translation/&lt;lang&gt;.json</code>, <code>.review.json</code></span><span>The translation and its back-check.</span></li>
+          <li><span><code>build/narration.json</code>, <code>build/narration/&lt;lang&gt;/</code></span><span>Narration clips and their lengths.</span></li>
+          <li><span><code>build/fit_plan.json</code></span><span>Per-shot clips, speeds and timings for each language.</span></li>
+          <li><span><code>build/keyframes.json</code>, <code>video.json</code>, <code>music.json</code></span><span>Indexes of the stills, clips and score.</span></li>
+          <li><span><code>build/ledger.json</code></span><span>What was made from what, plus reroll counts.</span></li>
+          <li><span><code>build/manifest.json</code>, <code>approvals.json</code></span><span>The last run's stage status and your approvals.</span></li>
+          <li><span><code>out/&lt;name&gt;_&lt;lang&gt;.mp4</code>, <code>.srt</code></span><span>The finished video and subtitles, per language.</span></li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <section id="next" aria-labelledby="next-h">
+    <div class="next">
+      <span class="eyebrow">Part 6</span>
+      <h2 id="next-h">What to do next</h2>
+      <ol>
+        <li><strong>Protect the outputs.</strong> Verify file hashes on reuse and allow only one writer per project.</li>
+        <li><strong>Scope partial runs.</strong> Only check the stages a run will actually touch.</li>
+        <li><strong>Make narration per-language.</strong> Pick a voice provider for each language.</li>
+        <li><strong>Keep reviewing stills before motion.</strong> It's the cheapest point to catch a bad shot.</li>
+      </ol>
+      <p class="src">Evidence comes from temporary test projects and a rerun of the realistic demo. The audit changed no pipeline code.</p>
+    </div>
+  </section>
+</main>
+</html>
