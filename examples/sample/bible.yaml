@@ -3,7 +3,7 @@
 # used where no picture is passed. Write in English. See "The project bible" in the README.
 style:
   description: >
-    Warm hand-painted storybook illustration, soft watercolour textures, gentle morning light.
+    Photorealistic live-action documentary footage, soft morning light, natural textures.
 characters:
   # The first character is the protagonist: the default for every shot.
   - id: protagonist

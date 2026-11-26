@@ -6,4 +6,4 @@ cup of coffee. Present it as folklore. Begin at dawn in the highlands and end
 with a steaming cup shared in the village. Keep the tone warm and curious.
 
 Use ten short, easily translated narration lines of roughly ten words each.
-Give each line a distinct visual moment for a hand-painted storybook treatment.
+Give each line a distinct visual moment that live-action footage can show simply.

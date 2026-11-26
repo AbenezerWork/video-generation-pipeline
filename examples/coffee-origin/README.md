@@ -22,7 +22,7 @@ uv sync --locked
 $demo = Join-Path $env:USERPROFILE '.t3\vidpipe-demos\coffee-origin'
 $env:VIDPIPE_FFMPEG_DIR = Join-Path $env:USERPROFILE '.t3\vidpipe-deps\ffmpeg\ffmpeg-9.1-essentials_build\bin'
 New-Item -ItemType Directory -Force $demo | Out-Null
-Copy-Item examples/coffee-origin/brief.md,examples/coffee-origin/vidpipe.yaml,examples/coffee-origin/bible.yaml,examples/coffee-origin/bible $demo -Recurse
+Copy-Item examples/coffee-origin/brief.md,examples/coffee-origin/vidpipe.yaml,examples/coffee-origin/bible.yaml $demo
 uv run --locked vidpipe doctor $demo
 ```
 
@@ -101,7 +101,7 @@ and output hashes match the original.
 ```powershell
 $swap = "$demo-provider-swap"
 New-Item -ItemType Directory -Force $swap, "$swap/build" | Out-Null
-Copy-Item $demo/brief.md,$demo/vidpipe.yaml,$demo/bible.yaml,$demo/bible $swap -Recurse
+Copy-Item $demo/brief.md,$demo/vidpipe.yaml,$demo/bible.yaml $swap
 Copy-Item $demo/build/brief.json,$demo/build/script.json,$demo/build/translation,$demo/build/storyboard.json,$demo/build/ledger.json "$swap/build" -Recurse
 # Edit $swap/vidpipe.yaml here, then run:
 uv run --locked vidpipe run $swap --until storyboard --auto
