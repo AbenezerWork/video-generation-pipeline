@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,9 +40,13 @@ TITLE = "vidpipe"
 AUTHOR = "Abenezer Workineh"
 DATE = "26 November 2026"
 DEMOS = Path.home() / ".t3" / "vidpipe-demos"
-FILM_16x9 = DEMOS / "lions-whisker-16x9" / "out" / "lions-whisker-16x9_am.mp4"
-FILM_9x16 = DEMOS / "lions-whisker-9x16" / "out" / "lions-whisker-9x16_am.mp4"
-SOURCE = DEMOS / "lions-whisker-16x9"
+SOURCE = DEMOS / "lions-whisker-final-16x9"
+PORTRAIT = DEMOS / "lions-whisker-final-9x16"
+FILM_16x9 = SOURCE / "out" / "lions-whisker-16x9_am.mp4"
+FILM_9x16 = PORTRAIT / "out" / "lions-whisker-9x16_am.mp4"
+RUN_COMMAND = "uv run --locked vidpipe run . --auto"
+DEMO_OUTPUT = "out/lions-whisker-16x9_en.mp4"
+DEMO_RECORD = "narration/en/shot_15"
 
 
 # --------------------------------------------------------------------------------------------- tools
@@ -73,6 +78,28 @@ def duration(path: Path) -> float:
         capture_output=True, text=True, check=True,
     )  # fmt: skip
     return float(out.stdout.strip())
+
+
+def wait_for_film() -> None:
+    deadline = time.monotonic() + 90 * 60
+    renders = ((SOURCE, FILM_16x9), (PORTRAIT, FILM_9x16))
+    while True:
+        pending = []
+        for project, film in renders:
+            try:
+                state = json.loads((project / "build/run_state.json").read_text(encoding="utf-8"))
+                status = state["status"]
+            except (FileNotFoundError, json.JSONDecodeError):
+                status = "state unavailable"
+            if status != "finished" or not film.is_file():
+                pending.append(f"{project.name}: {status}")
+        if not pending:
+            return
+        message = ", ".join(pending)
+        if time.monotonic() >= deadline:
+            sys.exit(f"final film inputs still unavailable after 90 minutes: {message}")
+        print(f"waiting for final film inputs ({message})", flush=True)
+        time.sleep(min(60, max(0, deadline - time.monotonic())))
 
 
 def digest(*parts: object) -> str:
@@ -122,13 +149,15 @@ async def _speak(text: str, mp3: Path) -> list[dict]:
     return words
 
 
-def speak(text: str, work: Path) -> Speech:
+def speak(text: str, work: Path, *, cached_only: bool = False) -> Speech:
     if not text:
         return Speech(None, 0.0, [])
     key = digest(text, VOICE, RATE)
     mp3, meta = work / "tts" / f"{key}.mp3", work / "tts" / f"{key}.json"
     mp3.parent.mkdir(parents=True, exist_ok=True)
-    if not meta.exists():
+    if not meta.is_file() or not mp3.is_file():
+        if cached_only:
+            sys.exit(f"walkthrough speech is missing from the cache: {key}")
         for attempt in range(3):
             try:
                 words = asyncio.run(_speak(text, mp3))
@@ -297,6 +326,9 @@ pre {{ margin: 0; font-size: 21px; line-height: 1.5; white-space: pre; }}
 .term .bar i {{ width: 14px; height: 14px; border-radius: 50%; background: var(--line-strong);
   display: inline-block; }}
 .term .body {{ padding: 22px 28px; font: 23px/1.48 var(--mono); white-space: pre; }}
+.research-example {{ margin: 0; flex: 1; }}
+.research-example figcaption {{ margin-bottom: 18px; font: 24px var(--mono); color: var(--muted); }}
+.research-example pre {{ white-space: pre-wrap; font-size: 23px; line-height: 1.38; }}
 .term .prompt {{ color: var(--done); }} .term .cmd {{ color: var(--text); font-weight: 600; }}
 .term .warn {{ color: var(--faint); }}
 .term .ran {{ color: var(--done); font-weight: 600; }}
@@ -438,12 +470,15 @@ class Beat:
 
 
 class Visuals:
-    def __init__(self, render: Renderer, capture: Path, work: Path) -> None:
+    def __init__(self, render: Renderer, capture: Path, first_attempt: Path, work: Path) -> None:
         self.r = render
         self.capture = capture
+        self.first_attempt = first_attempt
         self.work = work
         self.evidence = json.loads((capture / "evidence.json").read_text(encoding="utf-8"))
         self.project = Path(self.evidence["project"])
+        if self.evidence["run_code"]:
+            sys.exit("the successful capture must contain a completed edited run")
 
     # ------------------------------------------------------------------ helpers
 
@@ -457,7 +492,7 @@ class Visuals:
             ffmpeg("-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1", *scale, str(out))
         return out
 
-    def shot_start(self, fit_plan: Path, shot: int, lang: str = "am") -> float:
+    def shot_start(self, fit_plan: Path, shot: int, lang: str = "en") -> float:
         plan = json.loads(fit_plan.read_text(encoding="utf-8"))
         return sum(s["languages"][lang]["seconds"] for s in plan["shots"] if s["shot_id"] < shot)
 
@@ -494,7 +529,7 @@ class Visuals:
   <h2 style="max-width:980px;font-size:42px;color:var(--text)">A studio pipeline that turns a written brief into a narrated, scored, subtitled short film.</h2>
   <div class="row" style="gap:14px;margin-top:10px">
     <span class="badge">architecture</span><span class="badge">one hard decision</span>
-    <span class="badge ok">one shot regenerated live</span></div>
+    <span class="badge ok">one shot revoiced live</span></div>
   <div style="font:26px var(--mono);color:var(--muted);margin-top:24px">{esc(AUTHOR)} · {DATE}</div>
 </div>
 <div style="position:absolute;top:44px;right:56px;font:600 22px var(--mono);color:var(--paused);
@@ -533,7 +568,7 @@ class Visuals:
         phases = [
             ("words", "Write the words", ["Brief", "Script", "Translation", "Storyboard"],
              "text CLI · Claude"),
-            ("voice", "Give it a voice", ["Narration", "Fit planning"], "Edge TTS · fit planner"),
+            ("voice", "Give it a voice", ["Narration", "Fit planning"], "Addis AI · Edge TTS · fit planner"),
             ("picture", "Make the pictures", ["Keyframes", "Moving shots"],
              "FLUX.2 · Wan 2.2 (ComfyUI)"),
             ("sound", "Score and finish", ["Music", "Assembly"], "ACE-Step · FFmpeg"),
@@ -565,7 +600,7 @@ class Visuals:
             )
             project = (
                 f'<div class="panel{proj_dim}" style="width:250px{proj_ring}"><div class="label">project/</div>'
-                '<pre style="font-size:22px;line-height:1.75">brief.md\nvidpipe.yaml\nbible.yaml\nbible/*.png</pre></div>'
+                '<pre style="font-size:22px;line-height:1.75">brief.md\nvidpipe.yaml\nbible.yaml\nstoryboard.json</pre></div>'
             )
             outbox = (
                 f'<div class="panel{proj_dim if focus == "project" else (" dim" if focus and focus != "sound" and focus != "all" else "")}" style="width:250px">'
@@ -579,7 +614,7 @@ class Visuals:
 <div class="row" style="align-items:stretch;gap:18px">{project}{arrow}{"".join(cols)}{arrow}{outbox}</div>
 <div class="row{under_dim}" style="gap:18px">
   <div class="panel" style="flex:2;padding:18px 26px;font-size:25px"><b style="color:var(--accent)">build/ledger.json</b>
-   &nbsp;every artifact: input hash · provider · seed · GPU s · outputs → reuse what didn't change</div>
+   &nbsp;artifact inputs and outputs<br><b style="color:var(--accent)">runs.jsonl</b> &nbsp;model calls</div>
   <div class="panel" style="flex:1;padding:18px 26px;font-size:25px"><b style="color:var(--paused)">runner</b>
    &nbsp;gates · run state · one-run lock</div></div>
 </div>"""
@@ -606,7 +641,7 @@ class Visuals:
         yaml = (self.project / "vidpipe.yaml").read_text(encoding="utf-8")
         providers = yaml[yaml.index("providers:") : yaml.index("end_card")].rstrip()
         build = (
-            "build/\n  brief.json\n  script.json\n  translation/am.json\n  storyboard.json\n"
+            "storyboard.json\n\nbuild/\n  brief.json\n  script.json\n  translation/am.json\n  storyboard.json\n"
             "  narration.json\n  fit_plan.json\n  keyframes.json\n  video.json\n  music.json\n"
             "  ledger.json"
         )
@@ -637,7 +672,7 @@ class Visuals:
         return [
             Frame(slide("build")),
             Frame(slide("contracts"), "Every model"),
-            Frame(slide("yaml"), "Here"),
+            Frame(slide("yaml"), "Here Addis"),
             Frame(slide("yaml", badge=True), "Swapping"),
         ]
 
@@ -653,7 +688,7 @@ class Visuals:
             '# src/vidpipe/stages.py, narration stage\nkey = f"narration/{lang}/shot_{shot.id:02d}"\n'
             + produce
         )
-        record = dict(self.evidence["changed"]["narration/am/shot_15"]["after"])
+        record = dict(self.evidence["changed"][DEMO_RECORD]["after"])
         for k in ("stage", "provider_options", "fallback"):
             record.pop(k, None)
         rec = json.dumps(rounded(record), ensure_ascii=False, indent=2)
@@ -684,7 +719,7 @@ class Visuals:
         return [
             Frame(slide(0)),
             Frame(slide(1), "Same hash"),
-            Frame(slide(2), "That one mechanism"),
+            Frame(slide(2), "Runs dot JSON L"),
         ]
 
     def decision_problem(self) -> list[Frame]:
@@ -713,7 +748,7 @@ class Visuals:
 {order}{cost}{bars}</div>"""
             return self.r.png(markup)
 
-        return [Frame(slide(0)), Frame(slide(1), "But Wan"), Frame(slide(2), "In the sample")]
+        return [Frame(slide(0)), Frame(slide(1), "Wan generates"), Frame(slide(2), "In an earlier")]
 
     def decision_options(self) -> list[Frame]:
         options = [
@@ -760,9 +795,7 @@ class Visuals:
             return self.r.png(markup)
 
         return [
-            Frame(slide(1, False, False)),
-            Frame(slide(2, False, False), "I could stretch"),
-            Frame(slide(3, False, False), "Or render"),
+            Frame(slide(3, False, False)),
             Frame(slide(4, True, False), "Instead"),
             Frame(slide(4, True, True), "Only when"),
         ]
@@ -800,87 +833,108 @@ class Visuals:
             Frame(self.terminal("vidpipe plan · lions-whisker-16x9", lines(False), head)),
             Frame(
                 self.terminal("vidpipe plan · lions-whisker-16x9", lines(True), head),
-                "In The Lion's",
+                "Vidpipe plan",
             ),
         ]
+
+    def prompt_research(self) -> list[Frame]:
+        storyboard = json.loads((self.project / "storyboard.json").read_text(encoding="utf-8"))
+        shot = next(shot for shot in storyboard["shots"] if shot["id"] == 15)
+        markup = f"""
+<div class="slide">{header("01", "Architecture", "Prompt rules for the final cuts", "docs/research/model-strengths.md")}
+<div class="row">
+  <figure class="panel research-example">
+    <figcaption><b>FLUX.2 klein</b> · subject and framing first</figcaption>
+    <pre><code>{esc(shot["visual"])}</code></pre>
+  </figure>
+  <figure class="panel research-example">
+    <figcaption><b>Wan 2.2</b> · camera and motion</figcaption>
+    <pre><code>motion_type: {esc(shot["motion_type"])}
+
+{esc(shot["movement"])}</code></pre>
+  </figure>
+</div></div>"""
+        return [Frame(self.r.png(markup))]
 
     def demo_baseline(self) -> list[Frame]:
-        out = self.text("run_baseline.txt")
-        lines = [("prompt", "$ cd lions-whisker-16x9   # a scratch copy of the finished project"),
-                 ("prompt", "$ vidpipe run . --auto"), ("", "")] + self.run_lines(out)  # fmt: skip
-        head = header("03", "Live: change one line", "", "An unchanged re-run")
-        foot = (f'<div class="badge ok" style="align-self:flex-start">nothing changed → 10 of 10 '
-                f'stages skipped · {self.evidence["baseline_seconds"]:.0f} s</div>')  # fmt: skip
-        return [Frame(self.terminal("bash · lions-whisker-16x9", lines, head, foot))]
+        lines = [("prompt", f"$ {RUN_COMMAND}"), ("", "")]
+        lines += self.run_lines(self.text("run_baseline.txt"))
+        head = header(
+            "03", "Storyboard edit", "Unchanged rerun", "Final landscape project in a scratch copy"
+        )
+        foot = (
+            f'<div class="badge ok">10 stages skipped · 0 model calls · '
+            f"{self.evidence['baseline_seconds']:.1f} s</div>"
+        )
+        return [Frame(self.terminal("vidpipe · baseline", lines, head, foot))]
+
+    def demo_boundary(self) -> list[Frame]:
+        def read(name: str) -> str:
+            return (self.first_attempt / name).read_text(encoding="utf-8")
+
+        def fit(label: str) -> tuple[float, float]:
+            plan = json.loads(read(f"fit_plan_{label}.json"))
+            shot = next(shot for shot in plan["shots"] if shot["shot_id"] == 15)
+            clip = shot["visual_sets"]["shared"]["clips"][0]
+            return shot["languages"]["en"]["narration_s"], clip["seconds"]
+
+        before, after = fit("before"), fit("after")
+        diff = read("diff.txt").splitlines()
+        lines = [("prompt", f"$ {RUN_COMMAND}"), ("", "")]
+        lines += [
+            (style, line.strip())
+            for style, prefix in (("del", "- "), ("add", "+ "))
+            for line in diff
+            if line.startswith(prefix)
+        ]
+        lines += [
+            ("", ""),
+            ("", f"Shot 15 narration     {before[0]:.3f} s → {after[0]:.3f} s"),
+            ("", f"Requested video clip  {before[1]:.2f} s → {after[1]:.2f} s"),
+            ("", ""),
+        ]
+        lines += [("warn", line) for line in read("run_edit.txt").splitlines()]
+        lines += [("", ""), ("prompt", "runs.jsonl · artifact | provider | outcome | error")]
+        for row in read("runs_edit.jsonl").splitlines():
+            call = json.loads(row)
+            fields = [call["artifact"], call["model"] or call["provider"], call["outcome"]]
+            if call["error"]:
+                fields.append(call["error"])
+            lines.append(("", " | ".join(fields)))
+        head = header("03", "Storyboard edit", "First edit changed the clip duration")
+        return [Frame(self.terminal("vidpipe · first attempt", lines, head))]
 
     def demo_edit(self) -> list[Frame]:
-        diff = self.text("diff.txt").splitlines()
-        lines = [("prompt", "$ # edit one narration line: shot 15, the elder's advice"),
-                 ("prompt", "$ diff -u am.json.orig build/translation/am.json"), ("", "")]  # fmt: skip
-        for ln in diff:
-            cls = ("hunk" if ln.startswith("@@") else "del" if ln.startswith("-") and not ln.startswith("---")
-                   else "add" if ln.startswith("+") and not ln.startswith("+++") else "warn" if ln.startswith(("---", "+++")) else "")  # fmt: skip
-            lines.append((cls, ln))
-        old, new = self.evidence["old_line"], self.evidence["new_line"]
-        foot = f"""
-<div class="row" style="gap:22px">
- <div class="panel" style="flex:1"><div class="label" style="color:var(--failed)">before</div>
-  <div class="am" style="font-size:36px">{esc(old)}</div>
-  <div style="font-size:24px;color:var(--muted);margin-top:8px">"Be as patient with the boy as you were with the lion."</div></div>
- <div class="panel" style="flex:1"><div class="label" style="color:var(--done)">after</div>
-  <div class="am" style="font-size:36px">{esc(new)}</div>
-  <div style="font-size:24px;color:var(--muted);margin-top:8px">"As you were patient with the lion, be patient with the boy too."</div></div></div>"""
+        lines = []
+        for line in self.text("diff.txt").splitlines():
+            style = ""
+            if line.startswith("@@"):
+                style = "hunk"
+            elif line.startswith(("- ", "+ ")):
+                style = "del" if line.startswith("-") else "add"
+            lines.append((style, line))
         head = header(
-            "03", "Live: change one line", "", "The whole edit: one line of Amharic narration"
+            "03",
+            "Storyboard edit",
+            "One English line in shot 15",
+            "Fresh copy of the finished project",
         )
-        return [Frame(self.terminal("bash · lions-whisker-16x9", lines, head, foot))]
+        return [Frame(self.terminal("storyboard.json · unified diff", lines, head))]
 
     def demo_run(self) -> list[Frame]:
-        out = self.text("run_edit.txt")
-        base = [("prompt", "$ vidpipe run . --auto"), ("", "")] + self.run_lines(out)
-        head = header("03", "Live: change one line", "", "The same command again")
+        lines = [("prompt", f"$ {RUN_COMMAND}"), ("", "")]
+        for _, line in self.run_lines(self.text("run_edit.txt")):
+            style = "ran ranbox" if "ran (" in line else ""
+            if line.startswith(("keyframes", "video", "music")) and "skipped" in line:
+                style = "skipbox"
+            lines.append((style, line))
+        head = header("03", "Storyboard edit", "Rerun with the reworded line")
         e = self.evidence
-        steps = [
-            (None, set(), False, False),
-            ("Translation re-runs", {"translation"}, False, False),
-            ("Narration generates", {"translation", "narration"}, False, False),
-            ("The fit plan", {"translation", "narration", "fit-planning"}, False, False),
-            (
-                "assembly renders",
-                {"translation", "narration", "fit-planning", "assembly"},
-                False,
-                False,
-            ),
-            (
-                "Keyframes, video",
-                {"translation", "narration", "fit-planning", "assembly"},
-                True,
-                False,
-            ),
-            (
-                "Under a minute",
-                {"translation", "narration", "fit-planning", "assembly"},
-                True,
-                True,
-            ),
-        ]
-        frames = []
-        for cue, lit, skipped, badge in steps:
-            lines = []
-            for cls, text in base:
-                stage = text.split(" ")[0] if text else ""
-                if stage in lit and "ran (" in text:
-                    cls = "ran ranbox"
-                elif skipped and stage in {"keyframes", "video", "music"}:
-                    cls = "skipbox"
-                lines.append((cls, text))
-            foot = ""
-            if badge:
-                foot = (f'<div class="row" style="gap:16px"><span class="badge ok">exit 0 · {e["run_seconds"]:.0f} s</span>'
-                        f'<span class="badge ok">GPU time: {e["gpu_seconds"]:.0f} s</span>'
-                        '<span class="badge">keyframes · video · music: skipped</span></div>')  # fmt: skip
-            frames.append(Frame(self.terminal("bash · lions-whisker-16x9", lines, head, foot), cue))
-        return frames
+        foot = (
+            f'<div class="badge ok">exit {e["run_code"]} · {e["run_seconds"]:.1f} s · '
+            f"{e['gpu_seconds']:.0f} GPU seconds</div>"
+        )
+        return [Frame(self.terminal("vidpipe · edited run", lines, head, foot))]
 
     def demo_ledger(self) -> list[Frame]:
         e = self.evidence
@@ -917,8 +971,8 @@ class Visuals:
             r["wall_seconds"] = round(r["wall_seconds"], 2)
             return r
 
-        b = trim(e["changed"]["narration/am/shot_15"]["before"])
-        a = trim(e["changed"]["narration/am/shot_15"]["after"])
+        b = trim(e["changed"][DEMO_RECORD]["before"])
+        a = trim(e["changed"][DEMO_RECORD]["after"])
 
         def show(rec: dict, other: dict) -> str:
             text = json.dumps(rounded(rec), ensure_ascii=False, indent=2)
@@ -949,13 +1003,13 @@ class Visuals:
             return "\n".join(out)
 
         records = f"""
-<div class="slide">{header("03", "Live: change one line", "", "narration/am/shot_15 in build/ledger.json")}
+<div class="slide">{header("03", "Live: change one line", "", "narration/en/shot_15 in build/ledger.json")}
 <div class="row" style="flex:1;min-height:0">
  <div class="panel" style="flex:1;overflow:hidden"><div class="label">before</div><pre style="font-size:19px;line-height:1.38">{show(b, a)}</pre></div>
  <div class="panel" style="flex:1;overflow:hidden"><div class="label" style="color:var(--done)">after</div><pre style="font-size:19px;line-height:1.38">{show(a, b)}</pre></div>
 </div></div>"""
 
-        def count(prefix: str, suffix: str) -> tuple[int, int]:
+        def count(prefix: str, suffix: str | tuple[str, ...]) -> tuple[int, int]:
             files = [k for k in after_all if k.startswith(prefix) and k.endswith(suffix)]
             same = sum(1 for k in files if before_all.get(k) == after_all[k])
             return same, len(files)
@@ -963,7 +1017,7 @@ class Visuals:
         rows = [
             ("Keyframes", "build/keyframes/", ".png"),
             ("Video clips", "build/video/", ".mp4"),
-            ("Score", "build/music/", ".flac"),
+            ("Score", "build/music/", (".flac", ".wav", ".mp3")),
             ("Narration (en + am)", "build/narration/", ".mp3"),
             ("English cut", "out/lions-whisker-16x9_en", ".mp4"),
             ("Amharic cut", "out/lions-whisker-16x9_am", ".mp4"),
@@ -973,8 +1027,8 @@ class Visuals:
             same, total = count(prefix, suffix)
             new = total - same
             status = ('<b style="color:var(--reused)">unchanged</b>' if new == 0
-                      else f'<b style="color:var(--done)">{new} regenerated</b>')  # fmt: skip
-            trs.append(f'<tr><td>{name}</td><td style="font-family:var(--mono);color:var(--faint)">{prefix}*{suffix}</td>'
+                      else f'<b style="color:var(--done)">{new} changed</b>')  # fmt: skip
+            trs.append(f'<tr><td>{name}</td><td style="font-family:var(--mono);color:var(--faint)">{prefix}</td>'
                        f'<td style="font-family:var(--mono)">{same} / {total} identical</td><td>{status}</td></tr>')  # fmt: skip
         table = f"""
 <div class="slide">{header("03", "Live: change one line", "Byte for byte: what changed on disk")}
@@ -983,24 +1037,38 @@ class Visuals:
 {"".join(trs)}</table></div>
 <style>td{{padding:14px 10px;border-top:1px solid var(--line)}}</style>
 <div class="badge ok" style="align-self:flex-start">GPU time for the whole re-run: {e["gpu_seconds"]:.0f} s</div></div>"""
-        return [Frame(self.r.png(grid)), Frame(self.r.png(records), "Here's"),
-                Frame(self.r.png(table), "All sixteen")]  # fmt: skip
+        calls = "\n".join(
+            json.dumps(rounded(json.loads(line)), ensure_ascii=False, indent=2)
+            for line in self.text("runs_edit.jsonl").splitlines()
+        )
+        log = f"""
+<div class="slide">{header("03", "Storyboard edit", "One successful model call")}
+<figure class="panel research-example">
+<figcaption>runs.jsonl · expanded for legibility</figcaption>
+<pre><code>{highlight_data(calls)}</code></pre>
+</figure></div>"""
+        return [
+            Frame(self.r.png(log)),
+            Frame(self.r.png(records), "The ledger shows"),
+            Frame(self.r.png(grid), "a new audio duration"),
+            Frame(self.r.png(table), "The file hashes"),
+        ]
 
     def demo_result(self) -> list[Frame]:
         e = self.evidence
         stills = self.work / "stills"
         stills.mkdir(exist_ok=True)
-        old_start = self.shot_start(SOURCE / "build" / "fit_plan.json", 15)
-        new_start = self.shot_start(self.project / "build" / "fit_plan.json", 15)
-        old_png = self.still(FILM_16x9, old_start + 1.7, stills / "shot15-before.png")
-        new_png = self.still(self.project / "out" / "lions-whisker-16x9_am.mp4", new_start + 1.7,
+        old_start = self.shot_start(self.capture / "fit_plan_before.json", 15)
+        new_start = self.shot_start(self.capture / "fit_plan_after.json", 15)
+        old_png = self.still(SOURCE / DEMO_OUTPUT, old_start + 1.7, stills / "shot15-before.png")
+        new_png = self.still(self.project / DEMO_OUTPUT, new_start + 1.7,
                              stills / "shot15-after.png")  # fmt: skip
 
         def card(png: Path, label: str, color: str, line: str) -> str:
             return (f'<div style="flex:1;display:flex;flex-direction:column;gap:14px">'
                     f'<div class="label" style="color:{color};margin:0">{label}</div>'
-                    f'<img src="{png.as_uri()}" style="width:100%;border-radius:14px;border:1px solid var(--line)">'
-                    f'<div class="am" style="font-size:30px">{esc(line)}</div></div>')  # fmt: skip
+                    f'<img src="{png.as_uri()}" alt="Almaz seated by the fire in shot 15" width="1280" height="720" style="width:100%;height:auto;border-radius:14px;border:1px solid var(--line)">'
+                    f'<div style="font-size:30px">{esc(line)}</div></div>')  # fmt: skip
 
         markup = f"""
 <div class="slide">{header("03", "Live: change one line", "Shot 15, before and after")}
@@ -1009,8 +1077,8 @@ class Visuals:
         return [Frame(self.r.png(markup))]
 
     def demo_clip_seconds(self) -> tuple[float, float]:
-        start = self.shot_start(self.project / "build" / "fit_plan.json", 15)
-        end = self.shot_start(self.project / "build" / "fit_plan.json", 16)
+        start = self.shot_start(self.capture / "fit_plan_after.json", 15)
+        end = self.shot_start(self.capture / "fit_plan_after.json", 16)
         return start - 0.4, (end - start) + 1.2
 
     def demo_clip(self, seconds: float, work: Path) -> Path:
@@ -1018,11 +1086,11 @@ class Visuals:
         markup = """
 <div class="slide" style="padding-top:34px">
   <div class="kicker" style="justify-content:space-between;width:100%">
-    <span><span class="num">03</span>&nbsp; the regenerated Amharic cut, shot 15</span>
-    <span style="color:var(--faint)">out/lions-whisker-16x9_am.mp4</span></div></div>"""
+    <span><span class="num">03</span>&nbsp; the regenerated English cut, shot 15</span>
+    <span style="color:var(--faint)">out/lions-whisker-16x9_en.mp4</span></div></div>"""
         bg = self.r.png(markup)
         out = work / f"clip-{seconds:.2f}.mp4"
-        film = self.project / "out" / "lions-whisker-16x9_am.mp4"
+        film = self.project / DEMO_OUTPUT
         ffmpeg(
             "-loop", "1", "-t", f"{seconds:.3f}", "-i", str(bg),
             "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}", "-i", str(film),
@@ -1036,32 +1104,6 @@ class Visuals:
         )  # fmt: skip
         return out
 
-    def ui(self) -> list[Frame]:
-        def shot(png: str, title: str) -> Path:
-            markup = f"""
-<div class="slide" style="gap:18px;padding-top:40px">{header("04", "The console: vidpipe ui", "")}
-<div style="font-size:30px;color:var(--muted);margin-top:-8px">{title}</div>
-<img src="{(self.capture / png).as_uri()}" style="width:1424px;border-radius:14px;border:1px solid var(--line-strong);align-self:center;box-shadow:0 20px 60px rgba(0,0,0,.5)"></div>"""
-            return self.r.png(markup)
-
-        return [
-            Frame(shot("ui_run.png", "Run view after the re-run: 4 stages done, 6 reused")),
-            Frame(
-                shot(
-                    "ui_keyframes.png",
-                    "Each stage shows its outputs: keyframes, with redo per shot",
-                ),
-                "Each stage",
-            ),
-            Frame(
-                shot(
-                    "ui_config.png",
-                    "Config view: provider readiness, YAML preview, next-run estimate",
-                ),
-                "And the config",
-            ),
-        ]
-
     def close(self) -> list[Frame]:
         e = self.evidence
         markup = f"""
@@ -1074,7 +1116,7 @@ class Visuals:
     <div class="panel"><div class="label" style="color:var(--done)">live demo</div><div style="font-size:30px">one line edited → {len(e["records_changed"])} of {e["records_total"]} records redone, 0 GPU-s</div></div>
   </div>
   <div style="font:28px var(--mono);color:var(--muted)">github.com/AbenezerWork/video-generation-pipeline · experiments.md · docs/adr/</div>
-  <div style="font:22px var(--mono);color:var(--paused)">Made with AI: narration is a synthetic voice (Edge TTS, {VOICE}); film footage, music and voices by FLUX.2, Wan 2.2, ACE-Step and Edge TTS.</div>
+  <div style="font:22px var(--mono);color:var(--paused)">Made with AI: narration is a synthetic voice (Edge TTS, {VOICE}); Film AI tools: FLUX.2, Wan 2.2, ACE-Step, Addis AI and Edge TTS.</div>
 </div>"""
         return [Frame(self.r.png(markup))]
 
@@ -1168,11 +1210,28 @@ def srt_time(t: float) -> str:
     return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
 
 
+def frame_sheet(video: Path, sheet: Path, seconds: float) -> None:
+    step = seconds / 30
+    ffmpeg(
+        "-i", str(video), "-vf",
+        f"fps=1/{step:.6f}:start_time=0:round=up,scale=384:216,tile=6x5:padding=6:color=0x0b0c0f",
+        "-frames:v", "1", "-q:v", "3", str(sheet),
+    )  # fmt: skip
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--capture", type=Path, required=True, help="folder written by capture.py")
+    parser.add_argument(
+        "--first-attempt", type=Path, required=True, help="evidence from the blocked timing change"
+    )
     parser.add_argument("--out", type=Path, required=True, help="output folder")
     parser.add_argument("--work", type=Path, help="scratch folder (default: <out>/work)")
+    parser.add_argument(
+        "--cached-speech",
+        action="store_true",
+        help="use existing speech without contacting Edge TTS",
+    )
     args = parser.parse_args()
     out: Path = args.out
     work: Path = args.work or out / "work"
@@ -1181,37 +1240,44 @@ def main() -> None:
 
     beats_text = read_beats(HERE / "narration.md")
     # Speak everything first: Playwright's sync API keeps an event loop running in this thread.
-    speeches = {beat_id: speak(text, work) for beat_id, text in beats_text}
+    speeches = {
+        beat_id: speak(text, work, cached_only=args.cached_speech) for beat_id, text in beats_text
+    }
     print(f"narration: {sum(s.seconds for s in speeches.values()):.1f} s of speech")
     render = Renderer(work)
     try:
-        vis = Visuals(render, args.capture, work)
+        vis = Visuals(render, args.capture, args.first_attempt, work)
         clip_seconds = vis.demo_clip_seconds()[1]
         specs: dict[str, dict] = {
             "title": {"frames": vis.title},
             "film": {"video": vis.film, "lead": 3.0},
             "arch-stages": {"frames": vis.arch_stages},
             "arch-contracts": {"frames": vis.arch_contracts},
+            "prompt-research": {"frames": vis.prompt_research},
             "arch-ledger": {"frames": vis.arch_ledger},
             "decision-problem": {"frames": vis.decision_problem},
             "decision-options": {"frames": vis.decision_options},
             "decision-plan": {"frames": vis.decision_plan},
             "demo-baseline": {"frames": vis.demo_baseline},
+            "demo-boundary": {"frames": vis.demo_boundary},
             "demo-edit": {"frames": vis.demo_edit},
             "demo-run": {"frames": vis.demo_run},
             "demo-ledger": {"frames": vis.demo_ledger},
             "demo-result": {"frames": vis.demo_result},
             "demo-clip": {"video": vis.demo_clip, "fixed": clip_seconds, "captions": False},
-            "ui": {"frames": vis.ui},
             "close": {"frames": vis.close},
         }
         missing = [b for b, _ in beats_text if b not in specs]
         if missing:
             sys.exit(f"no visual for beats: {missing}")
-        parts, srt, clock = [], [], 0.0
-        for index, (beat_id, text) in enumerate(beats_text):
+        results = {}
+        # Render the film beat last so only that beat has to wait for the portrait render.
+        ordered = sorted(enumerate(beats_text), key=lambda item: item[1][0] == "film")
+        for index, (beat_id, text) in ordered:
+            if beat_id == "film":
+                wait_for_film()
             spec = specs[beat_id]
-            print(f"[{index + 1:02d}/{len(beats_text)}] {beat_id}")
+            print(f"rendering beat {index + 1:02d}: {beat_id}", flush=True)
             speech = speeches[beat_id]
             beat = Beat(
                 beat_id, text, speech,
@@ -1219,12 +1285,15 @@ def main() -> None:
                 video=spec.get("video"), lead=spec.get("lead", LEAD),
                 fixed_seconds=spec.get("fixed"), captions=spec.get("captions", True),
             )  # fmt: skip
-            path, cues = build_beat(beat, render, work, index)
-            parts.append(path)
-            srt += [(t, clock + s, clock + e) for t, s, e in cues]
-            clock += duration(path)
+            results[index] = build_beat(beat, render, work, index)
     finally:
         render.close()
+
+    parts, srt, clock = [], [], 0.0
+    for path, cues in (results[index] for index in range(len(beats_text))):
+        parts.append(path)
+        srt += [(text, clock + start, clock + end) for text, start, end in cues]
+        clock += duration(path)
 
     joined = work / "joined.mp4"
     lst = work / "parts.txt"
@@ -1253,9 +1322,7 @@ def main() -> None:
     )
     total = duration(final)
     sheet = out / "walkthrough_frames.jpg"
-    step = total / 30
-    ffmpeg("-i", str(final), "-vf", f"fps=1/{step:.3f},scale=384:216,tile=6x5:padding=6:color=0x0b0c0f",
-           "-frames:v", "1", "-q:v", "3", str(sheet))  # fmt: skip
+    frame_sheet(final, sheet, total)
     print(f"wrote {final} ({total:.1f} s), {sheet}")
     if total > 300:
         sys.exit("the walkthrough is over five minutes")

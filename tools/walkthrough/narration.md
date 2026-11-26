@@ -1,53 +1,53 @@
-# vidpipe walkthrough: narration
+# vidpipe walkthrough narration
 
-Each `## id` heading is one beat: its text is spoken (Edge TTS) while the beat's visual, defined
-under the same id in `build.py`, is on screen. A beat with no text plays its visual's own sound.
-Numbers in the demo beats come from the captured run (`capture.py`); update them if you re-capture
-and they change.
+Each heading identifies one beat in build.py. The empty demo clip beat plays the film audio.
 
 ## title
-Hi. This is a walkthrough of vidpipe, the video pipeline I built for the Heritage Short. I'll cover the architecture, one hard decision, and a live re-run where changing one narration line regenerates only that shot.
+I built vidpipe to turn a written brief into a narrated, scored and subtitled short film. I'll show how the stages fit together, why the voice sets the pace, and what happens when I change one line of the storyboard.
 
 ## film
-This is what it makes: The Lion's Whisker, an Ethiopian folk tale narrated in Amharic. Seventy-five seconds, in both sixteen by nine and nine by sixteen, with subtitles, a generated score and an AI end card. All of it comes from a one-page brief and one command.
+This is The Lion's Whisker, an Ethiopian folk tale, in landscape and portrait. Both final cuts have Amharic narration, English subtitles, an original score and an AI end card. Three test viewers found the earlier voice robotic, so I switched the Amharic narration to Addis AI.
 
 ## arch-stages
-A project is a folder: a brief, a YAML config, and a bible that describes the characters, places and look. vidpipe walks it through ten stages in four phases. Write the words: script, Amharic translation and storyboard. Give them a voice: narration, then fit planning. Make the pictures: keyframes, then moving shots. Then music, and assembly.
+A project starts with a brief, a YAML config, and a bible describing the characters, places and look. Vidpipe walks it through ten stages in four phases. Write the words: brief, script, translation and storyboard. Give them a voice: narration and fit planning. Make the pictures: keyframes and moving shots. Then music and assembly.
 
 ## arch-contracts
-Stages only talk through typed JSON files in the build folder, validated before anything downstream reads them. Every model sits behind a contract, and the YAML picks who fills each role. Here that's Claude for the words, Edge TTS for the voice, and FLUX.2, Wan 2.2 and ACE-Step in a local ComfyUI. Swapping a provider is one line, and every provider must pass the same conformance tests.
+Storyboard dot JSON is the contract between the stages. It carries the shots, narration, visual prompts and music cues. The runner validates it and writes typed JSON for downstream stages. Every model sits behind a provider interface. Here Addis AI speaks Amharic, Edge speaks English, and ComfyUI runs the picture and music models. Swapping providers is a config change, backed by shared conformance tests.
+
+## prompt-research
+I revised the prompts after checking the model documentation against our renders. For FLUX, I put the subject first and describe what belongs in the frame, including where people stand. For Wan, I start with the camera move and describe what changes over the next few seconds. The input image already establishes the scene.
 
 ## arch-ledger
-Underneath is the ledger. Each artifact declares its inputs: upstream files, prompt or text, provider, options and seed, all hashed by content. Same hash, the artifact is reused. New hash, it's regenerated, and the record logs latency, GPU time, seed and retries. That one mechanism gives me caching, crash resume and single-shot re-rolls.
+Each artifact declares its inputs: files, text, provider settings and seed. Same hash, the artifact is reused. New hash, that artifact is rebuilt. The ledger records what each artifact used. Runs dot JSON L logs each model call with the model, parameters, seed, latency and cost. That one mechanism supports caching and crash recovery.
 
 ## decision-problem
-The hard decision was making the pictures fit the voice. Narration runs first, so its real length decides how much video to make. But Wan makes clips of two to five seconds, and on my eight-gigabyte laptop each second of video costs close to forty seconds of GPU. In the sample project, the very first English line ran 5.66 seconds.
+The hard decision was making the picture fit the voice. Narration runs first. Wan generates clips of two to five seconds, and each second of video costs close to forty seconds on my laptop GPU. In an earlier run, the first English line alone lasted five point six six seconds.
 
 ## decision-options
-I could freeze the last frame, which looks broken. I could stretch the voice, which sounds wrong. Or render the video once per language, which doubles the GPU bill. Instead, the fit planner bends the video: each clip plays up to 1.3 times faster or slower, so the shot lasts exactly as long as its line. Only when that isn't enough does it split the line at a natural pause, Amharic punctuation included, and generate a continuation clip from the last frame.
+I could freeze the last frame, stretch the voice, or generate separate clips for each language. Instead, the fit planner adjusts clip speed within a bounded range. Only when that isn't enough does it split the line at a natural pause, including Amharic punctuation, and start the next clip from the last frame.
 
 ## decision-plan
-One shared set of clips serves both languages, and vidpipe plan shows the whole fit before any GPU time is spent. In The Lion's Whisker, every Amharic shot landed between 0.9 and 1.08 times speed, with no continuation clips needed.
+One shared set of clips can serve both languages. Vidpipe plan shows which language drives the clip, how fast each cut plays it, and whether the shot needs a continuation.
 
 ## demo-baseline
-Now the live part, on a scratch copy of the finished project. An unchanged re-run skips all ten stages in a few seconds.
+Here's a scratch copy of the finished landscape project. I run the pipeline unchanged. All ten stages report skipped, and the model call log stays empty.
+
+## demo-boundary
+My first edit shortened the line from three point five three to three point three four seconds. That moved the requested clip from three point seven five to three point five seconds. The offline guard stopped the video request. The log shows exactly where it stopped.
 
 ## demo-edit
-I change one narration line: shot fifteen, the elder's advice, reworded in Amharic to a shorter phrasing with the same meaning. That's the whole edit: one line in the Amharic translation file.
+On a fresh copy, I change just one English line in storyboard dot JSON. In shot fifteen, the elder still gives the same advice. I replace boy with child.
 
 ## demo-run
-Same command again. Translation re-runs only its back-translation check, because the Amharic changed: two Claude calls, by a different model than the translator. Narration generates exactly one clip. The fit plan is recomputed, and assembly renders only the Amharic cut. Keyframes, video and music are all skipped. Under a minute, and zero GPU time.
+I run the same command. Script refreshes from the storyboard, one English narration clip regenerates, and the fit plan updates. This time the source clip stays at three point seven five seconds. Keyframes, video and music are all reused. Assembly updates both cuts because both carry the English subtitle.
 
 ## demo-ledger
-The ledger agrees: four of its seventy-three records changed. Here's the narration record before and after: a new text hash, a new audio file, and a new measured length, 3.31 seconds instead of 3.50. All sixteen keyframes, all sixteen clips, the score and the English cut are byte for byte unchanged.
+Runs dot JSON L shows one successful call, to the Edge voice for English shot fifteen. The ledger shows a new text hash and a new audio duration. The file hashes confirm that every keyframe, moving clip and the score were reused. Only one shot needed new model output.
 
 ## demo-result
-And here is shot fifteen in the new render: the same picture, with the new line.
+Here's the English cut. It's the same generated picture, with the new line.
 
 ## demo-clip
 
-## ui
-The same run shows up in the web console I built, which follows the run state live: four stages done, six reused. Each stage shows its outputs, like the keyframes, with a redo button per shot. And the config view checks every provider and previews what the next run will regenerate.
-
 ## close
-That's vidpipe: typed contracts, swappable providers, and a ledger that makes a one-line change cost one line of work. The code, the experiment log and the decisions are all in the repository. Thanks for watching.
+Vidpipe makes the cost of a storyboard edit visible. The fit plan tells me when a voice change needs new footage, and the ledger and model call log show what actually ran.
