@@ -356,7 +356,7 @@ class FfmpegAssembler(Assembler):
         if result.returncode != 0:
             raise AssemblyError(f"loudnorm failed for {render.language}: {result.stderr.strip()}")
         try:
-            stats = json.loads(result.stderr[result.stderr.rindex("{") :])
+            stats, _ = json.JSONDecoder().raw_decode(result.stderr[result.stderr.rindex("{") :])
             measured = {
                 "measured_I": float(stats["input_i"]),
                 "measured_TP": float(stats["input_tp"]),

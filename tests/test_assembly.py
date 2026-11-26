@@ -250,7 +250,7 @@ def test_final_mix_is_normalized_to_the_loudness_target(
         text=True,
         encoding="utf-8",
     )
-    stats = json.loads(result.stderr[result.stderr.rindex("{") :])
+    stats, _ = json.JSONDecoder().raw_decode(result.stderr[result.stderr.rindex("{") :])
     assert float(stats["input_i"]) == pytest.approx(target or -14.0, abs=1.0)
     assert float(stats["input_tp"]) <= -1.0
 

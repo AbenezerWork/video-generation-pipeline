@@ -87,6 +87,7 @@ from vidpipe.subtitles import (
     font_files,
     font_problems,
     resolve_fonts_dir,
+    subtitle_layout,
     wrap_cue,
     write_srt,
 )
@@ -901,6 +902,7 @@ class AssemblyStage(Stage):
         narration = project.read_model("narration.json", Narration)
         video = project.read_model("video.json", MediaIndex)
         music_item = project.read_model("music.json", MediaIndex).items[0]
+        size, margin, columns = subtitle_layout(*config.render_size, config.subtitles.font_size)
         shots = {s.shot_id: s for s in plan.shots}
         storyboard = project.read_model("storyboard.json", Storyboard)
         outputs: list[str] = []
@@ -952,17 +954,19 @@ class AssemblyStage(Stage):
                             text=alternate_lines[shot.line_id],
                             start_s=offset,
                             end_s=offset + fit.seconds,
-                        )
+                        ),
+                        columns=columns,
                     )
                 else:
                     for s in fit.segments:
                         cues += wrap_cue(
-                            Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s)
+                            Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s),
+                            columns=columns,
                         )
                 offset += fit.seconds
             stem = f"{config.output_name}_{lang}"
             outputs += self._render(
-                ctx, lang, segments, cues, project.build / music_item.path, stem
+                ctx, lang, segments, cues, project.build / music_item.path, stem, size, margin
             )
         return outputs
 
@@ -974,6 +978,8 @@ class AssemblyStage(Stage):
         cues: list[Cue],
         music: Path,
         stem: str,
+        font_size: int,
+        margin_v: int,
     ) -> list[str]:
         project = ctx.project
         config = project.config
@@ -981,20 +987,13 @@ class AssemblyStage(Stage):
         font = subtitles.fonts.get(subtitles.text_language or lang)
         fonts_dir = resolve_fonts_dir(project.root, subtitles)
         render_width, render_height = config.render_size
-        portrait = render_width < render_height
-        # libass uses a 288-unit canvas height. Keep portrait text proportional to the short side
-        # and leave a wider gutter for overlays near the bottom of a vertical player.
-        short_side_size = min(subtitles.font_size, 14) if portrait else subtitles.font_size
-        font_size = max(
-            1, round(short_side_size * min(render_width, render_height) / render_height)
-        )
         track = SubtitleTrack(
             srt=project.out / f"{stem}.srt",
             burn_in=subtitles.burn_in,
             fonts_dir=fonts_dir if font else None,
             font=font,
             font_size=font_size,
-            margin_v=52 if portrait else 12,
+            margin_v=margin_v,
         )
         title = project.read_model("brief.json", Brief).title
         card_font = subtitles.fonts.get(lang)
