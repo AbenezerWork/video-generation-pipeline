@@ -1,4 +1,9 @@
-"""Animate a keyframe with the bundled Wan 2.2 TI2V 5B workflow."""
+"""Animate a keyframe with the bundled Wan 2.2 TI2V 5B workflow.
+
+The request's prompt is the shot's ``movement`` (what moves), to which this adds the camera move
+and a steadiness sentence; the negative prompt is the workflow's (Wan's official one) plus the
+camera moves the motion type rules out.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +28,29 @@ from vidpipe.contracts import (
 from vidpipe.registry import register
 
 FPS = 24
+
+#: Said in every prompt: Wan 2.2 5B is weakest at keeping faces, hands and bodies intact.
+STEADY = (
+    "Slow, natural, realistic motion; faces, hands and bodies keep their shape, and nothing "
+    "appears or disappears."
+)
+
+#: Added to the workflow's negative prompt: the camera moves each motion type must not make.
+MOTION_NEGATIVES: dict[MotionType, str] = {
+    MotionType.PAN: "zoom in, zoom out, dolly in, push in",
+    MotionType.PUSH_IN: "pan, sideways camera movement, fast zoom",
+    MotionType.AMBIENT: "camera movement, zoom, pan, camera shake",
+}
+
+
+def motion_prompt(movement: str, motion_type: MotionType) -> str:
+    """The image-to-video prompt: what moves, then one camera sentence. The picture itself is not
+    described again; Wan's own prompt rewriter drops static description from i2v prompts and
+    keeps them under 100 words (docs/research/model-strengths.md)."""
+    movement = movement.strip()
+    if movement and movement[-1] not in ".!?":
+        movement += "."
+    return " ".join(p for p in (movement, MOTION_DESCRIPTIONS[motion_type], STEADY) if p)
 
 
 def _video_seconds(ffprobe: str, path: Path) -> float:
@@ -101,25 +129,17 @@ class ComfyImageToVideo(ComfyProvider[ImageToVideoCapabilities], ImageToVideoPro
         output_frames = math.ceil(request.duration_s * FPS)
         # Wan decodes 4k+1 frames. Trim the surplus at the native playback rate.
         frames = 1 + 4 * math.ceil((output_frames - 1) / 4)
-        motion = MOTION_DESCRIPTIONS[request.motion_type]
-        prompt = f"{request.prompt.strip()}\nIn this shot, {motion}."
         values = {
-            "prompt": prompt,
+            "prompt": motion_prompt(request.prompt, request.motion_type),
             "frames": frames,
             "output_frames": output_frames,
             "fps": FPS,
             "width": self.model.value("width", self.settings, 1),
             "height": self.model.value("height", self.settings, 1),
         }
-        if request.motion_type is MotionType.PAN:
-            values["prompt"] = (
-                f"{prompt} The camera pans steadily to the right at a fixed focal length. "
-                "The landscape slides left across the frame, and the subject stays the same size "
-                "throughout."
-            )
-            negative = self.model.value("negative_prompt", {**self.settings, **request.extras}, 1)
-            if isinstance(negative, str):
-                values["negative_prompt"] = f"{negative}, zoom in, zoom out, dolly in, push in"
+        negative = self.model.value("negative_prompt", {**self.settings, **request.extras}, 1)
+        if isinstance(negative, str):
+            values["negative_prompt"] = f"{negative}, {MOTION_NEGATIVES[request.motion_type]}"
         outcome = self.run_workflow(
             values,
             seed=request.seed,

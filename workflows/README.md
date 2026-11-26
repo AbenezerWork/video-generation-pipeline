@@ -10,6 +10,12 @@ generates `frames` (a count of the form 4k+1). `ImageFromBatch` keeps
 `SaveVideo` saves H.264 MP4. The resolution step-down leaves both frame
 counts and playback rate intact.
 
+The negative prompt is Wan 2.2's official default (`sample_neg_prompt` in the Wan repository's
+`wan/configs/shared_config.py`, in Chinese) plus morphing, flicker and talking terms; the provider
+appends the camera moves the shot's motion type rules out (no zoom for a pan, no camera movement
+for ambient). The positive prompt is the shot's movement and one camera sentence, not a description
+of the picture: see [`docs/research/model-strengths.md`](../docs/research/model-strengths.md).
+
 ## FLUX.2 keyframes
 
 Decision and measurements: [`docs/adr/0001-keyframe-model.md`](../docs/adr/0001-keyframe-model.md).

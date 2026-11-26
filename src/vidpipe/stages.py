@@ -64,6 +64,7 @@ from vidpipe.contracts import (
 from vidpipe.fit import FIT_VERSION, MAX_RENDER_S, NarrationInput, limits_for, plan_fit
 from vidpipe.fit_inputs import collect_shots, translation_files
 from vidpipe.models import (
+    MAX_PEOPLE,
     Brief,
     ClipPlan,
     FitPlan,
@@ -395,18 +396,48 @@ class TranslationStage(Stage):
         return _rels(ctx, made)
 
 
-#: What the image and video models get wrong, so the storyboard avoids asking for it (learned from
-#: the coffee-origin demo runs; see experiments.md).
+#: What the image model (FLUX.2 klein) and the video model (Wan 2.2 5B) do well and badly, so the
+#: storyboard asks only for what they can do. From the models' documentation and our runs:
+#: docs/research/model-strengths.md and experiments.md.
 STORYBOARD_RULES = (
-    "Rules for every shot, because the image and video models fail at these:\n"
-    "- Animals stand, walk or graze naturally on four legs; never rearing, jumping or posed like "
-    "people.\n"
-    "- Show objects in their real-world arrangement: food inside the pan, the pan resting over "
-    "the fire, liquid poured into the vessel that holds it.\n"
+    "Rules for every shot, because the image and video models fail at these.\n"
+    "The picture (`visual` and `people`), drawn by an image model that weighs the first words "
+    "most:\n"
+    "- Start with the shot size and camera angle, then the subject and what they are doing, then "
+    "the setting and light.\n"
+    f"- Keep people few: one or two is best, never more than {MAX_PEOPLE}, each clearly visible. "
+    "Count them exactly in `people`; the image model fills empty space with strangers unless it "
+    "is told how many people there are.\n"
     "- Anyone other than the shot's character must look clearly different from them (another "
     "age, other clothes and hair); say so in the visual.\n"
-    "- Keep hands simple (holding, resting, offering); no intricate hand work.\n"
-    "- At most four people in a shot, each clearly visible."
+    "- Describe anyone who is not in the cast in full: age, skin tone, hair and clothes that fit "
+    "the story's time and place. Left vague, they come out light-skinned and in modern Western "
+    "clothes.\n"
+    "- Animals stand, walk, lie or graze naturally on four legs; never rearing, jumping or posed "
+    "like people.\n"
+    "- Show objects in their real-world arrangement: food inside the pan, the pan resting over "
+    "the fire, liquid poured into the vessel that holds it.\n"
+    "- Keep hands simple (holding, resting, offering) and out of close-ups; no intricate hand "
+    "work.\n"
+    "- For a shot indoors, say it is inside and name the walls, roof beams or doorway light; "
+    "otherwise the room comes out as an outdoor scene.\n"
+    "- No text, signs or lettering, no split screens and no inset pictures.\n"
+    "The motion (`movement` and `motion_type`), animated from the picture by a video model for at "
+    "most five seconds:\n"
+    "- `movement` says only what moves, never what the picture already shows: one slow, small, "
+    "natural movement of the subject plus any ambient motion, in under 30 words. Call people and "
+    'animals by plain nouns (the woman, the old man, the lion), not by name. Example: "The woman '
+    'slowly lowers her gaze and breathes; the grass sways in the wind."\n'
+    "- The video model does these well: breathing, blinking, a slow head turn, a nod, hair and "
+    "cloth moving in the wind, smoke, flames, steam, grass and leaves, dust, shifting light, an "
+    "animal chewing or flicking its tail, a slow walk across the frame.\n"
+    "- It does these badly, so never ask for them: talking or moving lips (the narration is a "
+    "voice-over), hand and finger work (plucking, pouring, eating, sewing), two people touching "
+    "or passing something, walking towards the camera, running, jumping, fast or sudden motion, "
+    "anything appearing, vanishing or changing shape. Show the moment before or after instead.\n"
+    "- Choose `motion_type` by shot size: ambient for close-ups, faces, hands and animals; pan "
+    "for wide landscapes and people walking across them; push_in only for a medium or wide shot "
+    "of a still subject, never a close-up."
 )
 
 
@@ -428,9 +459,12 @@ class StoryboardStage(Stage):
             "in script order.\n\n"
             "For each shot:\n"
             "- `line_id`: the number of the script line the shot illustrates.\n"
-            "- `visual`: one concrete sentence describing the shot as the camera sees it: framing "
-            "(shot size and camera angle), subject, setting, light and mood. One simple moment "
+            "- `visual`: one concrete sentence describing the still picture as the camera sees "
+            "it: shot size and camera angle, subject, setting, light and mood. One simple moment "
             "that can move gently; no complex action, no text or lettering in the image.\n"
+            f"- `people`: how many people are visible in the picture, the cast included (0 to "
+            f"{MAX_PEOPLE}); someone on their own is 1.\n"
+            "- `movement`: what moves during the clip, for the video model (see the rules).\n"
             "- `motion_type`: exactly one of the following (the video model can do nothing else):\n"
             f"{motions}\n\n"
             f"Script:\n{lines}\n\n"
@@ -450,9 +484,16 @@ class StoryboardStage(Stage):
             if casting:
                 for shot in draft.shots:
                     try:
-                        bible.cast(shot.character, shot.location)
+                        main, _ = bible.cast(shot.character, shot.location)
+                        others = bible.others(shot.others, shot.visual, main)
                     except BibleError as exc:
                         raise ValueError(str(exc)) from exc
+                    # A character listed but not in the visual is drawn anyway, often twice.
+                    if unseen := [e.id for e in others if not e.mentioned_in(shot.visual)]:
+                        raise ValueError(
+                            f"the shot for line {shot.line_id} lists {', '.join(unseen)} in "
+                            "`others` but its visual does not show them by name"
+                        )
 
         def make() -> Made:
             since = failure_count(provider)
@@ -466,6 +507,9 @@ class StoryboardStage(Stage):
                         motion_type=s.motion_type,
                         character=s.character if casting else None,
                         location=s.location if casting else None,
+                        others=s.others if casting else None,
+                        people=s.people,
+                        movement=s.movement,
                     )
                     for i, s in enumerate(draft.shots, start=1)
                 ]
@@ -612,6 +656,8 @@ class KeyframesStage(Stage):
                     character=shot.character,
                     location=shot.location,
                     max_references=max_references,
+                    others=shot.others,
+                    people=shot.people,
                 )
             except BibleError as exc:
                 raise StageError(f"shot {shot.id}: {exc}") from exc
@@ -726,15 +772,15 @@ class VideoStage(Stage):
         clip: ClipPlan,
         source: Path,
     ) -> Path:
-        prompt = shot.visual
+        # What moves, not the picture again: the keyframe already shows it. Older storyboards
+        # have no movement, so they fall back to the visual.
+        prompt = shot.movement.strip() or shot.visual
         seed = ctx.shot_seed(shot.id)
         label = f"video for shot {shot.id}"
         if clip.continues is not None:
             prompt = (
-                f"{prompt}\nContinue the same shot from the supplied frame. "
-                "Maintain the subject, setting, lighting, and camera motion. "
-                "Keep the scene moving continuously without a cut or reset.\n"
-                f"Narration for this segment: {clip.text}"
+                f"{prompt} The same shot continues from this frame without a cut or reset, with "
+                "the same subject, setting, light and camera motion."
             )
             seed = int(digest([seed, clip.index])[:8], 16) % 2**31
             label += f" continuation {clip.index}"

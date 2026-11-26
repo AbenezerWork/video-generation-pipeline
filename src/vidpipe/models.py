@@ -40,6 +40,10 @@ class Script(BaseModel):
     lines: list[ScriptLine]
 
 
+#: The most people a shot may show: beyond that the image model miscounts and clones faces.
+MAX_PEOPLE = 4
+
+
 class ShotDraft(BaseModel):
     line_id: int
     visual: str
@@ -48,6 +52,12 @@ class ShotDraft(BaseModel):
     #: protagonist, ``"none"`` means nobody appears.
     character: str | None = None
     location: str | None = None
+    #: Ids of the other bible characters seen in the shot (``None``: not given).
+    others: list[str] | None = None
+    #: How many people are in the picture, the cast included (``None``: not given).
+    people: int | None = Field(default=None, ge=0, le=MAX_PEOPLE)
+    #: What moves during the clip, told to the video model (empty: it gets ``visual``).
+    movement: str = ""
 
 
 class StoryboardDraft(BaseModel):
@@ -63,6 +73,9 @@ class Shot(BaseModel):
     motion_type: MotionType
     character: str | None = None
     location: str | None = None
+    others: list[str] | None = None
+    people: int | None = Field(default=None, ge=0, le=MAX_PEOPLE)
+    movement: str = ""
 
 
 class Storyboard(BaseModel):

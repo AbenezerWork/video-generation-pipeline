@@ -128,7 +128,7 @@ def write_bible(project: Path, bible: dict[str, Any] = CAST) -> None:
     (project / "bible.yaml").write_text(json.dumps(bible), encoding="utf-8")  # JSON is YAML
 
 
-def cast_shots(project: Path, *casting: dict[str, str | None]) -> None:
+def cast_shots(project: Path, *casting: dict[str, Any]) -> None:
     """Hand-edit the storyboard (after it was generated): who and where each shot shows."""
     path = project / "build" / "storyboard.json"
     storyboard = read_json(path)
@@ -398,3 +398,135 @@ def test_the_storyboarding_model_casts_the_shots_from_the_bible(
     assert "highlands" in first.stdin and "protagonist" in first.stdin
     assert "the-moon" in retry.stdin
     assert [r["id"] for r in ledger(project)["keyframes/shot_02"]["data"]["references"]] == []
+
+
+# ------------------------------------------------- what the prompts say about who is in a shot
+
+
+def test_the_storyboarding_model_sees_what_each_character_and_place_looks_like(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("claude", three_shots())
+    project = make_project(providers={"storyboard": "claude-cli"})
+    write_bible(project)
+
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    asked = fake_clis.calls("claude")[0].stdin
+    # Without the descriptions it invented clothes that contradicted them.
+    assert "dawit: Dawit. An old man with a white beard." in asked
+    assert "ridge: the ridge. A bare ridge above the clouds." in asked
+    assert "`others`" in asked and "call these characters by their names" in asked
+
+
+def test_rewording_a_description_re_storyboards_the_video(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("claude", three_shots(), three_shots())
+    project = make_project(providers={"storyboard": "claude-cli"})
+    write_bible(project)
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    reworded = json.loads(json.dumps(CAST).replace("An old man with a white beard", "A boy"))
+    write_bible(project, reworded)
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    assert "dawit: Dawit. A boy." in fake_clis.calls("claude")[1].stdin
+
+
+def test_every_bible_character_in_a_shot_is_described_in_its_keyframe(
+    make_project: MakeProject, comfy: FakeComfyUI
+) -> None:
+    project = comfy_project(make_project, comfy)
+    write_bible(project)
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+    cast_shots(
+        project,
+        {"visual": "Aster sits by a fire", "others": ["dawit"]},  # listed by the storyboard
+        {"visual": "Aster walks beside Dawit on the ridge"},  # older storyboard: mentioned
+        {"visual": "Aster holds Dawit's walking stick"},  # a possessive: he need not be there
+    )
+
+    assert run_keyframes(project) == 0
+
+    prompts = [job.input("text", "text") for job in comfy.jobs]
+    also = "Dawit appears exactly once in the picture: An old man with a white beard."
+    assert also in prompts[0] and also in prompts[1]
+    assert "white beard" not in prompts[2]
+
+
+def test_a_shot_listing_someone_unknown_or_unseen_is_storyboarded_again(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    def storyboard(others: list[str], visual: str = "Aster beside Dawit") -> str:
+        shots = [
+            {"line_id": i, "visual": visual, "motion_type": "ambient", "others": others}
+            for i in (1, 2, 3)
+        ]
+        return json.dumps({"shots": shots})
+
+    fake_clis.reply(
+        "claude",
+        storyboard(["ghost"]),  # not in the bible
+        storyboard(["dawit"], visual="Aster climbs alone"),  # listed, but the visual lacks him
+        storyboard(["dawit"]),
+    )
+    project = make_project(providers={"storyboard": "claude-cli"})
+    write_bible(project)
+
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    _, second, third = fake_clis.calls("claude")
+    assert "ghost" in second.stdin
+    assert "lists dawit in `others` but its visual does not show them" in third.stdin
+    shots = read_json(project / "build" / "storyboard.json")["shots"]
+    assert [s["others"] for s in shots] == [["dawit"]] * 3
+
+
+@pytest.mark.parametrize(
+    ("people", "said", "unsaid"),
+    [
+        (1, "Exactly one person in the picture, with no other people", "Anyone else"),
+        (0, "No people anywhere in the picture.", "Exactly"),
+        (2, "Exactly two people in the picture, each shown once", "No people"),
+        (None, "Anyone else in the shot looks clearly different", "Exactly"),
+    ],
+)
+def test_a_shots_headcount_is_said_in_its_keyframe_prompt(
+    make_project: MakeProject, people: int | None, said: str, unsaid: str
+) -> None:
+    project = make_project()
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+    cast_shots(project, {"people": people}, {}, {})
+
+    assert run_keyframes(project) == 0
+
+    prompt = ledger(project)["keyframes/shot_01"]["data"]["prompt"]
+    assert said in prompt and unsaid not in prompt
+
+
+def test_the_storyboard_counts_people_and_says_what_moves(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    shots = [
+        {"line_id": 1, "visual": "A girl alone on a ridge", "motion_type": "pan", "people": 1,
+         "movement": "The girl walks slowly to the right; her shawl moves in the wind."},
+        {"line_id": 2, "visual": "Goats", "motion_type": "ambient", "people": 0},
+        {"line_id": 3, "visual": "A cup", "motion_type": "ambient", "people": 9},
+    ]  # fmt: skip
+    fixed = [*shots[:2], {**shots[2], "people": 0}]
+    fake_clis.reply("claude", json.dumps({"shots": shots}), json.dumps({"shots": fixed}))
+    project = make_project(providers={"storyboard": "claude-cli"})
+
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    asked = fake_clis.calls("claude")[0].stdin
+    assert "`people`" in asked and "`movement`" in asked
+    assert "voice-over" in asked  # nobody talks: the video model cannot move lips
+    assert "never a close-up" in asked  # a push-in on a close-up ends too tight
+    assert "inside" in asked  # interiors came out as exteriors
+    assert "skin tone" in asked  # unnamed people came out light-skinned in Western clothes
+    assert len(fake_clis.calls("claude")) == 2  # nine people is more than the image model can draw
+    saved = read_json(project / "build" / "storyboard.json")["shots"]
+    assert [s["people"] for s in saved] == [1, 0, 0]
+    assert saved[0]["movement"].startswith("The girl walks slowly")

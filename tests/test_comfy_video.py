@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests.cli_text_fixtures import FakeClis
 from tests.conftest import MakeProject, ffprobe
 from tests.fake_comfyui import WRITERS, FakeComfyUI, Job
 from tests.test_fit_plan import project_with_script
@@ -226,3 +228,43 @@ def test_the_video_size_budget_allows_either_orientation(
 
     err = capsys.readouterr().err
     assert ("video size" not in err and "multiple of 32" not in err) is accepted
+
+
+@pytest.mark.needs_ffmpeg
+def test_the_video_model_is_told_what_moves_and_how_the_camera_moves_not_the_picture(
+    make_project: MakeProject,
+    comfy: FakeComfyUI,
+    fake_clis: FakeClis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(WRITERS, "SaveVideo", _save_video)
+    shots = [
+        {"line_id": 1, "visual": "Wide shot of a herder on a misty ridge", "motion_type": "pan",
+         "movement": "The man walks slowly to the right; mist drifts"},
+        {"line_id": 2, "visual": "Close-up of a goat grazing", "motion_type": "ambient",
+         "movement": "The goat chews slowly and flicks an ear."},
+        {"line_id": 3, "visual": "A steaming cup of coffee", "motion_type": "push_in"},
+    ]  # fmt: skip
+    fake_clis.reply("claude", json.dumps({"shots": shots}))
+    root = make_project(
+        providers={
+            "storyboard": "claude-cli",
+            "video": {"name": "comfyui-i2v", "options": {"poll_s": 0.01}},
+        },
+        comfyui={"url": comfy.url},
+    )
+
+    assert main(["run", str(root), "--until", "video", "--auto"]) == 0
+
+    positive = [job.input("positive", "text") for job in comfy.jobs]
+    negative = [job.input("negative", "text") for job in comfy.jobs]
+    assert positive[0].startswith("The man walks slowly to the right; mist drifts. The camera pans")
+    assert "misty ridge" not in positive[0]  # the keyframe already shows the picture
+    assert "fixed focal length" in positive[0] and "keep their shape" in positive[0]
+    assert positive[1].startswith("The goat chews slowly and flicks an ear. Fixed camera")
+    # An older storyboard with no movement falls back to its visual.
+    assert positive[2].startswith("A steaming cup of coffee. The camera pushes in")
+    assert all("背景人很多" in n for n in negative)  # Wan's own: "many people in the background"
+    assert negative[0].endswith("zoom in, zoom out, dolly in, push in")
+    assert negative[1].endswith("camera movement, zoom, pan, camera shake")
+    assert negative[2].endswith("pan, sideways camera movement, fast zoom")
