@@ -110,7 +110,12 @@ class FakeText(TextProvider):
             return TextResponse(data={"lines": CANNED_SCRIPT})
         if title == "StoryboardDraft":
             shots = [
-                {"line_id": i, "visual": visual, "motion_type": motion.value}
+                {
+                    "reason": "Illustrates the narration.",
+                    "line_id": i,
+                    "visual": visual,
+                    "motion_type": motion.value,
+                }
                 for i, (visual, motion) in enumerate(CANNED_SHOTS, start=1)
             ]
             return TextResponse(data={"shots": shots})

@@ -15,7 +15,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, ClassVar, TypeVar
@@ -62,7 +62,7 @@ from vidpipe.contracts import (
     UnsupportedRequest,
 )
 from vidpipe.fit import FIT_VERSION, MAX_RENDER_S, NarrationInput, limits_for, plan_fit
-from vidpipe.fit_inputs import collect_shots, translation_files
+from vidpipe.fit_inputs import collect_shots
 from vidpipe.models import (
     Brief,
     ClipPlan,
@@ -80,6 +80,7 @@ from vidpipe.models import (
 )
 from vidpipe.project import Project
 from vidpipe.runlog import CallSite, attempt, run_artifact
+from vidpipe.storyboard import default_music_prompt
 from vidpipe.subtitles import (
     Cue,
     end_card_ass,
@@ -129,6 +130,7 @@ class StageContext:
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
         expected_outputs: Sequence[Path] = (),
+        replace_edited: bool = False,
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
         selection = self.project.config.providers.get(self.stage)
@@ -156,6 +158,7 @@ class StageContext:
             parameters=parameters,
             seed=seed,
             expected_outputs=expected_outputs,
+            replace_edited=replace_edited,
         )
         if produced.reused:
             self.reused += 1
@@ -229,6 +232,17 @@ def _rels(ctx: StageContext, produced: Produced) -> list[str]:
     return [p.relative_to(ctx.project.build).as_posix() for p in produced.paths]
 
 
+def _from_contract(ctx: StageContext, key: str, model: BaseModel) -> list[str]:
+    filename = f"{key}.json"
+    made = ctx.produce(
+        key,
+        inputs=Inputs(values={"storyboard_contract": model}),
+        make=lambda: Made([ctx.project.write_model(filename, model)]),
+        replace_edited=True,
+    )
+    return _rels(ctx, made)
+
+
 def _item(ctx: StageContext, shot_id: int | None, path: Path) -> MediaItem:
     return MediaItem(shot_id=shot_id, path=path.relative_to(ctx.project.build).as_posix())
 
@@ -272,6 +286,10 @@ class ScriptStage(Stage):
     name = "script"
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return _from_contract(
+                ctx, "script", contract.script(ctx.project.config.primary_language)
+            )
         brief = ctx.project.read_model("brief.json", Brief)
         provider = ctx.provider("script", TextProvider)
         language = ctx.project.config.primary_language
@@ -318,7 +336,7 @@ class TranslationStage(Stage):
         return ctx.languages[1:]
 
     def problems(self, ctx: StageContext) -> list[str]:
-        if not self._targets(ctx):
+        if ctx.project.storyboard_contract or not self._targets(ctx):
             return []
         caps = ctx.provider("translation", TranslationProvider).capabilities
         found: list[str] = []
@@ -336,12 +354,18 @@ class TranslationStage(Stage):
 
     def artifact_count(self, ctx: StageContext) -> int:
         targets = self._targets(ctx)
-        if not targets:
-            return 0
+        if ctx.project.storyboard_contract or not targets:
+            return len(targets)
         reviewed = isinstance(ctx.provider("translation", TranslationProvider), TextTranslator)
         return len(targets) * (2 if reviewed else 1)
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return [
+                path
+                for lang in self._targets(ctx)
+                for path in _from_contract(ctx, f"translation/{lang}", contract.script(lang))
+            ]
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("translation", TranslationProvider)
         outputs: list[str] = []
@@ -430,10 +454,18 @@ class StoryboardStage(Stage):
     name = "storyboard"
 
     def problems(self, ctx: StageContext) -> list[str]:
-        _bible(ctx)  # a broken bible fails the plan before anything is generated
+        bible = _bible(ctx)
+        if contract := ctx.project.storyboard_contract:
+            for shot in contract.shots:
+                try:
+                    bible.cast(shot.character, shot.location)
+                except BibleError as exc:
+                    return [f"shot {shot.id}: {exc}"]
         return []
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return _from_contract(ctx, "storyboard", contract.storyboard())
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("storyboard", TextProvider)
         lines = "\n".join(f"{line.id}. {line.text}" for line in script.lines)
@@ -444,6 +476,7 @@ class StoryboardStage(Stage):
             "in script order.\n\n"
             "For each shot:\n"
             "- `line_id`: the number of the script line the shot illustrates.\n"
+            "- `reason`: one sentence explaining why the shot belongs in this story.\n"
             "- `visual`: one concrete sentence describing the shot as the camera sees it: framing "
             "(shot size and camera angle), subject, setting, light and mood. One simple moment "
             "that can move gently; no complex action, no text or lettering in the image.\n"
@@ -478,6 +511,7 @@ class StoryboardStage(Stage):
                     Shot(
                         id=i,
                         line_id=s.line_id,
+                        reason=s.reason,
                         visual=s.visual,
                         motion_type=s.motion_type,
                         character=s.character if casting else None,
@@ -584,8 +618,8 @@ class FitPlanningStage(Stage):
         made = ctx.produce(
             "fit_plan",
             inputs=Inputs(
-                files=["narration.json", "storyboard.json", *translation_files(project)],
                 values={
+                    "shots": [asdict(shot) for shot in shots],
                     "visuals": config.visuals,
                     "languages": config.languages,
                     "video_capabilities": caps,
@@ -803,12 +837,21 @@ class MusicStage(Stage):
         total = float(math.ceil(plan.total_seconds + ctx.project.config.end_card_seconds))
         if problem := provider.capabilities.duration_problem(total):
             raise StageError(problem)
-        prompt = f"Instrumental score for: {brief.title}"
+        prompt = default_music_prompt(brief.title)
+        extras: dict[str, Any] = {}
+        if contract := ctx.project.storyboard_contract:
+            score = contract.music
+            prompt = score.prompt
+            if score.cues:
+                prompt += "\n" + "\n".join(f"Shot {cue.shot}: {cue.note}" for cue in score.cues)
+            extras = score.model_dump(include={"bpm", "keyscale"}, exclude_none=True)
         seed = 0
 
         def make() -> Made:
             out = ctx.project.artifact_path("music/music.wav")
-            request = MusicRequest(prompt=prompt, duration_s=total, seed=seed, output_path=out)
+            request = MusicRequest(
+                prompt=prompt, duration_s=total, seed=seed, output_path=out, extras=extras
+            )
             with attempt(provider, parameters=provider.options) as call:
                 result = _generate("music", lambda: provider.compose(request))
                 call.gpu_seconds = result.record.gpu_seconds
@@ -824,7 +867,7 @@ class MusicStage(Stage):
         made = ctx.produce(
             "music",
             inputs=Inputs(values={"prompt": prompt}),
-            parameters={"duration_s": total},
+            parameters={"duration_s": total, **extras},
             seed=seed,
             make=make,
         )

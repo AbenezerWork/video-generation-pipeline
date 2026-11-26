@@ -34,6 +34,26 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## Editable storyboard
+
+Run through the storyboard stage, then export the build's script, translations and shots.
+
+    uv run vidpipe run examples/sample --until storyboard --auto
+    uv run vidpipe export-storyboard examples/sample
+    uv run vidpipe run examples/sample --auto
+
+When the project has a `storyboard.json`, every run validates it and uses its title, narration and
+shots for the script, translation and storyboard stages. Each shot has a stable positive integer
+`id`, a one-sentence `reason`, `narration` keyed by language, a keyframe prompt in `visual`, a
+`motion_type` and optional bible `character` and `location`. Array order is the edit order.
+Change text or visuals here to reuse unaffected shot artifacts. Export leaves an existing
+contract intact. Older builds that have no shot reason export a line-reference placeholder.
+
+The contract's `music` block has a `prompt`, optional `bpm` and `keyscale` for workflows that
+support them, and optional `cues` with a `shot` ID and `note`. Cue notes guide the generation
+prompt. Generate the JSON Schemas for the storyboard and project config with `uv run vidpipe schema`
+(default directory `schema/`), or use `--out DIR`.
+
 ## Provider call log
 
 Each generation attempt appends one UTF-8 JSON line to the project's `runs.jsonl`. Failed calls,

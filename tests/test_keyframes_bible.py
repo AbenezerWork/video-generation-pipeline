@@ -235,7 +235,15 @@ def set_bible_style(project: Path, description: str | None) -> None:
 
 
 def three_shots() -> str:
-    shots = [{"line_id": i, "visual": f"shot {i}", "motion_type": "ambient"} for i in (1, 2, 3)]
+    shots = [
+        {
+            "reason": "Illustrates the narration.",
+            "line_id": i,
+            "visual": f"shot {i}",
+            "motion_type": "ambient",
+        }
+        for i in (1, 2, 3)
+    ]
     return json.dumps({"shots": shots})
 
 
@@ -340,7 +348,13 @@ def test_removing_a_place_from_the_bible_re_casts_the_storyboard(
 ) -> None:
     def storyboard(location: str | None) -> str:
         shots = [
-            {"line_id": i, "visual": f"shot {i}", "motion_type": "pan", "location": location}
+            {
+                "reason": "Illustrates the narration.",
+                "line_id": i,
+                "visual": f"shot {i}",
+                "motion_type": "pan",
+                "location": location,
+            }
             for i in (1, 2, 3)
         ]
         return json.dumps({"shots": shots})
@@ -376,9 +390,26 @@ def test_the_storyboarding_model_casts_the_shots_from_the_bible(
 ) -> None:
     def storyboard(location: str) -> str:
         shots = [
-            {"line_id": 1, "visual": "a path", "motion_type": "pan", "location": location},
-            {"line_id": 2, "visual": "goats", "motion_type": "ambient", "character": "none"},
-            {"line_id": 3, "visual": "a cup", "motion_type": "push_in"},
+            {
+                "reason": "Illustrates the narration.",
+                "line_id": 1,
+                "visual": "a path",
+                "motion_type": "pan",
+                "location": location,
+            },
+            {
+                "reason": "Illustrates the narration.",
+                "line_id": 2,
+                "visual": "goats",
+                "motion_type": "ambient",
+                "character": "none",
+            },
+            {
+                "reason": "Illustrates the narration.",
+                "line_id": 3,
+                "visual": "a cup",
+                "motion_type": "push_in",
+            },
         ]
         return json.dumps({"shots": shots})
 

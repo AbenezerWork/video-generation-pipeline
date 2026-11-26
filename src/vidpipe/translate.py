@@ -413,6 +413,8 @@ def review_path(language: str) -> str:
 
 def drift_flags(project: Project) -> list[DriftFlag]:
     """Every drifted line of every translation that has been checked, for a gate or report."""
+    if project.storyboard_contract:
+        return []
     flags: list[DriftFlag] = []
     for language in project.config.languages[1:]:
         if not (project.build / review_path(language)).is_file():
@@ -434,6 +436,8 @@ def drift_flags(project: Project) -> list[DriftFlag]:
 
 def report_lines(project: Project) -> list[str]:
     """Human-readable warnings about translations that need review (empty when all is well)."""
+    if project.storyboard_contract:
+        return []
     out: list[str] = []
     for language in project.config.languages[1:]:
         if not (project.build / review_path(language)).is_file():

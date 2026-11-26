@@ -26,7 +26,12 @@ def storyboard(*motions: str, line_ids: tuple[int, ...] = (1, 2, 3)) -> str:
     return json.dumps(
         {
             "shots": [
-                {"line_id": line_id, "visual": f"visual {line_id}", "motion_type": motion}
+                {
+                    "reason": "Illustrates the narration.",
+                    "line_id": line_id,
+                    "visual": f"visual {line_id}",
+                    "motion_type": motion,
+                }
                 for line_id, motion in zip(line_ids, motions, strict=True)
             ]
         }

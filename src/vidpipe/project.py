@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 from typing import TypeVar
 
@@ -9,7 +10,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from vidpipe.config import CONFIG_FILENAME, ProjectConfig
-from vidpipe.models import Brief
+from vidpipe.models import Brief, StoryboardContract
 
 M = TypeVar("M", bound=BaseModel)
 
@@ -39,6 +40,22 @@ class Project:
         if not path.is_file():
             raise ProjectError(f"{self.root}: missing brief.md")
         return Brief.from_markdown(path.read_text(encoding="utf-8"))
+
+    @cached_property
+    def storyboard_contract(self) -> StoryboardContract | None:
+        path = self.root / "storyboard.json"
+        try:
+            contract = StoryboardContract.model_validate_json(path.read_text(encoding="utf-8"))
+            for shot in contract.shots:
+                if missing := sorted(set(self.config.languages) - shot.narration.keys()):
+                    raise ValueError(
+                        f"shot {shot.id} is missing narration for {', '.join(missing)}"
+                    )
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as exc:
+            raise ProjectError(f"{path}: invalid storyboard contract: {exc}") from exc
+        return contract
 
     # ------------------------------------------------------------------ artifacts
 

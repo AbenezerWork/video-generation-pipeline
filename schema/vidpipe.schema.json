@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ComfyUIConfig": {
+      "additionalProperties": false,
+      "description": "The ComfyUI server every ``comfyui-*`` provider talks to (it runs outside vidpipe).",
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "title": "ComfyUIConfig",
+      "type": "object"
+    },
+    "EndCardConfig": {
+      "additionalProperties": false,
+      "description": "A closing card after the last shot that says the video is AI-generated. The music plays on\nunder it and fades out; the subtitles' font is used for its language.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 15,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "text": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Text",
+          "type": "object"
+        }
+      },
+      "title": "EndCardConfig",
+      "type": "object"
+    },
+    "MixConfig": {
+      "additionalProperties": false,
+      "description": "The soundtrack: music sits at ``music_level`` and ducks under narration.",
+      "properties": {
+        "music_level": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "maximum": 2,
+          "title": "Music Level",
+          "type": "number"
+        },
+        "duck_ratio": {
+          "default": 8.0,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Duck Ratio",
+          "type": "number"
+        }
+      },
+      "title": "MixConfig",
+      "type": "object"
+    },
+    "OutputSize": {
+      "additionalProperties": false,
+      "description": "The rendered frame when it differs from the generated one: the picture is scaled to cover\nit and cropped to its shape (``1280x720`` from 640x352 trims 2% of the width).",
+      "properties": {
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "title": "OutputSize",
+      "type": "object"
+    },
+    "ProviderInput": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ProviderMapping"
+        },
+        {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/ProviderMapping"
+              }
+            ]
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "ProviderMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "fallback": {
+          "items": {
+            "$ref": "#/$defs/ProviderInput"
+          },
+          "title": "Fallback",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ProviderMapping",
+      "type": "object"
+    },
+    "SubtitleConfig": {
+      "additionalProperties": false,
+      "description": "Subtitles: a sidecar ``.srt`` per language, burned in unless ``burn_in`` is off.",
+      "properties": {
+        "burn_in": {
+          "default": true,
+          "title": "Burn In",
+          "type": "boolean"
+        },
+        "fonts_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fonts Dir"
+        },
+        "fonts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Fonts",
+          "type": "object"
+        },
+        "font_size": {
+          "default": 20,
+          "exclusiveMinimum": 0,
+          "title": "Font Size",
+          "type": "integer"
+        }
+      },
+      "title": "SubtitleConfig",
+      "type": "object"
+    },
+    "Visuals": {
+      "enum": [
+        "shared",
+        "per_language",
+        "primary_only"
+      ],
+      "title": "Visuals",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "languages": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Languages",
+      "type": "array"
+    },
+    "visuals": {
+      "$ref": "#/$defs/Visuals",
+      "default": "shared"
+    },
+    "output_name": {
+      "default": "demo",
+      "title": "Output Name",
+      "type": "string"
+    },
+    "width": {
+      "default": 160,
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "default": 90,
+      "title": "Height",
+      "type": "integer"
+    },
+    "fps": {
+      "default": 8,
+      "title": "Fps",
+      "type": "integer"
+    },
+    "output_size": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OutputSize"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "gates": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Gates",
+      "type": "array"
+    },
+    "subtitles": {
+      "$ref": "#/$defs/SubtitleConfig"
+    },
+    "mix": {
+      "$ref": "#/$defs/MixConfig"
+    },
+    "end_card": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EndCardConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "comfyui": {
+      "$ref": "#/$defs/ComfyUIConfig"
+    },
+    "providers": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ProviderInput"
+      },
+      "title": "Providers",
+      "type": "object"
+    }
+  },
+  "required": [
+    "providers"
+  ],
+  "title": "ProjectConfig",
+  "type": "object"
+}

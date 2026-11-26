@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, NotRequired, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import TypedDict
 
 from vidpipe.contracts import ProviderKind
 
@@ -20,6 +21,15 @@ class Visuals(StrEnum):
     SHARED = "shared"
     PER_LANGUAGE = "per_language"
     PRIMARY_ONLY = "primary_only"
+
+
+class ProviderMapping(TypedDict):
+    name: str
+    options: NotRequired[dict[str, Any]]
+    fallback: NotRequired[list[ProviderInput]]
+
+
+type ProviderInput = str | ProviderMapping | list[str | ProviderMapping]
 
 
 class ProviderSelection(BaseModel):
@@ -198,7 +208,7 @@ class ProjectConfig(BaseModel):
         card = self.end_card
         return card.seconds if card is not None and card.enabled else 0.0
 
-    @field_validator("providers", mode="before")
+    @field_validator("providers", mode="before", json_schema_input_type=dict[str, ProviderInput])
     @classmethod
     def _default_text_chains(cls, value: Any) -> Any:
         if not isinstance(value, dict):

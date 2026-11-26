@@ -26,7 +26,7 @@ from vidpipe.config import STAGE_KINDS
 from vidpipe.contracts import ImageToVideoProvider, Provider, TTSProvider
 from vidpipe.fit import NarrationInput, ShotInput, limits_for, plan_fit
 from vidpipe.fit_inputs import Narrate, collect_shots, script_for
-from vidpipe.models import FitPlan, Storyboard
+from vidpipe.models import CONTRACT_STAGES, FitPlan, Storyboard
 from vidpipe.project import Project
 
 
@@ -100,7 +100,9 @@ def build_report(
     video = providers.get("video")
 
     storyboard: Storyboard | None = None
-    if (project.build / "storyboard.json").is_file() and script_for(
+    if contract := project.storyboard_contract:
+        storyboard = contract.storyboard()
+    elif (project.build / "storyboard.json").is_file() and script_for(
         project, config.primary_language
     ):
         storyboard = project.read_model("storyboard.json", Storyboard)
@@ -160,6 +162,8 @@ def _estimate(
     kind = STAGE_KINDS.get(stage)
     label = describe(kind, selection) if kind is not None and selection is not None else None
     estimate = StageEstimate(stage=stage, provider=label)
+    if project.storyboard_contract and stage in CONTRACT_STAGES:
+        return StageEstimate(stage=stage, provider=None, gpu_minutes=0.0, dollars=0.0, calls=0)
     if selection is None:  # brief, fit-planning, assembly: no provider, no GPU
         return estimate.model_copy(update={"gpu_minutes": 0.0, "dollars": 0.0})
     if provider is None:

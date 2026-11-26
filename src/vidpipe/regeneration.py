@@ -60,6 +60,7 @@ class _Probe(StageContext):
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
         expected_outputs: Sequence[Path] = (),
+        replace_edited: bool = False,
     ) -> Produced:
         # Only the reuse branch of ArtifactStore.produce can complete. On a miss,
         # it stops before calling the generator or writing an artifact or ledger.
@@ -70,6 +71,7 @@ class _Probe(StageContext):
             parameters=parameters,
             seed=seed,
             expected_outputs=expected_outputs,
+            replace_edited=replace_edited,
         )
 
 

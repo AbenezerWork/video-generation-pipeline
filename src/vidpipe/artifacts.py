@@ -274,6 +274,7 @@ class ArtifactStore:
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
         expected_outputs: Sequence[Path] = (),
+        replace_edited: bool = False,
     ) -> Produced:
         """Return the artifact ``key``, generating it with ``make`` only when its inputs changed.
 
@@ -300,6 +301,12 @@ class ArtifactStore:
             and existing.input_hash == wanted
             and all(self.project.root.joinpath(o.path).is_file() for o in existing.outputs)
             and {self._rel(path) for path in expected_outputs} <= {o.path for o in existing.outputs}
+            and (
+                not replace_edited
+                or all(
+                    self.hash_path(self.project.root / o.path) == o.sha256 for o in existing.outputs
+                )
+            )
         ):
             paths = [self.project.root / o.path for o in existing.outputs]
             return Produced(paths=paths, data=existing.data, reused=True, record=existing)
