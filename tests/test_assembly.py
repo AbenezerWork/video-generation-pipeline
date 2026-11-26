@@ -181,12 +181,11 @@ def test_sidecar_srt_files_follow_the_narration_timing(make_project: MakeProject
         script = read_json(
             project / "build" / ("script.json" if lang == "en" else f"translation/{lang}.json")
         )
-        assert [text.replace("\n", " ") for _, _, text in cues] == [
-            line["text"] for line in script["lines"]
-        ]
-        for (start, end, _), (shot_start, shot_end) in zip(cues, timeline, strict=True):
-            assert start == pytest.approx(shot_start, abs=0.002)
-            assert end == pytest.approx(shot_end, abs=0.002)
+        for line, (shot_start, shot_end) in zip(script["lines"], timeline, strict=True):
+            shot_cues = [cue for cue in cues if shot_start - 0.002 <= cue[0] < shot_end - 0.002]
+            assert " ".join(" ".join(cue[2].split()) for cue in shot_cues) == line["text"]
+            assert shot_cues[0][0] == pytest.approx(shot_start, abs=0.002)
+            assert shot_cues[-1][1] == pytest.approx(shot_end, abs=0.002)
         probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
         assert cues[-1][1] == pytest.approx(float(probe["format"]["duration"]), abs=0.2)
 
@@ -201,6 +200,8 @@ def test_amharic_render_uses_english_cues_timed_to_its_own_shots(make_project: M
     script = read_json(path)
     long = "A lantern beside the window lights the room as the family waits for the storm to pass."
     script["lines"][0]["text"] = long
+    script["lines"][1]["text"] = "The rain falls."
+    script["lines"][2]["text"] = "The family waits."
     path.write_text(json.dumps(script), encoding="utf-8")
 
     assert run_cli("run", str(project)) == 0
@@ -286,6 +287,41 @@ def test_music_candidates_are_logged_and_only_the_selected_track_is_mixed(
     assert "file:build/music/candidate_3.wav" in artifacts["assembly/am"]["inputs"]
     assert "file:build/music/candidate_2.wav" not in artifacts["assembly/am"]["inputs"]
     assert log.read_text(encoding="utf-8") == original
+    assert run_cli("radio-cut", str(project)) == 0
+    artifacts = read_json(ledger)["artifacts"]
+    assert "file:build/music/candidate_3.wav" in artifacts["radio-cut/am"]["inputs"]
+    assert log.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.needs_ffmpeg
+def test_radio_cut_uses_narration_and_captions_without_visuals_or_generated_music(
+    make_project: MakeProject,
+) -> None:
+    size = (320, 176)
+    project = make_project(width=size[0], height=size[1], subtitles={"burn_in": False})
+    assert run_cli("run", str(project), "--until", "fit-planning") == 0
+    log = project / "runs.jsonl"
+    original = log.read_text(encoding="utf-8")
+
+    assert run_cli("radio-cut", str(project)) == 0
+
+    artifacts = read_json(project / "build/ledger.json")["artifacts"]
+    assert {"radio-cut/am", "radio-cut/en"} <= artifacts.keys()
+    for lang in ("en", "am"):
+        path = project / "out" / f"demo_{lang}_radio.mp4"
+        probe = ffprobe(path)
+        assert {stream["codec_type"] for stream in probe["streams"]} == {"video", "audio"}
+        start, end, _ = read_srt(path.with_suffix(".srt"))[0]
+        frame = gray_frame(path, (start + end) / 2, size)
+        assert max(frame[: size[0] * size[1] // 2]) < 20
+        assert max(frame[size[0] * size[1] // 2 :]) > 100  # burned captions on black
+        rate = 8000
+        samples = decode_audio(path, rate)
+        assert tone_amplitude(samples, rate, 110, 0.25, 1.0) > 0.0003
+
+    assert log.read_text(encoding="utf-8") == original
+    assert not (project / "build" / "video.json").exists()
+    assert not (project / "build" / "music.json").exists()
 
 
 @pytest.mark.needs_ffmpeg

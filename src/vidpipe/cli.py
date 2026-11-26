@@ -42,6 +42,8 @@ def _parser() -> argparse.ArgumentParser:
     schema.add_argument("--out", type=Path, default=Path("schema"), help="output directory")
     export = sub.add_parser("export-storyboard", help="export an editable storyboard from a build")
     export.add_argument("project", type=Path, help="project directory")
+    radio = sub.add_parser("radio-cut", help="render narration over black with subtitles")
+    radio.add_argument("project", type=Path, help="project with narration and a fit plan")
     run = sub.add_parser("run", help="run the stage graph on a project directory")
     run.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     _add_run_options(run)
@@ -165,6 +167,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "export-storyboard":
             print(export_storyboard(args.project))
+            return 0
+        if args.command == "radio-cut":
+            for path in pipeline.radio_cut(args.project):
+                print(path)
             return 0
         if args.command == "ui":
             return _serve_ui(args.project, args.host, args.port)

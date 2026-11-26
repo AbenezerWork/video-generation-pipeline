@@ -934,34 +934,59 @@ class AssemblyStage(Stage):
 
     name = "assembly"
 
-    def problems(self, ctx: StageContext) -> list[str]:
+    def problems(self, ctx: StageContext, *, radio: bool = False) -> list[str]:
         config = ctx.project.config
-        subtitle_languages = (
-            [config.subtitles.text_language] if config.subtitles.text_language else ctx.languages
-        )
+        subtitles = config.subtitles
+        languages: set[str] = set()
+        if radio or subtitles.burn_in:
+            languages.update(
+                [subtitles.text_language] if subtitles.text_language else ctx.languages
+            )
+        if not radio and config.end_card_seconds:
+            languages.update(ctx.languages)
         return [
             *ctx.assembler.problems(),
-            *font_problems(config.subtitles, subtitle_languages, ctx.project.root),
+            *(
+                font_problems(
+                    subtitles.model_copy(update={"burn_in": True}),
+                    sorted(languages),
+                    ctx.project.root,
+                )
+                if languages
+                else []
+            ),
         ]
 
     def artifact_count(self, ctx: StageContext) -> int:
         return len(ctx.languages)
 
     def run(self, ctx: StageContext) -> list[str]:
+        return self.render_project(ctx)
+
+    def render_project(self, ctx: StageContext, *, radio: bool = False) -> list[str]:
         project = ctx.project
         config = project.config
         plan = project.read_model("fit_plan.json", FitPlan)
         narration = project.read_model("narration.json", Narration)
-        video = project.read_model("video.json", MediaIndex)
-        music_item = project.read_model("music.json", MusicIndex).selected
+        video = None if radio else project.read_model("video.json", MediaIndex)
+        music: Path | None = None
+        if not radio or (project.build / "music.json").is_file():
+            music = project.build / project.read_model("music.json", MusicIndex).selected.path
+            if radio and not music.is_file():
+                music = None
         size, margin, columns = subtitle_layout(*config.render_size, config.subtitles.font_size)
-        shots = {s.shot_id: s for s in plan.shots}
-        storyboard = project.read_model("storyboard.json", Storyboard)
+        line_ids: dict[int, int] = {}
+        if config.subtitles.text_language and any(
+            lang != config.subtitles.text_language for lang in ctx.languages
+        ):
+            storyboard = project.read_model("storyboard.json", Storyboard)
+            line_ids = {shot.id: shot.line_id for shot in storyboard.shots}
+        card_seconds = 0.0 if radio else config.end_card_seconds
         outputs: list[str] = []
         for lang in ctx.languages:
-            seconds = plan.render_seconds[lang] + config.end_card_seconds
+            seconds = plan.render_seconds[lang] + card_seconds
             if seconds > plan.limits.max_render_s:
-                card = " with its end card" if config.end_card_seconds else ""
+                card = " with its end card" if card_seconds else ""
                 raise StageError(
                     f"the {lang} render{card} would last {seconds:.1f} s; the limit is "
                     f"{plan.limits.max_render_s:g} s (shorten the narration and plan again)"
@@ -975,35 +1000,35 @@ class AssemblyStage(Stage):
                 else {}
             )
             offset = 0.0
-            for shot in storyboard.shots:
-                fit = shots[shot.id].languages[lang]
+            for shot in plan.shots:
+                fit = shot.languages[lang]
                 segments.append(
                     ShotSegment(
-                        shot_id=shot.id,
+                        shot_id=shot.shot_id,
                         narration=project.build
                         / next(
                             c.path
                             for c in narration.clips
-                            if c.shot_id == shot.id and c.language == lang
+                            if c.shot_id == shot.shot_id and c.language == lang
                         ),
                         seconds=fit.seconds,
                         clips=[
                             ClipPlay(
                                 video=project.build
-                                / video.for_clip(shot.id, fit.visual_set, use.clip),
+                                / video.for_clip(shot.shot_id, fit.visual_set, use.clip),
                                 speed=use.speed,
                                 source_s=use.source_s,
                                 seconds=use.seconds,
                             )
                             for use in fit.clips
-                            if use.source_s > 0
+                            if video is not None and use.source_s > 0
                         ],
                     )
                 )
-                if alternate_lines:
+                if text_language != lang:
                     cues += wrap_cue(
                         Cue(
-                            text=alternate_lines[shot.line_id],
+                            text=alternate_lines[line_ids[shot.shot_id]],
                             start_s=offset,
                             end_s=offset + fit.seconds,
                         ),
@@ -1016,10 +1041,7 @@ class AssemblyStage(Stage):
                             columns=columns,
                         )
                 offset += fit.seconds
-            stem = f"{config.output_name}_{lang}"
-            outputs += self._render(
-                ctx, lang, segments, cues, project.build / music_item.path, stem, size, margin
-            )
+            outputs += self._render(ctx, lang, segments, cues, music, size, margin, radio=radio)
         return outputs
 
     def _render(
@@ -1028,28 +1050,33 @@ class AssemblyStage(Stage):
         lang: str,
         segments: list[ShotSegment],
         cues: list[Cue],
-        music: Path,
-        stem: str,
+        music: Path | None,
         font_size: int,
         margin_v: int,
+        *,
+        radio: bool,
     ) -> list[str]:
         project = ctx.project
         config = project.config
+        stem = f"{config.output_name}_{lang}{'_radio' if radio else ''}"
         subtitles = config.subtitles
+        burn_in = radio or subtitles.burn_in
         font = subtitles.fonts.get(subtitles.text_language or lang)
         fonts_dir = resolve_fonts_dir(project.root, subtitles)
         render_width, render_height = config.render_size
         track = SubtitleTrack(
             srt=project.out / f"{stem}.srt",
-            burn_in=subtitles.burn_in,
+            burn_in=burn_in,
             fonts_dir=fonts_dir if font else None,
             font=font,
             font_size=font_size,
             margin_v=margin_v,
         )
-        title = project.read_model("brief.json", Brief).title
+        title = (
+            project.load_brief().title if radio else project.read_model("brief.json", Brief).title
+        )
         card_font = subtitles.fonts.get(lang)
-        card = config.end_card if config.end_card and config.end_card.enabled else None
+        card = config.end_card if not radio and config.end_card_seconds else None
         card_text = card.text_for(lang) if card else None
         end_card = (
             EndCard(
@@ -1060,11 +1087,7 @@ class AssemblyStage(Stage):
             if card
             else None
         )
-        faces = {
-            face
-            for face in (font if subtitles.burn_in else None, card_font if card else None)
-            if face
-        }
+        faces = {face for face in (font if burn_in else None, card_font if card else None) if face}
         fonts = (
             list(dict.fromkeys(f for face in sorted(faces) for f in font_files(fonts_dir, face)))
             if fonts_dir.is_dir()
@@ -1077,6 +1100,7 @@ class AssemblyStage(Stage):
             music=music,
             subtitles=track,
             end_card=end_card,
+            radio=radio,
         )
 
         def make() -> Made:
@@ -1106,12 +1130,12 @@ class AssemblyStage(Stage):
             return Made([*ctx.assembler.assemble(job), track.srt])
 
         made = ctx.produce(
-            f"assembly/{lang}",
+            f"{ctx.stage}/{lang}",
             inputs=Inputs(
                 files=[
                     *(clip.video for s in segments for clip in s.clips),
                     *(s.narration for s in segments),
-                    music,
+                    *([music] if music is not None else []),
                 ],
                 values={
                     # Fonts may live outside the project (the bundled ones do): hash them here.
@@ -1129,8 +1153,8 @@ class AssemblyStage(Stage):
                 "width": render_width,
                 "height": render_height,
                 "fps": config.fps,
-                "burn_in": subtitles.burn_in,
-                "font": font if subtitles.burn_in else None,
+                "burn_in": burn_in,
+                "font": font if burn_in else None,
                 "font_size": track.font_size,
                 "margin_v": track.margin_v,
                 "music_level": config.mix.music_level,

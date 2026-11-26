@@ -88,6 +88,7 @@ class LanguageRender(BaseModel):
     music: Path | None = None
     subtitles: SubtitleTrack | None = None
     end_card: EndCard | None = None
+    radio: bool = False
 
 
 class AssemblyJob(BaseModel):
@@ -245,31 +246,17 @@ class FfmpegAssembler(Assembler):
         audio_args, audio_parts, audio_label, total = self._audio(job, render, first=len(clips))
         args += audio_args
 
-        parts: list[str] = []
-        shots: list[str] = []
-        next_clip = 0
-        for i, seg in enumerate(render.segments):
-            shot_clips: list[str] = []
-            for clip in seg.clips:
-                label = f"c{next_clip}"
-                parts.append(self._clip_chain(job, clip, next_clip, label, trim=len(seg.clips) > 1))
-                shot_clips.append(f"[{label}]")
-                next_clip += 1
-            source = shot_clips[0]
-            if len(shot_clips) > 1:
-                parts.append(f"{''.join(shot_clips)}concat=n={len(shot_clips)}:v=1:a=0[s{i}]")
-                source = f"[s{i}]"
-            parts.append(
-                f"{source}tpad=stop_mode=clone:stop_duration={seg.seconds},"
-                f"trim=duration={seg.seconds},setpts=PTS-STARTPTS[v{i}]"
-            )
-            shots.append(f"[v{i}]")
-        n = len(render.segments)
         card = render.end_card
         burn = render.subtitles is not None and render.subtitles.burn_in
         shots_label = "shots" if card else "vout"
         video_label = "joined" if burn else shots_label
-        parts.append(f"{''.join(shots)}concat=n={n}:v=1:a=0[{video_label}]")
+        if render.radio:
+            parts = [
+                f"color=c=black:s={job.width}x{job.height}:r={job.fps}:d={total},"
+                f"setsar=1[{video_label}]"
+            ]
+        else:
+            parts = self._video_shots(job, render, video_label)
         if render.subtitles is not None and burn:
             track = render.subtitles
             filter_ = subtitles_filter(
@@ -302,6 +289,31 @@ class FfmpegAssembler(Assembler):
         args += ["-movflags", "+faststart", str(render.output)]
         return args
 
+    def _video_shots(self, job: AssemblyJob, render: LanguageRender, label: str) -> list[str]:
+        parts: list[str] = []
+        shots: list[str] = []
+        next_clip = 0
+        for i, seg in enumerate(render.segments):
+            shot_clips: list[str] = []
+            for clip in seg.clips:
+                clip_label = f"c{next_clip}"
+                parts.append(
+                    self._clip_chain(job, clip, next_clip, clip_label, trim=len(seg.clips) > 1)
+                )
+                shot_clips.append(f"[{clip_label}]")
+                next_clip += 1
+            source = shot_clips[0]
+            if len(shot_clips) > 1:
+                parts.append(f"{''.join(shot_clips)}concat=n={len(shot_clips)}:v=1:a=0[s{i}]")
+                source = f"[s{i}]"
+            parts.append(
+                f"{source}tpad=stop_mode=clone:stop_duration={seg.seconds},"
+                f"trim=duration={seg.seconds},setpts=PTS-STARTPTS[v{i}]"
+            )
+            shots.append(f"[v{i}]")
+        parts.append(f"{''.join(shots)}concat=n={len(shots)}:v=1:a=0[{label}]")
+        return parts
+
     def _audio(
         self, job: AssemblyJob, render: LanguageRender, *, first: int = 0
     ) -> tuple[list[str], list[str], str, float]:
@@ -321,11 +333,19 @@ class FfmpegAssembler(Assembler):
         if card is not None:
             total += card.seconds
             parts.append(f"[spoken]apad=whole_dur={total}[narration]")
-        if render.music is None:
+        placeholder = render.radio and render.music is None
+        if render.music is not None:
+            args += ["-i", str(render.music)]
+        elif placeholder:
+            args += ["-f", "lavfi", "-i", f"sine=frequency=110:sample_rate=48000:duration={total}"]
+        else:
             return args, parts, "narration", total
-        args += ["-i", str(render.music)]
         parts += self._mix(
-            job, total, music_input=first + n, fade_out_s=card.seconds if card else 0.0
+            job,
+            total,
+            music_input=first + n,
+            fade_out_s=card.seconds if card else 0.0,
+            backing_gain=0.15 if placeholder else 1.0,
         )
         return args, parts, "mix", total
 
@@ -393,7 +413,13 @@ class FfmpegAssembler(Assembler):
         return "".join(chain)
 
     def _mix(
-        self, job: AssemblyJob, total: float, *, music_input: int, fade_out_s: float = 0.0
+        self,
+        job: AssemblyJob,
+        total: float,
+        *,
+        music_input: int,
+        fade_out_s: float = 0.0,
+        backing_gain: float = 1.0,
     ) -> list[str]:
         """Music under narration: the narration drives a sidechain compressor on the music, so the
         music sits at ``music_level`` and drops while someone speaks. With ``fade_out_s`` (an end
@@ -404,7 +430,7 @@ class FfmpegAssembler(Assembler):
         return [
             "[narration]asplit=2[voice][sidechain]",
             f"[{music_input}:a]aresample=48000,aformat=channel_layouts=stereo,apad,"
-            f"atrim=duration={total},volume={mix.music_level}[music]",
+            f"atrim=duration={total},volume={mix.music_level * backing_gain}[music]",
             f"[music][sidechain]sidechaincompress=threshold={self.DUCK_THRESHOLD}:"
             f"ratio={mix.duck_ratio}:attack={self.ATTACK_MS}:release={self.RELEASE_MS}:"
             "makeup=1[ducked]",

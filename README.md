@@ -511,6 +511,17 @@ uploads, retries, the step-down, cancellation and memory release:
 5. Register it and give it a conformance test against the fake server (`tests/fake_comfyui.py`; add
    a writer to `WRITERS` for a new output node).
 
+## Radio cut
+
+Use the fit plan and generated narration to render one radio cut per language.
+
+    uv run vidpipe run examples/sample --until fit-planning --auto
+    uv run vidpipe radio-cut examples/sample
+
+The command writes black MP4s with burned-in subtitles and sidecar SRTs under
+`out/<name>_<lang>_radio.*`. It uses the score selected in the existing music index, or a quiet tone
+when no score is available. It reuses the film's subtitle language, ducking and final loudness settings.
+
 ## Assembly, ducking and subtitles
 
 MP4 metadata carries the brief's title and the comment and description

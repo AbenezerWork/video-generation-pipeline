@@ -20,7 +20,7 @@ from vidpipe.project import Project
 from vidpipe.regeneration import estimate_regeneration
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
-from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
+from vidpipe.stages import STAGE_NAMES, STAGES, AssemblyStage, Stage, StageContext, StageError
 from vidpipe.stop import RunStopped, StopWatcher
 
 
@@ -379,6 +379,24 @@ def _artifact_count(stage: Stage, ctx: StageContext) -> int | None:
         return stage.artifact_count(ctx)
     except Exception:  # an earlier stage's output is not there yet: unknown for now
         return None
+
+
+def radio_cut(project_dir: Path) -> list[str]:
+    """Render the existing fit plan and narration as subtitled radio cuts."""
+    with writer_lock(project_dir):
+        project = Project(project_dir)
+        ctx = StageContext(project, {}, FfmpegAssembler())
+        ctx.begin("radio-cut")
+        assembly = AssemblyStage()
+        if problems := assembly.problems(ctx, radio=True):
+            raise PlanError(problems)
+        try:
+            return assembly.render_project(ctx, radio=True)
+        except (OSError, ValueError, LookupError, StopIteration) as exc:
+            raise StageError(
+                f"cannot render radio cut: {exc}. "
+                "Run vidpipe run PROJECT --until fit-planning first."
+            ) from exc
 
 
 def approve(project_dir: Path, gates: Sequence[str]) -> None:
