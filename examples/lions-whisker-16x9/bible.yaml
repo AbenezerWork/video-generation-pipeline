@@ -1,0 +1,40 @@
+style:
+  description: >
+    Photorealistic live-action documentary footage set in the Ethiopian highlands. Natural skin,
+    cotton, fur, earth and stone texture, subdued warm colours and physically plausible light.
+    Every shot depicts a single simple moment with clear foreground subjects and restrained
+    camera movement. One full-frame film still with a single composition.
+characters:
+  - id: almaz
+    name: Almaz
+    description: >
+      An Ethiopian woman of about thirty with braided black hair under a white netela shawl with
+      a thin red border, and a long plain white cotton dress. Keep the same clothing and hair in
+      every appearance.
+  - id: dawit
+    name: Dawit
+    description: >
+      An Ethiopian boy of about eight with close-cropped black hair, wearing a faded blue shirt
+      and brown shorts.
+  - id: elder
+    name: the wise elder
+    description: >
+      A very old Ethiopian man with deep brown skin, a short white beard, a dark brown wool blanket over his
+      shoulders and a carved wooden walking stick.
+  - id: lion
+    name: the lion
+    description: >
+      A large, calm male Ethiopian lion with a thick dark mane, standing or lying on four legs.
+locations:
+  - id: farmhouse
+    name: the farmhouse
+    description: >
+      A round stone farmhouse with a thatched roof and a fenced yard on green terraced fields.
+  - id: hermitage
+    name: the elder's hermitage
+    description: >
+      A small stone hut beside a cave mouth high on a rocky mountainside, a fire burning outside.
+  - id: ravine
+    name: the ravine
+    description: >
+      A dry rocky ravine with tall golden grass, thorn bushes and a single acacia tree.

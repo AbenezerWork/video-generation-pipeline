@@ -1,0 +1,263 @@
+{
+  "title": "The Lion's Whisker",
+  "shots": [
+    {
+      "id": 1,
+      "reason": "Opens like a told tale (\"Long ago\"), so the viewer knows this is folklore being passed on. Introduces the heroine and the marriage that starts the problem; the push-in draws the viewer in.",
+      "narration": {
+        "en": "Long ago, Almaz married a widower in the green highlands.",
+        "am": "ከብዙ ዘመን በፊት፣ አልማዝ በለምለሙ ደጋማ ምድር ሚስቱ የሞተችበትን ሰው አገባች።"
+      },
+      "visual": "Wide shot at eye level of Almaz standing beside her new husband, a tall Ethiopian man of about forty with dark brown skin, a short black beard, a grey cotton gabi wrapped over a white tunic, both facing a vast valley of green terraced highland fields under soft morning light.",
+      "motion_type": "push_in",
+      "character": "almaz",
+      "location": "farmhouse",
+      "others": [],
+      "people": 2,
+      "movement": "The woman's shawl and the man's wrap stir in the breeze; the grass on the terraces sways gently."
+    },
+    {
+      "id": 2,
+      "reason": "Shows the first place and that she arrives as an outsider. A pan carries the journey.",
+      "narration": {
+        "en": "She moved into his stone farmhouse beneath the misty hills.",
+        "am": "ጭጋጋማ ከሆኑት ኮረብቶች ሥር ወዳለው የድንጋይ እርሻ ቤቱ ገባች።"
+      },
+      "visual": "Wide shot from a low angle of Almaz walking along the fenced yard toward the round stone farmhouse with its thatched roof, misty green hills rising behind under pale overcast light.",
+      "motion_type": "pan",
+      "character": "almaz",
+      "location": "farmhouse",
+      "others": [],
+      "people": 1,
+      "movement": "The woman walks slowly across the frame; mist drifts over the hills behind."
+    },
+    {
+      "id": 3,
+      "reason": "Introduces the second lead and the conflict. His eye level puts us with him; the push-in marks the emotional beat.",
+      "narration": {
+        "en": "His young son, Dawit, would not look at her or speak.",
+        "am": "ትንሹ ልጁ ዳዊት ግን ቀና ብሎ አያያትም፣ አያናግራትምም ነበር።"
+      },
+      "visual": "Medium shot at eye level of Dawit sitting on a low stone wall in the fenced yard, his face turned away with a sullen expression, the stone farmhouse soft in the background under grey afternoon light.",
+      "motion_type": "ambient",
+      "character": "dawit",
+      "location": "farmhouse",
+      "others": [],
+      "people": 1,
+      "movement": "The boy breathes slowly and keeps his head turned away; his shirt stirs in the wind."
+    },
+    {
+      "id": 4,
+      "reason": "Shows rejection through an object. The untouched bowl is one of the film's two memorable images; it returns, shared, in shot 16.",
+      "narration": {
+        "en": "Each evening, the bowl she filled for him sat untouched.",
+        "am": "በየምሽቱ የምታቀርብለት ሳህን ሳይነካ ይቀር ነበር።"
+      },
+      "visual": "Close-up at table height inside the farmhouse of a full clay bowl of stew resting untouched on a low wooden stool, rough stone walls and dark roof beams behind, lit by warm dim evening light from the doorway.",
+      "motion_type": "ambient",
+      "character": "none",
+      "location": "farmhouse",
+      "others": [],
+      "people": 0,
+      "movement": "Faint steam rises from the bowl; the doorway light flickers softly on the stone wall."
+    },
+    {
+      "id": 5,
+      "reason": "Her decision to act. Low angle and climb show effort; mist separates this world from home.",
+      "narration": {
+        "en": "Heartbroken, Almaz climbed the mountain path to a wise elder.",
+        "am": "ልቧ የተሰበረው አልማዝ ወደ አንድ ጠቢብ አዛውንት ለመሄድ የተራራውን መንገድ ወጣች።"
+      },
+      "visual": "Wide shot from a high angle of Almaz climbing a narrow stony mountain path alone, rocky slopes and distant valleys below, cool misty light and a lonely mood.",
+      "motion_type": "pan",
+      "character": "almaz",
+      "location": "hermitage",
+      "others": [],
+      "people": 1,
+      "movement": "The woman stands on the path looking up the mountain; her shawl and the grass move in the wind; mist drifts in the valley."
+    },
+    {
+      "id": 6,
+      "reason": "States what she wants. Kneeling shows how much; the push-in tightens on the plea.",
+      "narration": {
+        "en": "She begged him for a potion to make the boy love her.",
+        "am": "ልጁ እንዲወዳት የሚያደርግ መድኃኒት እንዲሰጣት ለመነችው።"
+      },
+      "visual": "Medium shot at eye level of Almaz kneeling with an anguished pleading face before the seated elder outside his small stone hut by the cave mouth, a fire burning between them in soft grey light.",
+      "motion_type": "push_in",
+      "character": "almaz",
+      "location": "hermitage",
+      "others": [
+        "elder"
+      ],
+      "people": 2,
+      "movement": "The woman slowly lowers her gaze; the small fire flickers between them."
+    },
+    {
+      "id": 7,
+      "reason": "Introduces the elder's authority. The close-up asks us to read his face: help is coming, with a condition.",
+      "narration": {
+        "en": "The elder nodded slowly and said he could make one.",
+        "am": "አዛውንቱም ቀስ ብለው ተስማሙና ሊያዘጋጁላት እንደሚችሉ ነገሯት።"
+      },
+      "visual": "Close-up at eye level of the elder's face, thoughtful and kind, his dark brown wool blanket over his shoulders, warm firelight glowing on his deep brown skin against the dark cave mouth.",
+      "motion_type": "ambient",
+      "character": "elder",
+      "location": "hermitage",
+      "others": [],
+      "people": 1,
+      "movement": "The old man nods slowly once and blinks; the fire flickers behind him."
+    },
+    {
+      "id": 8,
+      "reason": "The turn of the story. A still frame and a glance outward let the danger sink in.",
+      "narration": {
+        "en": "But he needed one whisker from a living lion.",
+        "am": "ነገር ግን ከሕያው አንበሳ የተነቀለ አንድ ጢም ያስፈልጋቸው ነበር።"
+      },
+      "visual": "Medium shot at eye level of the elder sitting by the fire outside his stone hut, holding his carved wooden walking stick upright and gazing gravely into the distance, smoke rising in fading light.",
+      "motion_type": "push_in",
+      "character": "elder",
+      "location": "hermitage",
+      "others": [],
+      "people": 1,
+      "movement": "The old man slowly turns his head toward the distance; smoke curls up from the fire."
+    },
+    {
+      "id": 9,
+      "reason": "Third place and the start of the trial. Going down mirrors the climb of shot 5.",
+      "narration": {
+        "en": "At dawn, Almaz carried meat down to the rocky ravine.",
+        "am": "ጎህ ሲቀድ አልማዝ ሥጋ ይዛ ወደ ድንጋያማው ሸለቆ ወረደች።"
+      },
+      "visual": "Wide shot from a high angle of Almaz walking down into the dry rocky ravine at dawn, carrying a wrapped bundle of meat against her chest, golden grass and thorn bushes around her in pale pink light.",
+      "motion_type": "pan",
+      "character": "almaz",
+      "location": "ravine",
+      "others": [],
+      "people": 1,
+      "movement": "The woman stands still holding the bundle and breathes slowly; the golden grass sways in the dawn light."
+    },
+    {
+      "id": 10,
+      "reason": "The tale's central image: the lion. Shown calm and still, so suspense comes from its size, not from violence, which keeps the film suitable for children watching with parents.",
+      "narration": {
+        "en": "There a great lion lay resting in the shade.",
+        "am": "እዚያም አንድ ትልቅ አንበሳ በጥላ ሥር ተኝቶ ያርፍ ነበር።"
+      },
+      "visual": "Wide shot at ground level of the lion lying on four legs in the shade of the single acacia tree, tall golden grass around him, dappled warm morning light.",
+      "motion_type": "ambient",
+      "character": "lion",
+      "location": "ravine",
+      "others": [],
+      "people": 0,
+      "movement": "The lion breathes slowly and flicks his tail; the grass sways and leaf shadows shift."
+    },
+    {
+      "id": 11,
+      "reason": "Fixes the starting distance between them. Stillness is the patience the tale is about.",
+      "narration": {
+        "en": "She set the meat down and waited, very still and quiet.",
+        "am": "ሥጋውን አስቀመጠችና ጸጥ ብላ፣ ሳትንቀሳቀስ ጠበቀች።"
+      },
+      "visual": "Wide shot at eye level of Almaz sitting very still on a flat rock in the foreground, a piece of meat on the ground before her; far behind her, small in the distance, the lion lies alone beneath the acacia tree, hushed golden light.",
+      "motion_type": "ambient",
+      "character": "almaz",
+      "location": "ravine",
+      "others": [
+        "lion"
+      ],
+      "people": 1,
+      "movement": "The woman sits still on the rock and breathes slowly; the pieces of raw meat lie still on the dry ground in front of her; the tall grass sways gently."
+    },
+    {
+      "id": 12,
+      "reason": "The distance has shrunk. The push-in does the closing in.",
+      "narration": {
+        "en": "Each day she sat a little closer than the day before.",
+        "am": "በየቀኑም ከትናንቱ ትንሽ ቀረብ ብላ ትቀመጥ ነበር።"
+      },
+      "visual": "Medium shot at a low angle of Almaz seated calmly in the golden grass, the lion lying a short distance away watching her, thorn bushes behind in warm late-afternoon light.",
+      "motion_type": "ambient",
+      "character": "almaz",
+      "location": "ravine",
+      "others": [
+        "lion"
+      ],
+      "people": 1,
+      "movement": "The lion blinks and slowly turns his head toward the woman; the grass sways in the wind."
+    },
+    {
+      "id": 13,
+      "reason": "The climax and the image the tale is named for: the whisker. The closest framing of the pair, held on the gentle gesture.",
+      "narration": {
+        "en": "At last the lion ate calmly beside her, and she plucked one whisker.",
+        "am": "በመጨረሻም አንበሳው አጠገቧ በእርጋታ ሲበላ፣ አንድ ጢም ነቀለች።"
+      },
+      "visual": "Medium shot at eye level of the lion lying on four legs calmly eating meat on the ground right beside the seated Almaz, her face serene, golden grass and acacia shade around them in soft warm light.",
+      "motion_type": "ambient",
+      "character": "almaz",
+      "location": "ravine",
+      "others": [
+        "lion"
+      ],
+      "people": 1,
+      "movement": "The lion chews slowly and flicks his tail; the woman breathes calmly; the grass sways."
+    },
+    {
+      "id": 14,
+      "reason": "The surprise: the prize is thrown away. Only flame and smoke move.",
+      "narration": {
+        "en": "The elder dropped the whisker into his fire and smiled.",
+        "am": "አዛውንቱ ጢሙን ወደ እሳቱ ጣሉትና ፈገግ አሉ።"
+      },
+      "visual": "Medium shot at eye level of the elder seated beside his fire outside the stone hut, smiling gently at the flames, Almaz sitting across the fire watching, dusk light on the rocky mountainside.",
+      "motion_type": "push_in",
+      "character": "elder",
+      "location": "hermitage",
+      "others": [
+        "almaz"
+      ],
+      "people": 2,
+      "movement": "The flames leap softly and smoke rises; the old man smiles and blinks slowly."
+    },
+    {
+      "id": 15,
+      "reason": "The moral, spoken almost to the viewer, the way a parent telling the tale would turn to the listener. This is the line to remember and retell.",
+      "narration": {
+        "en": "Be as patient with the boy as you were with the lion.",
+        "am": "ለአንበሳው የታገሥሽውን ያህል ለልጁም ታገሺ።"
+      },
+      "visual": "Medium shot at eye level of Almaz sitting by the fire outside the stone hut, lit by firelight, her eyes softening with understanding, the white netela shawl with a thin red border framing her braided black hair against the dark mountainside.",
+      "motion_type": "ambient",
+      "character": "almaz",
+      "location": "hermitage",
+      "others": [],
+      "people": 1,
+      "movement": "The woman slowly breathes and lowers her gaze; firelight flickers on her face."
+    },
+    {
+      "id": 16,
+      "reason": "Pays off shots 3 and 4. The shared bowl and warm light show the change without saying it, and end the tale where a family would hear it: together, at a meal.",
+      "narration": {
+        "en": "At dusk, Dawit sat beside Almaz and shared her meal.",
+        "am": "ምሽት ላይ ዳዊት ከአልማዝ አጠገብ ተቀምጦ ምግቧን አብሯት በላ።"
+      },
+      "visual": "Medium shot at eye level of Dawit, a small eight-year-old boy whose head reaches only her shoulder, sitting close beside Almaz on a bench in the fenced yard, a shared clay bowl of food resting between them, both smiling softly, the stone farmhouse behind in warm golden dusk light.",
+      "motion_type": "push_in",
+      "character": "dawit",
+      "location": "farmhouse",
+      "others": [
+        "almaz"
+      ],
+      "people": 2,
+      "movement": "The boy slowly turns his head to look at the woman; warm light shifts and the grass sways."
+    }
+  ],
+  "music": {
+    "prompt": "Instrumental score for: The Lion's Whisker",
+    "bpm": 76,
+    "keyscale": "A minor",
+    "cues": []
+  }
+}

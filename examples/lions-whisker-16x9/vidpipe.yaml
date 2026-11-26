@@ -1,0 +1,34 @@
+languages: [en, am]
+visuals: shared
+output_name: lions-whisker-16x9
+width: 640
+height: 352
+fps: 24
+# Generated at 640x352, rendered as exact 16:9 (a 2% side crop).
+output_size: {width: 1280, height: 720}
+comfyui:
+  url: http://127.0.0.1:8188
+providers:
+  script: [claude-cli]
+  translation:
+    - {name: claude-cli, options: {model: claude-opus-5-5}}
+    - {name: claude-cli, options: {model: claude-sonnet-5-5}}
+  storyboard: [claude-cli]
+  # Amharic via Addis AI (needs ADDIS_API_KEY); English via Edge TTS. Chosen after user tests found the Edge voice robotic.
+  narration: {name: addis-ai, options: {amharic_voice: am-hamen}}
+  keyframes:
+    name: comfyui-keyframer
+    options:
+      settings: {reference_megapixels: 0.25}
+  video:
+    name: comfyui-i2v
+    options:
+      settings: {width: 640, height: 352}
+  music:
+    name: comfyui-music
+    options:
+      settings: {bpm: 76, keyscale: A minor}
+end_card: {seconds: 5}
+# English subtitles on the Amharic render (the brief asks for English subtitles).
+subtitles: {text_language: en}
+mix: {loudness_lufs: -14}
