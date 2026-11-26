@@ -422,3 +422,101 @@ def test_editing_a_translation_rewrites_that_languages_srt_only(make_project: Ma
 
     assert GEEZ_A in (project / "out" / "demo_am.srt").read_text(encoding="utf-8")
     assert (project / "out" / "demo_en.srt").read_text(encoding="utf-8") == english
+
+
+# ------------------------------------------------------------------------------------ end card
+
+#: The card tests use a frame large enough for the card's letters to be measured.
+CARD_SIZE = {"width": 320, "height": 176}
+
+
+@pytest.mark.needs_ffmpeg
+def test_the_end_card_follows_the_last_shot_with_the_music_fading_out(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+    edit_config(project, end_card={"seconds": 3.0}, fps=12, **CARD_SIZE)
+
+    assert run_cli("run", str(project)) == 0
+
+    shots_s = read_json(project / "build" / "fit_plan.json")["render_seconds"]["en"]
+    video = project / "out" / "demo_en.mp4"
+    duration = float(ffprobe(video)["format"]["duration"])
+    assert duration == pytest.approx(shots_s + 3.0, abs=0.2)
+    size = (CARD_SIZE["width"], CARD_SIZE["height"])
+    frame = gray_frame(video, shots_s + 1.5, size)
+    width, height = size
+    middle = frame[width * (height // 3) : width * (2 * height // 3)]
+    edges = frame[: width * (height // 6)] + frame[-width * (height // 6) :]
+    assert sum(1 for p in middle if p > 200) > 100  # the card's lettering
+    assert max(edges) < 40  # on black
+    # The captions end with the narration; the card is not a cue.
+    assert read_srt(project / "out" / "demo_en.srt")[-1][1] <= shots_s + 0.01
+    rate = 8000
+    samples = decode_audio(video, rate)
+    tail = samples[-int(0.15 * rate) :]
+    assert max(abs(s) for s in tail) < 0.02 * 32768  # the music has faded out
+
+
+def test_the_end_card_says_the_video_is_ai_generated_in_each_language(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+    edit_config(project, end_card={})
+
+    pipeline.run(project, assembler=StubAssembler())
+
+    english = (project / "build" / "assembly" / "demo_en_end_card.ass").read_text("utf-8")
+    amharic = (project / "build" / "assembly" / "demo_am_end_card.ass").read_text("utf-8")
+    assert "AI-generated video" in english and "coincidental" in english
+    assert "የተሰራ ቪዲዮ" in amharic
+    assert "Noto Sans Ethiopic" in amharic
+
+
+def test_end_card_text_is_plain_text_and_its_changes_rerender_only_assembly(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+    edit_config(project, end_card={"text": {"en": "Made with AI {\\an8}\nBy vidpipe"}})
+    assembler = StubAssembler()
+    pipeline.run(project, assembler=assembler)
+    card = (project / "build" / "assembly" / "demo_en_end_card.ass").read_text("utf-8")
+    assert "Made with AI (/an8)" in card and "By vidpipe" in card
+
+    assembler.rendered.clear()
+    edit_config(project, end_card={"text": {"en": "Another line"}})
+    result = pipeline.run(project, assembler=assembler)
+    assert assembler.rendered == ["en"]  # the Amharic card did not change
+    assert {r.stage for r in result.manifest.stages if not r.skipped} == {"assembly"}
+
+
+def test_adding_an_end_card_lengthens_the_music_to_play_under_it(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+    pipeline.run(project, assembler=StubAssembler())
+    before = read_json(project / "build" / "ledger.json")["artifacts"]["music"]["parameters"]
+
+    edit_config(project, end_card={"seconds": 4.0})
+    pipeline.run(project, assembler=StubAssembler())
+
+    after = read_json(project / "build" / "ledger.json")["artifacts"]["music"]["parameters"]
+    assert after["duration_s"] >= before["duration_s"] + 3
+
+
+def test_an_end_card_that_pushes_a_render_past_the_limit_fails_clearly(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(
+        providers={
+            "narration": {
+                "name": "fake-tts",
+                "options": {"seconds_per_char": 1.0, "max_seconds": 26.0},
+            }
+        }
+    )
+    edit_config(project, end_card={"seconds": 15.0})
+
+    assert run_cli("run", str(project)) == 1
+
+    assert "with its end card" in capsys.readouterr().err

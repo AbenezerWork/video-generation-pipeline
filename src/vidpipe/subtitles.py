@@ -85,6 +85,72 @@ def subtitles_filter(srt: Path, *, fonts_dir: Path | None, font: str | None, fon
     return "subtitles=" + ":".join(options)
 
 
+def ass_filter(ass: Path, *, fonts_dir: Path | None) -> str:
+    """The ``subtitles`` filter that draws an ``.ass`` file as it is styled (no forced style)."""
+    options = [f"filename={escape_filter_value(str(ass))}"]
+    if fonts_dir is not None:
+        options.append(f"fontsdir={escape_filter_value(str(fonts_dir))}")
+    return "subtitles=" + ":".join(options)
+
+
+# -------------------------------------------------------------------------------------- end card
+
+#: The card's script height; sizes below are in these units (as for burned-in subtitles).
+CARD_PLAY_RES_Y = 288
+
+
+def _ass_time(seconds: float) -> str:
+    centis = round(max(seconds, 0.0) * 100)
+    hours, rest = divmod(centis, 360_000)
+    minutes, rest = divmod(rest, 6000)
+    secs, cs = divmod(rest, 100)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{cs:02d}"
+
+
+def _ass_text(line: str) -> str:
+    """Plain text as ASS dialogue text: no override blocks, no line-break escapes."""
+    return line.replace("\\", "/").replace("{", "(").replace("}", ")").strip()
+
+
+def end_card_ass(text: str, *, font: str | None, width: int, height: int, seconds: float) -> str:
+    """An ASS script drawing the end card: ``text``'s first line as a headline, the others smaller
+    and dimmer beneath it, centred, fading in and out over ``seconds``."""
+    lines = [_ass_text(line) for line in text.splitlines() if line.strip()]
+    headline, rest = (lines[0], lines[1:]) if lines else ("", [])
+    play_x = round(CARD_PLAY_RES_Y * width / height)
+    face = font or "Arial"
+    newline = "\\N"  # ASS's hard line break
+    body = newline.join(rest)
+    dialogue = r"{\fs24\b1\c&HFFFFFF&}" + headline
+    if body:
+        # A small blank line between the headline and the rest, then the rest smaller and dimmer.
+        dialogue += newline + r"{\fs8} " + newline + r"{\fs12\b0\c&HC8C8C8&}" + body
+    fade_in, fade_out = round(min(0.8, seconds / 4) * 1000), round(min(0.6, seconds / 5) * 1000)
+    return "\n".join(
+        [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            f"PlayResX: {play_x}",
+            f"PlayResY: {CARD_PLAY_RES_Y}",
+            "WrapStyle: 0",
+            "ScaledBorderAndShadow: yes",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+            "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+            "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            f"Style: Card,{face},12,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,"
+            "0,0,1,0,0,5,36,36,0,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            f"Dialogue: 0,{_ass_time(0)},{_ass_time(seconds)},Card,,0,0,0,,"
+            rf"{{\an5\fad({fade_in},{fade_out})}}{dialogue}",
+            "",
+        ]
+    )
+
+
 # ----------------------------------------------------------------------------------------- fonts
 
 

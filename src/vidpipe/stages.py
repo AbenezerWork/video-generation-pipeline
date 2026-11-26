@@ -11,6 +11,7 @@ up to date generates nothing and reports itself skipped.
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
@@ -26,6 +27,7 @@ from vidpipe.assembly import (
     Assembler,
     AssemblyJob,
     ClipPlay,
+    EndCard,
     LanguageRender,
     MixSettings,
     ShotSegment,
@@ -77,7 +79,14 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
-from vidpipe.subtitles import Cue, font_files, font_problems, resolve_fonts_dir, write_srt
+from vidpipe.subtitles import (
+    Cue,
+    end_card_ass,
+    font_files,
+    font_problems,
+    resolve_fonts_dir,
+    write_srt,
+)
 from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
 from vidpipe.translate import TextTranslator, TranslationError, review_path, translate_script
 
@@ -730,7 +739,9 @@ class MusicStage(Stage):
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("music", MusicProvider)
         brief = ctx.project.read_model("brief.json", Brief)
-        total = float(ctx.project.read_model("fit_plan.json", FitPlan).music_seconds)
+        plan = ctx.project.read_model("fit_plan.json", FitPlan)
+        # The music plays on under the end card. Rounded up, so small timing changes reuse it.
+        total = float(math.ceil(plan.total_seconds + ctx.project.config.end_card_seconds))
         if problem := provider.capabilities.duration_problem(total):
             raise StageError(problem)
         prompt = f"Instrumental score for: {brief.title}"
@@ -782,9 +793,11 @@ class AssemblyStage(Stage):
         storyboard = project.read_model("storyboard.json", Storyboard)
         outputs: list[str] = []
         for lang in ctx.languages:
-            if (seconds := plan.render_seconds[lang]) > plan.limits.max_render_s:
+            seconds = plan.render_seconds[lang] + config.end_card_seconds
+            if seconds > plan.limits.max_render_s:
+                card = " with its end card" if config.end_card_seconds else ""
                 raise StageError(
-                    f"the {lang} render would last {seconds:.1f} s; the limit is "
+                    f"the {lang} render{card} would last {seconds:.1f} s; the limit is "
                     f"{plan.limits.max_render_s:g} s (shorten the narration and plan again)"
                 )
             segments: list[ShotSegment] = []
@@ -848,16 +861,38 @@ class AssemblyStage(Stage):
             font=font,
             font_size=subtitles.font_size,
         )
+        card = config.end_card if config.end_card and config.end_card.enabled else None
+        card_text = card.text_for(lang) if card else None
+        end_card = (
+            EndCard(
+                ass=project.build / "assembly" / f"{stem}_end_card.ass",
+                seconds=card.seconds,
+                fonts_dir=fonts_dir if font else None,
+            )
+            if card
+            else None
+        )
         render = LanguageRender(
             language=lang,
             output=project.out / f"{stem}.mp4",
             segments=segments,
             music=music,
             subtitles=track,
+            end_card=end_card,
         )
 
         def make() -> Made:
             write_srt(track.srt, cues)
+            if end_card is not None and card_text is not None:
+                end_card.ass.parent.mkdir(parents=True, exist_ok=True)
+                script = end_card_ass(
+                    card_text,
+                    font=font,
+                    width=config.width,
+                    height=config.height,
+                    seconds=end_card.seconds,
+                )
+                end_card.ass.write_text(script, encoding="utf-8", newline="\n")
             job = AssemblyJob(
                 renders=[render],
                 width=config.width,
@@ -899,6 +934,11 @@ class AssemblyStage(Stage):
                 "font_size": subtitles.font_size,
                 "music_level": config.mix.music_level,
                 "duck_ratio": config.mix.duck_ratio,
+                **(
+                    {"end_card": {"seconds": end_card.seconds, "text": card_text}}
+                    if end_card is not None
+                    else {}
+                ),
             },
             make=make,
         )

@@ -99,6 +99,42 @@ class MixConfig(BaseModel):
     duck_ratio: float = Field(default=8.0, ge=1, le=20)
 
 
+#: What the end card says when ``end_card.text`` does not name the language: a headline line, then
+#: smaller lines. A language without its own text gets the English one.
+DEFAULT_END_CARD_TEXT = {
+    "en": (
+        "AI-generated video\n"
+        "The story, images, motion, voices and music were made with AI models.\n"
+        "Any resemblance to real people or voices is coincidental."
+    ),
+    "am": (
+        "በሰው ሰራሽ አስተውሎት (AI) የተሰራ ቪዲዮ\n"
+        "ታሪኩ፣ ምስሎቹ፣ እንቅስቃሴው፣ ድምጾቹ እና ሙዚቃው በAI ሞዴሎች የተሰሩ ናቸው።\n"
+        "ከእውነተኛ ሰዎች ወይም ድምጾች ጋር ያለ ማንኛውም መመሳሰል በአጋጣሚ ነው።\n"
+        "AI-generated video"
+    ),
+}
+
+
+class EndCardConfig(BaseModel):
+    """A closing card after the last shot that says the video is AI-generated. The music plays on
+    under it and fades out; the subtitles' font is used for its language."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    seconds: float = Field(default=5.0, gt=0, le=15)
+    #: Per language: the first line is the headline, the others are smaller.
+    text: dict[str, str] = Field(default_factory=dict)
+
+    def text_for(self, language: str) -> str:
+        return (
+            self.text.get(language)
+            or DEFAULT_END_CARD_TEXT.get(language)
+            or DEFAULT_END_CARD_TEXT["en"]
+        ).strip()
+
+
 class ComfyUIConfig(BaseModel):
     """The ComfyUI server every ``comfyui-*`` provider talks to (it runs outside vidpipe)."""
 
@@ -122,10 +158,18 @@ class ProjectConfig(BaseModel):
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
     mix: MixConfig = Field(default_factory=MixConfig)
+    #: Off unless the project has an ``end_card:`` block (``end_card: {}`` uses the defaults).
+    end_card: EndCardConfig | None = None
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
     #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
     #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
+
+    @property
+    def end_card_seconds(self) -> float:
+        """How long the end card adds to every render (0 without one)."""
+        card = self.end_card
+        return card.seconds if card is not None and card.enabled else 0.0
 
     @field_validator("providers", mode="before")
     @classmethod

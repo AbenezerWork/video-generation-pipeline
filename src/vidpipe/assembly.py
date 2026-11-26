@@ -21,7 +21,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from vidpipe.contracts import GenerationError
-from vidpipe.subtitles import subtitles_filter
+from vidpipe.subtitles import ass_filter, subtitles_filter
 
 
 class AssemblyError(Exception):
@@ -68,12 +68,22 @@ class MixSettings(BaseModel):
     duck_ratio: float = 8.0
 
 
+class EndCard(BaseModel):
+    """A closing card after the last shot: an ``.ass`` file drawn on black for ``seconds``."""
+
+    ass: Path
+    seconds: float
+    #: Folder libass finds the card's font in (``None``: system fonts).
+    fonts_dir: Path | None = None
+
+
 class LanguageRender(BaseModel):
     language: str
     output: Path
     segments: list[ShotSegment]
     music: Path | None = None
     subtitles: SubtitleTrack | None = None
+    end_card: EndCard | None = None
 
 
 class AssemblyJob(BaseModel):
@@ -251,20 +261,34 @@ class FfmpegAssembler(Assembler):
             )
             pairs.append(f"[v{i}][a{i}]")
         n = len(render.segments)
+        card = render.end_card
         burn = render.subtitles is not None and render.subtitles.burn_in
-        video_label = "joined" if burn else "vout"
-        parts.append(f"{''.join(pairs)}concat=n={n}:v=1:a=1[{video_label}][narration]")
+        shots_label = "shots" if card else "vout"
+        video_label = "joined" if burn else shots_label
+        spoken_label = "spoken" if card else "narration"
+        parts.append(f"{''.join(pairs)}concat=n={n}:v=1:a=1[{video_label}][{spoken_label}]")
         if render.subtitles is not None and burn:
             track = render.subtitles
             filter_ = subtitles_filter(
                 track.srt, fonts_dir=track.fonts_dir, font=track.font, font_size=track.font_size
             )
-            parts.append(f"[joined]{filter_}[vout]")
+            parts.append(f"[joined]{filter_}[{shots_label}]")
+        if card is not None:
+            # The card is drawn on black after the last shot; the narration is silent under it.
+            parts.append(
+                f"color=c=black:s={job.width}x{job.height}:r={job.fps}:d={card.seconds},"
+                f"setsar=1,{ass_filter(card.ass, fonts_dir=card.fonts_dir)}[card]"
+            )
+            parts.append("[shots][card]concat=n=2:v=1:a=0[vout]")
+            total += card.seconds
+            parts.append(f"[spoken]apad=whole_dur={total}[narration]")
 
         audio_label = "narration"
         if render.music is not None:
             args += ["-i", str(render.music)]
-            parts += self._mix(job, total, music_input=len(clips) + n)
+            parts += self._mix(
+                job, total, music_input=len(clips) + n, fade_out_s=card.seconds if card else 0.0
+            )
             audio_label = "mix"
 
         args += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", f"[{audio_label}]"]
@@ -287,10 +311,15 @@ class FfmpegAssembler(Assembler):
         chain.append(f",setpts=PTS-STARTPTS[{label}]")
         return "".join(chain)
 
-    def _mix(self, job: AssemblyJob, total: float, *, music_input: int) -> list[str]:
+    def _mix(
+        self, job: AssemblyJob, total: float, *, music_input: int, fade_out_s: float = 0.0
+    ) -> list[str]:
         """Music under narration: the narration drives a sidechain compressor on the music, so the
-        music sits at ``music_level`` and drops while someone speaks."""
+        music sits at ``music_level`` and drops while someone speaks. With ``fade_out_s`` (an end
+        card's length) the mix fades out over its last seconds, up to three."""
         mix = job.mix
+        fade = min(fade_out_s, 3.0)
+        fade_filter = f",afade=t=out:st={total - fade}:d={fade}" if fade > 0 else ""
         return [
             "[narration]asplit=2[voice][sidechain]",
             f"[{music_input}:a]aresample=48000,aformat=channel_layouts=stereo,apad,"
@@ -300,5 +329,5 @@ class FfmpegAssembler(Assembler):
             "makeup=1[ducked]",
             # amix scales each input by 1/2, so double it back; the limiter only guards clipping
             "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=0,volume=2,"
-            "alimiter=limit=0.95:level=0[mix]",
+            f"alimiter=limit=0.95:level=0{fade_filter}[mix]",
         ]
