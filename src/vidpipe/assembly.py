@@ -304,7 +304,10 @@ class FfmpegAssembler(Assembler):
         if clip.source_s is not None:
             chain.append(f"trim=duration={clip.source_s},setpts=PTS-STARTPTS,")
         chain.append(
-            f"setpts=PTS/{clip.speed},fps={job.fps},scale={job.width}:{job.height},setsar=1"
+            f"setpts=PTS/{clip.speed},fps={job.fps},"
+            # Cover the frame, then crop to it: a no-op when the clip already has its size.
+            f"scale={job.width}:{job.height}:force_original_aspect_ratio=increase:"
+            f"flags=lanczos,crop={job.width}:{job.height},setsar=1"
         )
         if trim:
             chain.append(f",trim=duration={clip.seconds}")

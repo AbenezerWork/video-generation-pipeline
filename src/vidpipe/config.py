@@ -135,6 +135,22 @@ class EndCardConfig(BaseModel):
         ).strip()
 
 
+class OutputSize(BaseModel):
+    """The rendered frame when it differs from the generated one: the picture is scaled to cover
+    it and cropped to its shape (``1280x720`` from 640x352 trims 2% of the width)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _even(self) -> OutputSize:
+        if self.width % 2 or self.height % 2:
+            raise ValueError("output_size needs even numbers (H.264 with yuv420p)")
+        return self
+
+
 class ComfyUIConfig(BaseModel):
     """The ComfyUI server every ``comfyui-*`` provider talks to (it runs outside vidpipe)."""
 
@@ -154,6 +170,8 @@ class ProjectConfig(BaseModel):
     width: int = 160
     height: int = 90
     fps: int = 8
+    #: Rendered frame size; unset renders at ``width`` x ``height``.
+    output_size: OutputSize | None = None
     #: Stages after which the run pauses for approval (see `vidpipe.gates`); `[]` for none.
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
@@ -164,6 +182,12 @@ class ProjectConfig(BaseModel):
     #: Missing ``script``, ``storyboard`` and ``translation`` entries default to
     #: ``DEFAULT_TEXT_CHAIN``.
     providers: dict[str, ProviderSelection]
+
+    @property
+    def render_size(self) -> tuple[int, int]:
+        """The final videos' frame: ``output_size``, or the generated ``width`` x ``height``."""
+        size = self.output_size
+        return (size.width, size.height) if size else (self.width, self.height)
 
     @property
     def end_card_seconds(self) -> float:

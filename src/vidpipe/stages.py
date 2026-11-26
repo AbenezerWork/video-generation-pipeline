@@ -861,6 +861,7 @@ class AssemblyStage(Stage):
             font=font,
             font_size=subtitles.font_size,
         )
+        render_width, render_height = config.render_size
         card = config.end_card if config.end_card and config.end_card.enabled else None
         card_text = card.text_for(lang) if card else None
         end_card = (
@@ -888,15 +889,15 @@ class AssemblyStage(Stage):
                 script = end_card_ass(
                     card_text,
                     font=font,
-                    width=config.width,
-                    height=config.height,
+                    width=render_width,
+                    height=render_height,
                     seconds=end_card.seconds,
                 )
                 end_card.ass.write_text(script, encoding="utf-8", newline="\n")
             job = AssemblyJob(
                 renders=[render],
-                width=config.width,
-                height=config.height,
+                width=render_width,
+                height=render_height,
                 fps=config.fps,
                 mix=MixSettings(
                     music_level=config.mix.music_level, duck_ratio=config.mix.duck_ratio
@@ -926,8 +927,8 @@ class AssemblyStage(Stage):
             ),
             parameters={
                 "language": lang,
-                "width": config.width,
-                "height": config.height,
+                "width": render_width,
+                "height": render_height,
                 "fps": config.fps,
                 "burn_in": subtitles.burn_in,
                 "font": font if subtitles.burn_in else None,

@@ -520,3 +520,45 @@ def test_an_end_card_that_pushes_a_render_past_the_limit_fails_clearly(
     assert run_cli("run", str(project)) == 1
 
     assert "with its end card" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------------- output size
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.parametrize(("width", "height"), [(192, 108), (90, 160)])
+def test_output_size_crops_and_scales_every_render_to_that_frame(
+    make_project: MakeProject, width: int, height: int
+) -> None:
+    project = make_project()
+    edit_config(project, output_size={"width": width, "height": height}, end_card={})
+
+    assert run_cli("run", str(project)) == 0
+
+    for lang in ("en", "am"):
+        probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
+        video = next(s for s in probe["streams"] if s["codec_type"] == "video")
+        assert (video["width"], video["height"]) == (width, height)
+    assert (project / "build" / "keyframes").is_dir()  # still generated at width x height
+
+
+def test_changing_the_output_size_rerenders_only_assembly(make_project: MakeProject) -> None:
+    project = make_project()
+    assembler = StubAssembler()
+    pipeline.run(project, assembler=assembler)
+
+    edit_config(project, output_size={"width": 1280, "height": 720})
+    result = pipeline.run(project, assembler=assembler)
+
+    assert {r.stage for r in result.manifest.stages if not r.skipped} == {"assembly"}
+
+
+def test_an_odd_output_size_is_a_config_error(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project()
+    edit_config(project, output_size={"width": 1281, "height": 720})
+
+    assert run_cli("plan", str(project)) == 1
+
+    assert "even" in capsys.readouterr().err
