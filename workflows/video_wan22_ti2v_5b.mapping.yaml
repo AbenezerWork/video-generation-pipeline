@@ -21,8 +21,10 @@ timeout_s: 900
 capabilities:
   min_seconds: 2
   max_seconds: 5
+  # Either orientation, within the pixels of 832x480 (the largest size that fits 8 GB).
   max_width: 832
-  max_height: 480
+  max_height: 832
+  max_pixels: 399360
   motion_types: [ambient, pan, push_in]
 # About 37 seconds of ComfyUI execution per output second at 640x352 on an RTX 4060 Laptop 8 GB.
 cost: {unit: output_second, gpu_minutes: 0.62}

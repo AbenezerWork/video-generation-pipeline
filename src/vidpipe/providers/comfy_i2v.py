@@ -76,6 +76,14 @@ class ComfyImageToVideo(ComfyProvider[ImageToVideoCapabilities], ImageToVideoPro
             size = model.value(field, self.settings, 1)
             if type(size) is not int or not 32 <= size <= limit or size % 32:
                 raise WorkflowError(f"video {field} must be a multiple of 32 within 32-{limit}")
+        width, height = (
+            model.value("width", self.settings, 1),
+            model.value("height", self.settings, 1),
+        )
+        if caps.max_pixels is not None and int(width) * int(height) > caps.max_pixels:
+            raise WorkflowError(
+                f"video size {width}x{height} is more than {caps.max_pixels} pixels"
+            )
         return caps
 
     def animate(self, request: ImageToVideoRequest) -> ImageToVideoResult:

@@ -248,6 +248,8 @@ class ImageToVideoCapabilities(Capabilities):
     motion_types: frozenset[MotionType] = frozenset(MotionType)
     max_width: int = 1024
     max_height: int = 1024
+    #: Cap on width x height, so a model's budget allows both landscape and portrait frames.
+    max_pixels: int | None = None
 
 
 class ImageToVideoRequest(Request):

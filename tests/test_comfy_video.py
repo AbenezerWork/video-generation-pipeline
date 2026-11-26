@@ -177,3 +177,52 @@ def test_continuation_resumes_from_the_last_frame_after_two_ooms(
     stream = ffprobe(next_clip)["streams"][0]
     assert (stream["width"], stream["height"], stream["avg_frame_rate"]) == (512, 288, "24/1")
     assert float(stream["duration"]) == pytest.approx(record["parameters"]["duration_s"])
+
+
+@pytest.mark.needs_ffmpeg
+def test_a_portrait_video_steps_down_to_a_smaller_portrait_size(
+    make_project: MakeProject, comfy: FakeComfyUI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(WRITERS, "SaveVideo", _save_video)
+    settings = {"width": 352, "height": 640}
+    root = make_project(
+        providers={
+            "video": {
+                "name": "comfyui-i2v",
+                "options": {"retries": 0, "poll_s": 0.01, "settings": settings},
+            }
+        },
+        comfyui={"url": comfy.url},
+    )
+    comfy.script("oom")
+
+    assert main(["run", str(root), "--until", "video", "--auto"]) == 0
+
+    first = ledger(root)["video/shot_01"]
+    assert first["fallback"].startswith("out-of-memory step-down (size 352x640 -> 288x512)")
+    clip = ffprobe(root / "build" / "video" / "shot_01.mp4")["streams"][0]
+    assert (clip["width"], clip["height"]) == (288, 512)
+
+
+@pytest.mark.parametrize(
+    ("settings", "accepted"),
+    [
+        ({"width": 352, "height": 640}, True),  # portrait, same pixels as 640x352
+        ({"width": 480, "height": 832}, True),
+        ({"width": 832, "height": 832}, False),  # each side fits, the pixels do not
+    ],
+)
+def test_the_video_size_budget_allows_either_orientation(
+    make_project: MakeProject,
+    capsys: pytest.CaptureFixture[str],
+    settings: dict[str, int],
+    accepted: bool,
+) -> None:
+    root = make_project(
+        providers={"video": {"name": "comfyui-i2v", "options": {"settings": settings}}}
+    )
+
+    main(["plan", str(root)])
+
+    err = capsys.readouterr().err
+    assert ("video size" not in err and "multiple of 32" not in err) is accepted

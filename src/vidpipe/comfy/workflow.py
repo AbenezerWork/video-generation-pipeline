@@ -291,9 +291,11 @@ class WorkflowModel:
             if size is None:
                 continue
             width, height = size["width"], size["height"]
+            # Sizes are listed landscape; a portrait frame steps down to the same sizes turned.
+            portrait = height > width
             smaller = [
                 (w, h)
-                for w, h in step.smaller_size or ()
+                for w, h in ((h, w) if portrait else (w, h) for w, h in step.smaller_size or ())
                 if w <= width and h <= height and w * h < width * height
             ]
             if smaller:
