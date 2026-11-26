@@ -47,6 +47,9 @@ make film
 `make film` renders both cuts of the film, from `examples/lions-whisker-16x9` and
 `examples/lions-whisker-9x16`. For one project use `make film PROJECT=<project>`.
 
+Before rendering either cut, follow the [tool and model setup](docs/setup.md) and
+set `ADDIS_API_KEY` in your shell environment for Amharic narration. English
+narration uses Edge TTS. Both speech providers need network access.
 
 Without `make` (Windows has none by default), run one command per project folder:
 
