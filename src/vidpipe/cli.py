@@ -17,6 +17,7 @@ from vidpipe.gates import EXIT_PAUSED, Approver, GateError
 from vidpipe.project import Project, ProjectError
 from vidpipe.stages import STAGE_NAMES, StageError
 from vidpipe.stop import EXIT_STOPPED, request_stop
+from vidpipe.storyboard import export_storyboard, write_schemas
 from vidpipe.translate import report_lines
 
 
@@ -35,6 +36,14 @@ def _add_run_options(cmd: argparse.ArgumentParser) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vidpipe", description="Studio pipeline for short video.")
     sub = parser.add_subparsers(dest="command", required=True)
+    schema = sub.add_parser(
+        "schema", help="write JSON Schemas for storyboard.json and vidpipe.yaml"
+    )
+    schema.add_argument("--out", type=Path, default=Path("schema"), help="output directory")
+    export = sub.add_parser("export-storyboard", help="export an editable storyboard from a build")
+    export.add_argument("project", type=Path, help="project directory")
+    radio = sub.add_parser("radio-cut", help="render narration over black with subtitles")
+    radio.add_argument("project", type=Path, help="project with narration and a fit plan")
     run = sub.add_parser("run", help="run the stage graph on a project directory")
     run.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     _add_run_options(run)
@@ -152,6 +161,17 @@ def main(argv: list[str] | None = None) -> int:
     _utf8_output()
     args = _parser().parse_args(argv)
     try:
+        if args.command == "schema":
+            for path in write_schemas(args.out):
+                print(path)
+            return 0
+        if args.command == "export-storyboard":
+            print(export_storyboard(args.project))
+            return 0
+        if args.command == "radio-cut":
+            for path in pipeline.radio_cut(args.project):
+                print(path)
+            return 0
         if args.command == "ui":
             return _serve_ui(args.project, args.host, args.port)
         if args.command == "doctor":

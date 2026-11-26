@@ -162,6 +162,7 @@ class ComfyProvider[C: Capabilities](Provider[C]):
             timeout_s=self.timeout_s,
             poll_s=self.poll_s,
             stop_now=self._stop_now,
+            provider=self,
         )
 
     def save_output(self, outcome: JobOutcome, requested: Path) -> Path:

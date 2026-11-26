@@ -10,12 +10,13 @@ language needs is in the folder in use.
 from __future__ import annotations
 
 import struct
+import textwrap
 from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from vidpipe.config import SubtitleConfig
+from vidpipe.config import ProjectConfig, SubtitleConfig
 
 FONT_SUFFIXES = {".ttf", ".otf", ".ttc"}
 
@@ -28,6 +29,23 @@ class Cue(BaseModel):
 
 
 # ---------------------------------------------------------------------------------------- SRT
+
+
+def wrap_cue(cue: Cue, *, columns: int) -> list[Cue]:
+    """Wrap to 42 columns and at most two lines, dividing the cue time if needed."""
+    lines = textwrap.wrap(" ".join(cue.text.split()), width=columns, break_on_hyphens=False)
+    pages = ["\n".join(lines[i : i + 2]) for i in range(0, len(lines), 2)]
+    if not pages:
+        return []
+    span = (cue.end_s - cue.start_s) / len(pages)
+    return [
+        Cue(
+            text=text,
+            start_s=cue.start_s + i * span,
+            end_s=cue.end_s if i + 1 == len(pages) else cue.start_s + (i + 1) * span,
+        )
+        for i, text in enumerate(pages)
+    ]
 
 
 def srt_timestamp(seconds: float) -> str:
@@ -72,10 +90,34 @@ def escape_filter_value(value: str) -> str:
     return "".join("\\" + ch if ch in "\\'[],;" else ch for ch in option_level)
 
 
-def subtitles_filter(srt: Path, *, fonts_dir: Path | None, font: str | None, font_size: int) -> str:
+def subtitle_layout(width: int, height: int, font_size: int) -> tuple[int, int, int]:
+    """Return libass font size, bottom margin and approximate text columns."""
+    portrait = width < height
+    # Limit the size of two lines so they fit within the caption band.
+    short_side_size = min(font_size, 14 if portrait else 36)
+    size = max(1, round(short_side_size * min(width, height) / height))
+    play_width = 288 * width / height
+    columns = max(1, min(42, int((play_width - 20) / (0.65 * size))))
+    return size, 52 if portrait else 12, columns
+
+
+def subtitles_filter(
+    srt: Path,
+    *,
+    fonts_dir: Path | None,
+    font: str | None,
+    font_size: int,
+    margin_v: int = 12,
+) -> str:
     """The ``subtitles`` filter that burns ``srt`` in. ``font`` (a family found in ``fonts_dir``)
     is forced when given; otherwise libass picks its default font."""
-    style = [f"FontSize={font_size}", "Outline=1.5", "Shadow=0", "MarginV=12"]
+    style = [
+        f"FontSize={font_size}",
+        "Outline=1.5",
+        "Shadow=0",
+        f"MarginV={margin_v}",
+        "WrapStyle=2",
+    ]
     if font:
         style.insert(0, f"FontName={font}")
     options = [f"filename={escape_filter_value(str(srt))}"]
@@ -218,6 +260,16 @@ def resolve_fonts_dir(project_root: Path, config: SubtitleConfig) -> Path:
     if own.is_dir():
         return own
     return bundled_fonts_dir() or own
+
+
+def font_languages(config: ProjectConfig, *, radio: bool = False) -> list[str]:
+    languages: set[str] = set()
+    if radio or config.subtitles.burn_in:
+        language = config.subtitles.text_language
+        languages.update([language] if language else config.languages)
+    if not radio and config.end_card_seconds:
+        languages.update(config.languages)
+    return sorted(languages)
 
 
 def font_problems(

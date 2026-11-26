@@ -16,6 +16,30 @@ A project is a directory with `brief.md`, `vidpipe.yaml` and optionally `bible.y
 [project bible](#the-project-bible)); artifacts go to `build/`, renders to `out/`. The sample project
 uses fake providers only; see [keyframes on ComfyUI](#keyframes-on-comfyui) to draw real ones.
 
+## Build a film from one command
+
+    make setup
+    make test
+    make film
+
+`make film` runs every project in `FILM_PROJECTS`, which defaults to
+`examples/lions-whisker-16x9 examples/lions-whisker-9x16` when those project directories are
+available. To render a single project, use `make film PROJECT=examples/sample`. The sample is
+included and exercises the full pipeline with fake providers.
+
+On Windows without Make, run the same checks and render commands directly.
+
+    uv sync --locked --all-extras
+    uv run --locked ruff check src tests
+    uv run --locked ruff format --check src tests
+    uv run --locked pyright
+    uv run --locked pytest -q
+    uv run vidpipe run examples/lions-whisker-16x9 --auto
+    uv run vidpipe run examples/lions-whisker-9x16 --auto
+
+For the offline sample, use `uv run vidpipe run examples/sample --auto`. All full renders need
+FFmpeg and ffprobe.
+
 ## Artifacts, skip-unchanged and resume
 
 Every generated artifact is recorded in `build/ledger.json` (key, input hash, provider and options,
@@ -33,6 +57,42 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   (`vidpipe.artifacts`). Keys are `<stage>` or `<stage>/<unit>`, e.g. `narration/en/shot_03`.
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
+
+## Editable storyboard
+
+Run through the storyboard stage, then export the build's script, translations and shots.
+
+    uv run vidpipe run examples/sample --until storyboard --auto
+    uv run vidpipe export-storyboard examples/sample
+    uv run vidpipe run examples/sample --auto
+
+When the project has a `storyboard.json`, every run validates it and uses its title, narration and
+shots for the script, translation and storyboard stages. Each shot has a stable positive integer
+`id`, a one-sentence `reason`, `narration` keyed by language, a keyframe prompt in `visual`, a
+`motion_type` and optional bible `character` and `location`. Array order is the edit order.
+Change text or visuals here to reuse unaffected shot artifacts. Export leaves an existing
+contract intact. Older builds that have no shot reason export a line-reference placeholder.
+
+The contract's `music` block has a `prompt`, optional `bpm` and `keyscale` for workflows that
+support them, and optional `cues` with a `shot` ID and `note`. Cue notes guide the generation
+prompt. Generate the JSON Schemas for the storyboard and project config with `uv run vidpipe schema`
+(default directory `schema/`), or use `--out DIR`.
+
+## Provider call log
+
+Each generation attempt appends one UTF-8 JSON line to the project's `runs.jsonl`. Failed calls,
+text re-prompts, provider fallbacks and ComfyUI retries each have their own record. Cached work
+adds no lines.
+
+| Field | Meaning |
+| --- | --- |
+| `ts`, `run_id` | ISO 8601 UTC call start and the ID from `build/run_state.json`. |
+| `stage`, `artifact` | Stage name and ledger artifact key. |
+| `provider`, `model` | Provider name and model, workflow or voice when known. |
+| `parameters`, `seed` | Generation settings and the actual attempt's seed, when applicable. |
+| `latency_s`, `gpu_seconds` | Wall time and backend-reported GPU time in seconds. GPU time can be null. |
+| `cost_usd`, `list_price_usd` | Known incremental charge (zero for local or subscription calls) and optional provider list-price estimate. |
+| `outcome`, `error` | `ok` or `error`, plus a short error type for failed attempts. |
 
 ## One run at a time
 
@@ -386,6 +446,19 @@ second. Assembly trims the same score to each render and ducks it under the narr
 records the measured duration, ComfyUI execution time and any retry. On out-of-memory, the
 bundled workflow retries with smaller decode tiles and the requested duration intact.
 
+To audition three candidates, set this in `vidpipe.yaml`:
+
+```yaml
+music:
+  candidates: 3
+  choice: 2          # one-based; defaults to 1
+```
+
+The stage writes `build/music/candidate_1.*` through `candidate_3.*` with distinct seeds.
+The choice is recorded in `build/music.json` and the ledger. Changing only `choice` reuses
+the candidates and reassembles from the selected track. The default single-track run keeps
+the existing `build/music/music.*` path.
+
 For a hosted ComfyUI instance with the same checkpoint, set `options.url` on the music provider to
 the instance's address. This is a manual switch. To use another music backend, register a
 `MusicProvider` and select it by name in the same YAML field. The sample selects `fake-music`
@@ -462,7 +535,27 @@ uploads, retries, the step-down, cancellation and memory release:
 5. Register it and give it a conformance test against the fake server (`tests/fake_comfyui.py`; add
    a writer to `WRITERS` for a new output node).
 
+## Radio cut
+
+Use the fit plan and generated narration to render one radio cut per language.
+
+    uv run vidpipe run examples/sample --until fit-planning --auto
+    uv run vidpipe radio-cut examples/sample
+
+The command writes black MP4s with burned-in subtitles and sidecar SRTs under
+`out/<name>_<lang>_radio.*`. It uses the score selected in the existing music index, or a quiet tone
+when no score is available. It reuses the film's subtitle language, ducking and final loudness settings.
+
 ## Assembly, ducking and subtitles
+
+MP4 metadata carries the brief's title and the comment and description
+`AI-generated with vidpipe; see ETHICS.md`.
+
+Set `subtitles.text_language: en` for English captions on an Amharic render. Alternate-language
+cues use that render's shot timings. Captions wrap to about 42 characters per line with up to two
+lines per cue. Longer cues share the shot or narration segment's time across multiple pages.
+Subtitle size follows the shorter frame dimension, and portrait renders reserve extra space
+below the captions. Sidecar names follow the render language.
 
 `vidpipe run` ends with the assembly stage: for each language it writes `out/<output_name>_<lang>.mp4`
 (`demo_en.mp4`, `demo_am.mp4`) and the sidecar `out/<output_name>_<lang>.srt`, and each render stays
@@ -474,20 +567,24 @@ within the 90 s limit (fit-planning refuses longer plans, and assembly checks ag
 - **Audio.** The shots' narration is joined, and the music sits under it at `mix.music_level` and is
   pushed down by a sidechain compressor keyed on the narration (`mix.duck_ratio`; threshold -30 dB,
   attack 20 ms, release 400 ms), so the music drops while someone speaks and swells back in the gaps.
-- **Subtitles.** One cue per fit-plan segment (`segments[].text/start_s/end_s`, offset to the shot's
-  place in the render). The SRT is written whether or not it is burned in; `subtitles.burn_in: false`
-  keeps only the sidecar. Burning uses ffmpeg's `subtitles` filter (libass) with the fonts folder given
+  FFmpeg measures the final mix and applies two-pass loudness normalization at `mix.loudness_lufs`
+  (default -14 LUFS) with a -1 dBTP true-peak target.
+- **Subtitles.** Captions in the narration language use the fit plan's timed segments.
+  `subtitles.burn_in: false` keeps only the sidecar on the full render. Burning uses FFmpeg's
+  `subtitles` filter (libass) with the fonts folder given
   as `fontsdir`; the filter text escapes Windows drive colons and any `' [ ] , ;` in paths
   (`vidpipe.subtitles.escape_filter_value`).
 
 ```yaml
 subtitles:
   burn_in: true
+  text_language: en    # optional; defaults to each render's narration language
   fonts_dir: fonts                   # relative to the project dir (or absolute). Default: ./fonts if
                                      # it exists, else the fonts bundled with vidpipe (assets/fonts)
   fonts: {am: Noto Sans Ethiopic}    # font family per language; others use the system default font
-  font_size: 20                      # libass units: the video's height is 288, so it scales with it
+  font_size: 20                      # units of 1/288 of the frame's shorter side
 mix:
+  loudness_lufs: -14     # final stereo mix, two-pass loudnorm at -1 dBTP
   music_level: 0.4
   duck_ratio: 8
 ```

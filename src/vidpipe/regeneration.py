@@ -60,6 +60,7 @@ class _Probe(StageContext):
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
         expected_outputs: Sequence[Path] = (),
+        replace_edited: bool = False,
     ) -> Produced:
         # Only the reuse branch of ArtifactStore.produce can complete. On a miss,
         # it stops before calling the generator or writing an artifact or ledger.
@@ -70,6 +71,7 @@ class _Probe(StageContext):
             parameters=parameters,
             seed=seed,
             expected_outputs=expected_outputs,
+            replace_edited=replace_edited,
         )
 
 
@@ -113,7 +115,10 @@ def estimate_regeneration(
         if gpu is not None and estimate.calls and artifacts is not None:
             # The existing planner prices stages in aggregate, including providers
             # that charge per second. Allocate that estimate over the remaining work.
-            gpu *= artifacts / estimate.calls if stage.name != "translation" else 1
+            provider_artifacts = artifacts
+            if stage.name == "music" and project.config.music.candidates > 1:
+                provider_artifacts -= 1  # the choice is recorded after the candidates
+            gpu *= provider_artifacts / estimate.calls if stage.name != "translation" else 1
         impacts.append(
             StageRegeneration(
                 stage=stage.name, artifacts=artifacts, gpu_minutes=gpu, possible=possible

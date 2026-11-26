@@ -15,7 +15,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, ClassVar, TypeVar
@@ -62,13 +62,14 @@ from vidpipe.contracts import (
     UnsupportedRequest,
 )
 from vidpipe.fit import FIT_VERSION, MAX_RENDER_S, NarrationInput, limits_for, plan_fit
-from vidpipe.fit_inputs import collect_shots, translation_files
+from vidpipe.fit_inputs import collect_shots
 from vidpipe.models import (
     Brief,
     ClipPlan,
     FitPlan,
     MediaIndex,
     MediaItem,
+    MusicIndex,
     Narration,
     NarrationClip,
     Script,
@@ -79,12 +80,17 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
+from vidpipe.runlog import CallSite, attempt, run_artifact
+from vidpipe.storyboard import default_music_prompt
 from vidpipe.subtitles import (
     Cue,
     end_card_ass,
     font_files,
+    font_languages,
     font_problems,
     resolve_fonts_dir,
+    subtitle_layout,
+    wrap_cue,
     write_srt,
 )
 from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
@@ -104,6 +110,7 @@ class StageContext:
     assembler: Assembler
     #: Name of the stage being run (set by the runner); selects the provider recorded and hashed.
     stage: str = ""
+    run_id: str | None = None
     #: Artifacts generated / reused so far by the stage being run.
     generated: int = 0
     reused: int = 0
@@ -127,19 +134,35 @@ class StageContext:
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
         expected_outputs: Sequence[Path] = (),
+        replace_edited: bool = False,
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
         selection = self.project.config.providers.get(self.stage)
+
+        def tracked() -> Made:
+            if self.run_id is None:
+                return make()
+            site = CallSite(
+                self.project.root / "runs.jsonl",
+                self.run_id,
+                self.stage,
+                key,
+                parameters or {},
+                seed,
+            )
+            return run_artifact(site, make)
+
         produced = self.store.produce(
             key,
             stage=self.stage,
             provider=self.providers.get(self.stage),
             options=selection.options if selection else None,
             inputs=inputs,
-            make=make,
+            make=tracked,
             parameters=parameters,
             seed=seed,
             expected_outputs=expected_outputs,
+            replace_edited=replace_edited,
         )
         if produced.reused:
             self.reused += 1
@@ -213,6 +236,17 @@ def _rels(ctx: StageContext, produced: Produced) -> list[str]:
     return [p.relative_to(ctx.project.build).as_posix() for p in produced.paths]
 
 
+def _from_contract(ctx: StageContext, key: str, model: BaseModel) -> list[str]:
+    filename = f"{key}.json"
+    made = ctx.produce(
+        key,
+        inputs=Inputs(values={"storyboard_contract": model}),
+        make=lambda: Made([ctx.project.write_model(filename, model)]),
+        replace_edited=True,
+    )
+    return _rels(ctx, made)
+
+
 def _item(ctx: StageContext, shot_id: int | None, path: Path) -> MediaItem:
     return MediaItem(shot_id=shot_id, path=path.relative_to(ctx.project.build).as_posix())
 
@@ -256,6 +290,10 @@ class ScriptStage(Stage):
     name = "script"
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return _from_contract(
+                ctx, "script", contract.script(ctx.project.config.primary_language)
+            )
         brief = ctx.project.read_model("brief.json", Brief)
         provider = ctx.provider("script", TextProvider)
         language = ctx.project.config.primary_language
@@ -299,10 +337,10 @@ class TranslationStage(Stage):
     name = "translation"
 
     def _targets(self, ctx: StageContext) -> list[str]:
-        return ctx.languages[1:]
+        return ctx.project.config.script_languages[1:]
 
     def problems(self, ctx: StageContext) -> list[str]:
-        if not self._targets(ctx):
+        if ctx.project.storyboard_contract or not self._targets(ctx):
             return []
         caps = ctx.provider("translation", TranslationProvider).capabilities
         found: list[str] = []
@@ -320,12 +358,18 @@ class TranslationStage(Stage):
 
     def artifact_count(self, ctx: StageContext) -> int:
         targets = self._targets(ctx)
-        if not targets:
-            return 0
+        if ctx.project.storyboard_contract or not targets:
+            return len(targets)
         reviewed = isinstance(ctx.provider("translation", TranslationProvider), TextTranslator)
         return len(targets) * (2 if reviewed else 1)
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return [
+                path
+                for lang in self._targets(ctx)
+                for path in _from_contract(ctx, f"translation/{lang}", contract.script(lang))
+            ]
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("translation", TranslationProvider)
         outputs: list[str] = []
@@ -414,10 +458,18 @@ class StoryboardStage(Stage):
     name = "storyboard"
 
     def problems(self, ctx: StageContext) -> list[str]:
-        _bible(ctx)  # a broken bible fails the plan before anything is generated
+        bible = _bible(ctx)
+        if contract := ctx.project.storyboard_contract:
+            for shot in contract.shots:
+                try:
+                    bible.cast(shot.character, shot.location)
+                except BibleError as exc:
+                    return [f"shot {shot.id}: {exc}"]
         return []
 
     def run(self, ctx: StageContext) -> list[str]:
+        if contract := ctx.project.storyboard_contract:
+            return _from_contract(ctx, "storyboard", contract.storyboard())
         script = ctx.script(ctx.project.config.primary_language)
         provider = ctx.provider("storyboard", TextProvider)
         lines = "\n".join(f"{line.id}. {line.text}" for line in script.lines)
@@ -428,6 +480,7 @@ class StoryboardStage(Stage):
             "in script order.\n\n"
             "For each shot:\n"
             "- `line_id`: the number of the script line the shot illustrates.\n"
+            "- `reason`: one sentence explaining why the shot belongs in this story.\n"
             "- `visual`: one concrete sentence describing the shot as the camera sees it: framing "
             "(shot size and camera angle), subject, setting, light and mood. One simple moment "
             "that can move gently; no complex action, no text or lettering in the image.\n"
@@ -462,6 +515,7 @@ class StoryboardStage(Stage):
                     Shot(
                         id=i,
                         line_id=s.line_id,
+                        reason=s.reason,
                         visual=s.visual,
                         motion_type=s.motion_type,
                         character=s.character if casting else None,
@@ -511,7 +565,9 @@ class NarrationStage(Stage):
                 def make(text: str = text, lang: str = lang, key: str = key) -> Made:
                     out = ctx.project.artifact_path(f"{key}.wav")
                     request = TTSRequest(text=text, language=lang, output_path=out)
-                    result = _generate(key, lambda: provider.synthesize(request))
+                    with attempt(provider, parameters=provider.options) as call:
+                        result = _generate(key, lambda: provider.synthesize(request))
+                        call.output_seconds = result.duration_s
                     return Made([result.path], data={"duration_s": result.duration_s})
 
                 made = ctx.produce(
@@ -566,8 +622,8 @@ class FitPlanningStage(Stage):
         made = ctx.produce(
             "fit_plan",
             inputs=Inputs(
-                files=["narration.json", "storyboard.json", *translation_files(project)],
                 values={
+                    "shots": [asdict(shot) for shot in shots],
                     "visuals": config.visuals,
                     "languages": config.languages,
                     "video_capabilities": caps,
@@ -648,9 +704,11 @@ class KeyframesStage(Stage):
                     reference_images=[r.path for r in brief.references],
                     output_path=ctx.project.artifact_path(f"{key}.png"),
                 )
-                result = _generate(
-                    f"keyframe for shot {shot.id}", lambda: provider.generate(request)
-                )
+                with attempt(provider, parameters=provider.options) as call:
+                    result = _generate(
+                        f"keyframe for shot {shot.id}", lambda: provider.generate(request)
+                    )
+                    call.gpu_seconds = result.record.gpu_seconds
                 return _recorded(
                     result.path,
                     result.record,
@@ -754,7 +812,10 @@ class VideoStage(Stage):
                     seed=seed,
                     output_path=ctx.project.artifact_path(f"{key}.mp4"),
                 )
-                result = provider.animate(request)
+                with attempt(provider, parameters=provider.options) as call:
+                    result = provider.animate(request)
+                    call.gpu_seconds = result.record.gpu_seconds
+                    call.output_seconds = result.duration_s
             return _recorded(
                 result.path, result.record, seed=request.seed, duration_s=result.duration_s
             )
@@ -772,6 +833,10 @@ class VideoStage(Stage):
 class MusicStage(Stage):
     name = "music"
 
+    def artifact_count(self, ctx: StageContext) -> int:
+        count = ctx.project.config.music.candidates
+        return count + 1 if count > 1 else count
+
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("music", MusicProvider)
         brief = ctx.project.read_model("brief.json", Brief)
@@ -780,13 +845,68 @@ class MusicStage(Stage):
         total = float(math.ceil(plan.total_seconds + ctx.project.config.end_card_seconds))
         if problem := provider.capabilities.duration_problem(total):
             raise StageError(problem)
-        prompt = f"Instrumental score for: {brief.title}"
-        seed = 0
+        prompt = default_music_prompt(brief.title)
+        extras: dict[str, Any] = {}
+        if contract := ctx.project.storyboard_contract:
+            score = contract.music
+            prompt = score.prompt
+            if score.cues:
+                prompt += "\n" + "\n".join(f"Shot {cue.shot}: {cue.note}" for cue in score.cues)
+            extras = score.model_dump(include={"bpm", "keyscale"}, exclude_none=True)
+        config = ctx.project.config.music
+        if config.candidates == 1:
+            path = self._compose(
+                ctx, provider, "music", "music/music.wav", prompt, total, extras, 1
+            )
+            return _write_index(ctx, "music.json", [_item(ctx, None, path)])
+
+        paths = [
+            self._compose(
+                ctx,
+                provider,
+                f"music/candidate_{i}",
+                f"music/candidate_{i}.wav",
+                prompt,
+                total,
+                extras,
+                i,
+            )
+            for i in range(1, config.candidates + 1)
+        ]
+        index = MusicIndex(items=[_item(ctx, None, path) for path in paths], choice=config.choice)
+        selected = ctx.produce(
+            "music/choice",
+            inputs=Inputs(values={"candidates": [item.path for item in index.items]}),
+            parameters={"choice": index.choice},
+            make=lambda: Made(
+                [ctx.project.write_model("music.json", index)], data={"path": index.selected.path}
+            ),
+            replace_edited=True,
+        )
+        return [*_rels(ctx, selected), *(item.path for item in index.items)]
+
+    @staticmethod
+    def _compose(
+        ctx: StageContext,
+        provider: MusicProvider,
+        key: str,
+        relative: str,
+        prompt: str,
+        total: float,
+        extras: dict[str, Any],
+        candidate: int,
+    ) -> Path:
+        seed = candidate - 1
 
         def make() -> Made:
-            out = ctx.project.artifact_path("music/music.wav")
-            request = MusicRequest(prompt=prompt, duration_s=total, seed=seed, output_path=out)
-            result = _generate("music", lambda: provider.compose(request))
+            out = ctx.project.artifact_path(relative)
+            request = MusicRequest(
+                prompt=prompt, duration_s=total, seed=seed, output_path=out, extras=extras
+            )
+            with attempt(provider, parameters=provider.options) as call:
+                result = _generate(key, lambda: provider.compose(request))
+                call.gpu_seconds = result.record.gpu_seconds
+                call.output_seconds = result.duration_s
             if not result.duration_s >= total:
                 raise StageError(
                     f"music: provider returned {result.duration_s:g} s for a {total:g} s score"
@@ -796,13 +916,17 @@ class MusicStage(Stage):
             )
 
         made = ctx.produce(
-            "music",
+            key,
             inputs=Inputs(values={"prompt": prompt}),
-            parameters={"duration_s": total},
+            parameters={
+                "duration_s": total,
+                **extras,
+                **({"candidate": candidate} if key != "music" else {}),
+            },
             seed=seed,
             make=make,
         )
-        return _write_index(ctx, "music.json", [_item(ctx, None, made.paths[0])])
+        return made.paths[0]
 
 
 class AssemblyStage(Stage):
@@ -811,71 +935,102 @@ class AssemblyStage(Stage):
 
     name = "assembly"
 
-    def problems(self, ctx: StageContext) -> list[str]:
+    def problems(self, ctx: StageContext, *, radio: bool = False) -> list[str]:
         config = ctx.project.config
         return [
             *ctx.assembler.problems(),
-            *font_problems(config.subtitles, ctx.languages, ctx.project.root),
+            *font_problems(
+                config.subtitles.model_copy(update={"burn_in": True}),
+                font_languages(config, radio=radio),
+                ctx.project.root,
+            ),
         ]
 
     def artifact_count(self, ctx: StageContext) -> int:
         return len(ctx.languages)
 
     def run(self, ctx: StageContext) -> list[str]:
+        return self.render_project(ctx)
+
+    def render_project(self, ctx: StageContext, *, radio: bool = False) -> list[str]:
         project = ctx.project
         config = project.config
         plan = project.read_model("fit_plan.json", FitPlan)
         narration = project.read_model("narration.json", Narration)
-        video = project.read_model("video.json", MediaIndex)
-        music_item = project.read_model("music.json", MediaIndex).items[0]
-        shots = {s.shot_id: s for s in plan.shots}
-        storyboard = project.read_model("storyboard.json", Storyboard)
+        video = None if radio else project.read_model("video.json", MediaIndex)
+        music: Path | None = None
+        if not radio or (project.build / "music.json").is_file():
+            music = project.build / project.read_model("music.json", MusicIndex).selected.path
+            if radio and not music.is_file():
+                music = None
+        size, margin, columns = subtitle_layout(*config.render_size, config.subtitles.font_size)
+        line_ids: dict[int, int] = {}
+        if config.subtitles.text_language and any(
+            lang != config.subtitles.text_language for lang in ctx.languages
+        ):
+            storyboard = project.read_model("storyboard.json", Storyboard)
+            line_ids = {shot.id: shot.line_id for shot in storyboard.shots}
+        card_seconds = 0.0 if radio else config.end_card_seconds
         outputs: list[str] = []
         for lang in ctx.languages:
-            seconds = plan.render_seconds[lang] + config.end_card_seconds
+            seconds = plan.render_seconds[lang] + card_seconds
             if seconds > plan.limits.max_render_s:
-                card = " with its end card" if config.end_card_seconds else ""
+                card = " with its end card" if card_seconds else ""
                 raise StageError(
                     f"the {lang} render{card} would last {seconds:.1f} s; the limit is "
                     f"{plan.limits.max_render_s:g} s (shorten the narration and plan again)"
                 )
             segments: list[ShotSegment] = []
             cues: list[Cue] = []
+            text_language = config.subtitles.text_language or lang
+            alternate_lines = (
+                {line.id: line.text for line in ctx.script(text_language).lines}
+                if text_language != lang
+                else {}
+            )
             offset = 0.0
-            for shot in storyboard.shots:
-                fit = shots[shot.id].languages[lang]
+            for shot in plan.shots:
+                fit = shot.languages[lang]
                 segments.append(
                     ShotSegment(
-                        shot_id=shot.id,
+                        shot_id=shot.shot_id,
                         narration=project.build
                         / next(
                             c.path
                             for c in narration.clips
-                            if c.shot_id == shot.id and c.language == lang
+                            if c.shot_id == shot.shot_id and c.language == lang
                         ),
                         seconds=fit.seconds,
                         clips=[
                             ClipPlay(
                                 video=project.build
-                                / video.for_clip(shot.id, fit.visual_set, use.clip),
+                                / video.for_clip(shot.shot_id, fit.visual_set, use.clip),
                                 speed=use.speed,
                                 source_s=use.source_s,
                                 seconds=use.seconds,
                             )
                             for use in fit.clips
-                            if use.source_s > 0
+                            if video is not None and use.source_s > 0
                         ],
                     )
                 )
-                cues += [
-                    Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s)
-                    for s in fit.segments
-                ]
+                if text_language != lang:
+                    cues += wrap_cue(
+                        Cue(
+                            text=alternate_lines[line_ids[shot.shot_id]],
+                            start_s=offset,
+                            end_s=offset + fit.seconds,
+                        ),
+                        columns=columns,
+                    )
+                else:
+                    for s in fit.segments:
+                        cues += wrap_cue(
+                            Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s),
+                            columns=columns,
+                        )
                 offset += fit.seconds
-            stem = f"{config.output_name}_{lang}"
-            outputs += self._render(
-                ctx, lang, segments, cues, project.build / music_item.path, stem
-            )
+            outputs += self._render(ctx, lang, segments, cues, music, size, margin, radio=radio)
         return outputs
 
     def _render(
@@ -884,33 +1039,48 @@ class AssemblyStage(Stage):
         lang: str,
         segments: list[ShotSegment],
         cues: list[Cue],
-        music: Path,
-        stem: str,
+        music: Path | None,
+        font_size: int,
+        margin_v: int,
+        *,
+        radio: bool,
     ) -> list[str]:
         project = ctx.project
         config = project.config
+        stem = f"{config.output_name}_{lang}{'_radio' if radio else ''}"
         subtitles = config.subtitles
-        font = subtitles.fonts.get(lang)
+        burn_in = radio or subtitles.burn_in
+        font = subtitles.fonts.get(subtitles.text_language or lang)
         fonts_dir = resolve_fonts_dir(project.root, subtitles)
-        fonts = font_files(fonts_dir, font) if font and fonts_dir.is_dir() else []
+        render_width, render_height = config.render_size
         track = SubtitleTrack(
             srt=project.out / f"{stem}.srt",
-            burn_in=subtitles.burn_in,
+            burn_in=burn_in,
             fonts_dir=fonts_dir if font else None,
             font=font,
-            font_size=subtitles.font_size,
+            font_size=font_size,
+            margin_v=margin_v,
         )
-        render_width, render_height = config.render_size
-        card = config.end_card if config.end_card and config.end_card.enabled else None
+        title = (
+            project.load_brief().title if radio else project.read_model("brief.json", Brief).title
+        )
+        card_font = subtitles.fonts.get(lang)
+        card = config.end_card if not radio and config.end_card_seconds else None
         card_text = card.text_for(lang) if card else None
         end_card = (
             EndCard(
                 ass=project.build / "assembly" / f"{stem}_end_card.ass",
                 seconds=card.seconds,
-                fonts_dir=fonts_dir if font else None,
+                fonts_dir=fonts_dir if card_font else None,
             )
             if card
             else None
+        )
+        faces = {face for face in (font if burn_in else None, card_font if card else None) if face}
+        fonts = (
+            list(dict.fromkeys(f for face in sorted(faces) for f in font_files(fonts_dir, face)))
+            if fonts_dir.is_dir()
+            else []
         )
         render = LanguageRender(
             language=lang,
@@ -919,6 +1089,7 @@ class AssemblyStage(Stage):
             music=music,
             subtitles=track,
             end_card=end_card,
+            radio=radio,
         )
 
         def make() -> Made:
@@ -927,7 +1098,7 @@ class AssemblyStage(Stage):
                 end_card.ass.parent.mkdir(parents=True, exist_ok=True)
                 script = end_card_ass(
                     card_text,
-                    font=font,
+                    font=card_font,
                     width=render_width,
                     height=render_height,
                     seconds=end_card.seconds,
@@ -935,28 +1106,29 @@ class AssemblyStage(Stage):
                 end_card.ass.write_text(script, encoding="utf-8", newline="\n")
             job = AssemblyJob(
                 renders=[render],
+                title=title,
                 width=render_width,
                 height=render_height,
                 fps=config.fps,
                 mix=MixSettings(
-                    music_level=config.mix.music_level, duck_ratio=config.mix.duck_ratio
+                    music_level=config.mix.music_level,
+                    duck_ratio=config.mix.duck_ratio,
+                    loudness_lufs=config.mix.loudness_lufs,
                 ),
             )
             return Made([*ctx.assembler.assemble(job), track.srt])
 
         made = ctx.produce(
-            f"assembly/{lang}",
+            f"{ctx.stage}/{lang}",
             inputs=Inputs(
                 files=[
                     *(clip.video for s in segments for clip in s.clips),
                     *(s.narration for s in segments),
-                    music,
+                    *([music] if music is not None else []),
                 ],
                 values={
                     # Fonts may live outside the project (the bundled ones do): hash them here.
-                    "fonts": {
-                        f.name: ctx.store.hash_path(f) for f in (fonts if subtitles.burn_in else [])
-                    },
+                    "fonts": {f.name: ctx.store.hash_path(f) for f in fonts},
                     "clips": [
                         [(c.speed, c.source_s, c.seconds) for c in s.clips] for s in segments
                     ],
@@ -966,16 +1138,25 @@ class AssemblyStage(Stage):
             ),
             parameters={
                 "language": lang,
+                "title": title,
                 "width": render_width,
                 "height": render_height,
                 "fps": config.fps,
-                "burn_in": subtitles.burn_in,
-                "font": font if subtitles.burn_in else None,
-                "font_size": subtitles.font_size,
+                "burn_in": burn_in,
+                "font": font if burn_in else None,
+                "font_size": track.font_size,
+                "margin_v": track.margin_v,
                 "music_level": config.mix.music_level,
                 "duck_ratio": config.mix.duck_ratio,
+                "loudness_lufs": config.mix.loudness_lufs,
                 **(
-                    {"end_card": {"seconds": end_card.seconds, "text": card_text}}
+                    {
+                        "end_card": {
+                            "seconds": end_card.seconds,
+                            "text": card_text,
+                            "font": card_font,
+                        }
+                    }
                     if end_card is not None
                     else {}
                 ),

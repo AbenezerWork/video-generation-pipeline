@@ -16,6 +16,7 @@ from vidpipe.contracts import GenerationError, TTSRequest, TTSResult
 from vidpipe.providers._audio import AudioFormatError, audio_duration_s
 from vidpipe.providers.edge import EdgeTTS
 from vidpipe.registry import register
+from vidpipe.runlog import attempt
 
 _GENERATIONS = "https://api.addisassistant.com/api/v1/voice/generations"
 _USER_AGENT = "vidpipe/0.1"
@@ -60,10 +61,18 @@ class AddisAI(EdgeTTS):
         )
         action = "generation"
         try:
-            with urlopen(generation, timeout=60) as response:
-                audio_url = json.load(response)["data"]["audio_url"]
-            if not isinstance(audio_url, str) or urlsplit(audio_url).scheme != "https":
-                raise ValueError("invalid audio URL")
+            with attempt(
+                self,
+                model="Addis Voices 2",
+                parameters={
+                    "voice": payload["voice_id"],
+                    "output_format": payload["output_format"],
+                },
+            ):
+                with urlopen(generation, timeout=60) as response:
+                    audio_url = json.load(response)["data"]["audio_url"]
+                if not isinstance(audio_url, str) or urlsplit(audio_url).scheme != "https":
+                    raise ValueError("invalid audio URL")
             action = "audio download"
             audio = Request(audio_url, headers={"User-Agent": _USER_AGENT})
             with urlopen(audio, timeout=60) as response:

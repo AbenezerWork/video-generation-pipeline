@@ -33,7 +33,8 @@ from vidpipe.comfy.client import (
     ComfyJobFailed,
 )
 from vidpipe.comfy.workflow import WorkflowModel
-from vidpipe.contracts import Cancelled
+from vidpipe.contracts import Cancelled, Provider
+from vidpipe.runlog import attempt
 
 RETRIES = 2
 
@@ -88,6 +89,7 @@ def run_job(
     timeout_s: float | None = None,
     poll_s: float = 0.5,
     stop_now: Callable[[], bool] | None = None,
+    provider: Provider[Any],
 ) -> JobOutcome:
     """Run ``model`` with ``values`` and input ``images``; return the output files.
 
@@ -112,17 +114,36 @@ def run_job(
         prompt_id: str | None = None
         started = time.monotonic()
         try:
-            prompt_id = client.submit(model.build(job, uploaded))
-            finished = client.wait(
-                prompt_id,
-                timeout_s=timeout_s or model.spec.timeout_s,
-                poll_s=poll_s,
-                stop_now=stop_now,
-            )
-            remote = finished.files(model.spec.outputs.node, model.spec.outputs.key)
-            if not remote:
-                raise ComfyBadOutput("the job finished without saving an output")
-            files = [(f.filename, client.download(f)) for f in remote]
+            with attempt(
+                provider,
+                model=model.workflow_name(len(uploaded)),
+                parameters={
+                    **{key: value for key, value in current.items() if key != "prompt"},
+                    "timeout_s": timeout_s or model.spec.timeout_s,
+                    "image_count": len(uploaded),
+                },
+                seed=attempt_seed,
+            ) as call:
+                try:
+                    prompt_id = client.submit(model.build(job, uploaded))
+                    finished = client.wait(
+                        prompt_id,
+                        timeout_s=timeout_s or model.spec.timeout_s,
+                        poll_s=poll_s,
+                        stop_now=stop_now,
+                    )
+                    call.gpu_seconds = finished.gpu_seconds
+                    duration = current.get("seconds")
+                    if isinstance(duration, (int, float)):
+                        call.output_seconds = float(duration)
+                    remote = finished.files(model.spec.outputs.node, model.spec.outputs.key)
+                    if not remote:
+                        raise ComfyBadOutput("the job finished without saving an output")
+                    files = [(f.filename, client.download(f)) for f in remote]
+                except ComfyError as exc:
+                    if exc.gpu_seconds is not None:
+                        call.gpu_seconds = exc.gpu_seconds
+                    raise
         except ComfyError as exc:
             if prompt_id is not None and not isinstance(exc, ComfyJobFailed):
                 client.cancel(prompt_id)

@@ -24,6 +24,7 @@ from vidpipe.contracts import (
     TextResponse,
     UnsupportedRequest,
 )
+from vidpipe.runlog import attempt
 
 
 class TextProviderError(Exception):
@@ -98,13 +99,14 @@ def ask[M: BaseModel](
     ignores the request's validator (a fake, say) still cannot hand a stage bad data.
     """
     request = model_request(prompt, model, check)
-    response = provider.complete(request)
-    try:
-        parsed = model.model_validate(response.data)
-        if check is not None:
-            check(parsed)
-    except ValueError as exc:
-        raise InvalidOutput(f"{provider.name}: {exc}") from exc
+    with attempt(provider, parameters={"response_schema": model.__name__}):
+        response = provider.complete(request)
+        try:
+            parsed = model.model_validate(response.data)
+            if check is not None:
+                check(parsed)
+        except ValueError as exc:
+            raise InvalidOutput(f"{provider.name}: {exc}") from exc
     return parsed
 
 
@@ -141,7 +143,10 @@ class FallbackTextProvider(TextProvider):
         errors: list[str] = []
         for index, provider in enumerate(self.providers):
             try:
-                response = provider.complete(request)
+                with attempt(
+                    provider, parameters={"response_schema": request.json_schema.get("title")}
+                ):
+                    response = provider.complete(request)
             except (TextProviderError, UnsupportedRequest) as exc:
                 self.failures.append((provider.name, str(exc)))
                 errors.append(f"{provider.name}: {exc}")

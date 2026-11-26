@@ -161,6 +161,9 @@ def test_each_render_is_a_playable_video_with_audio_within_90_seconds(
         streams = {s["codec_type"]: s for s in probe["streams"]}
         assert sorted(streams) == ["audio", "video"]
         assert (streams["video"]["width"], streams["video"]["height"]) == (160, 90)
+        tags = probe["format"]["tags"]
+        assert tags["title"] == read_json(project / "build/brief.json")["title"]
+        assert tags["comment"] == tags["description"] == "AI-generated with vidpipe; see ETHICS.md"
         duration = float(probe["format"]["duration"])
         assert duration == pytest.approx(expected[lang], abs=0.2)
         assert duration <= 90
@@ -178,12 +181,147 @@ def test_sidecar_srt_files_follow_the_narration_timing(make_project: MakeProject
         script = read_json(
             project / "build" / ("script.json" if lang == "en" else f"translation/{lang}.json")
         )
-        assert [text for _, _, text in cues] == [line["text"] for line in script["lines"]]
-        for (start, end, _), (shot_start, shot_end) in zip(cues, timeline, strict=True):
-            assert start == pytest.approx(shot_start, abs=0.002)
-            assert end == pytest.approx(shot_end, abs=0.002)
+        for line, (shot_start, shot_end) in zip(script["lines"], timeline, strict=True):
+            shot_cues = [cue for cue in cues if shot_start - 0.002 <= cue[0] < shot_end - 0.002]
+            assert " ".join(" ".join(cue[2].split()) for cue in shot_cues) == line["text"]
+            assert shot_cues[0][0] == pytest.approx(shot_start, abs=0.002)
+            assert shot_cues[-1][1] == pytest.approx(shot_end, abs=0.002)
         probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
         assert cues[-1][1] == pytest.approx(float(probe["format"]["duration"]), abs=0.2)
+
+
+@pytest.mark.needs_ffmpeg
+def test_amharic_render_uses_english_cues_timed_to_its_own_shots(make_project: MakeProject) -> None:
+    project = make_project(
+        subtitles={"text_language": "en"}, output_size={"width": 270, "height": 480}
+    )
+    assert run_cli("run", str(project), "--until", "storyboard") == 0
+    path = project / "build/script.json"
+    script = read_json(path)
+    long = "A lantern beside the window lights the room as the family waits for the storm to pass."
+    script["lines"][0]["text"] = long
+    script["lines"][1]["text"] = "The rain falls."
+    script["lines"][2]["text"] = "The family waits."
+    path.write_text(json.dumps(script), encoding="utf-8")
+
+    assert run_cli("run", str(project)) == 0
+
+    srt = read_srt(project / "out/demo_am.srt")
+    (start, end), *others = narration_timeline(project, "am")
+    assert srt[0][0] == pytest.approx(start, abs=0.002)
+    assert srt[0][1] == srt[1][0] == pytest.approx((start + end) / 2, abs=0.002)
+    assert srt[1][1] == pytest.approx(end, abs=0.002)
+    assert " ".join(" ".join(cue[2].split()) for cue in srt[:2]) == long
+    for cue, (start, end) in zip(srt[2:], others, strict=True):
+        assert cue[:2] == pytest.approx((start, end), abs=0.002)
+    for _, _, text in srt:
+        lines = text.splitlines()
+        assert len(lines) <= 2
+        assert max(map(len, lines)) <= 42
+    record = read_json(project / "build/ledger.json")["artifacts"]["assembly/am"]["parameters"]
+    assert record["font"] is None  # Latin text uses the default, including on the Amharic render
+    assert record["font_size"] < 20 and record["margin_v"] > 12
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.parametrize("target", [None, -18.0])
+def test_final_mix_is_normalized_to_the_loudness_target(
+    make_project: MakeProject, target: float | None
+) -> None:
+    project = make_project(**({"mix": {"loudness_lufs": target}} if target is not None else {}))
+    assert run_cli("run", str(project)) == 0
+    tool = find_tool("ffmpeg")
+    assert tool is not None
+    result = subprocess.run(
+        [
+            tool,
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(project / "out/demo_am.mp4"),
+            "-vn",
+            "-af",
+            "loudnorm=print_format=json",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    stats, _ = json.JSONDecoder().raw_decode(result.stderr[result.stderr.rindex("{") :])
+    assert float(stats["input_i"]) == pytest.approx(target or -14.0, abs=1.0)
+    assert float(stats["input_tp"]) <= -1.0
+
+
+@pytest.mark.needs_ffmpeg
+def test_music_candidates_are_logged_and_only_the_selected_track_is_mixed(
+    make_project: MakeProject,
+) -> None:
+    project = make_project(music={"candidates": 3, "choice": 2})
+
+    assert run_cli("run", str(project)) == 0
+
+    ledger = project / "build/ledger.json"
+    artifacts = read_json(ledger)["artifacts"]
+    index = read_json(project / "build/music.json")
+    paths = [f"music/candidate_{i}.wav" for i in (1, 2, 3)]
+    assert [item["path"] for item in index["items"]] == paths
+    assert all((project / "build" / path).is_file() for path in paths)
+    assert index["choice"] == artifacts["music/choice"]["parameters"]["choice"] == 2
+    assert "file:build/music/candidate_2.wav" in artifacts["assembly/am"]["inputs"]
+    assert [artifacts[f"music/candidate_{i}"]["seed"] for i in (1, 2, 3)] == [0, 1, 2]
+    log = project / "runs.jsonl"
+    original = log.read_text(encoding="utf-8")
+    entries = [json.loads(line) for line in original.splitlines()]
+    assert [
+        (entry["artifact"], entry["seed"]) for entry in entries if entry["stage"] == "music"
+    ] == [(f"music/candidate_{i}", i - 1) for i in (1, 2, 3)]
+
+    edit_config(project, music={"candidates": 3, "choice": 3})
+    assert run_cli("run", str(project)) == 0
+    artifacts = read_json(ledger)["artifacts"]
+    assert artifacts["music/choice"]["data"]["path"] == paths[2]
+    assert "file:build/music/candidate_3.wav" in artifacts["assembly/am"]["inputs"]
+    assert "file:build/music/candidate_2.wav" not in artifacts["assembly/am"]["inputs"]
+    assert log.read_text(encoding="utf-8") == original
+    assert run_cli("radio-cut", str(project)) == 0
+    artifacts = read_json(ledger)["artifacts"]
+    assert "file:build/music/candidate_3.wav" in artifacts["radio-cut/am"]["inputs"]
+    assert log.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.needs_ffmpeg
+def test_radio_cut_uses_narration_and_captions_without_visuals_or_generated_music(
+    make_project: MakeProject,
+) -> None:
+    size = (320, 176)
+    project = make_project(width=size[0], height=size[1], subtitles={"burn_in": False})
+    assert run_cli("run", str(project), "--until", "fit-planning") == 0
+    log = project / "runs.jsonl"
+    original = log.read_text(encoding="utf-8")
+
+    assert run_cli("radio-cut", str(project)) == 0
+
+    artifacts = read_json(project / "build/ledger.json")["artifacts"]
+    assert {"radio-cut/am", "radio-cut/en"} <= artifacts.keys()
+    for lang in ("en", "am"):
+        path = project / "out" / f"demo_{lang}_radio.mp4"
+        probe = ffprobe(path)
+        assert {stream["codec_type"] for stream in probe["streams"]} == {"video", "audio"}
+        start, end, _ = read_srt(path.with_suffix(".srt"))[0]
+        frame = gray_frame(path, (start + end) / 2, size)
+        assert max(frame[: size[0] * size[1] // 2]) < 20
+        assert max(frame[size[0] * size[1] // 2 :]) > 100  # burned captions on black
+        rate = 8000
+        samples = decode_audio(path, rate)
+        assert tone_amplitude(samples, rate, 110, 0.25, 1.0) > 0.0003
+
+    assert log.read_text(encoding="utf-8") == original
+    assert not (project / "build" / "video.json").exists()
+    assert not (project / "build" / "music.json").exists()
 
 
 @pytest.mark.needs_ffmpeg
@@ -386,6 +524,7 @@ def test_an_ffmpeg_without_libass_is_a_plan_error(
     err = capsys.readouterr().err
     assert "subtitles" in err and "libass" in err
     assert "sidechaincompress" in err
+    assert "loudnorm" in err
 
 
 # ----------------------------------------------------------- re-rendering (no ffmpeg needed)

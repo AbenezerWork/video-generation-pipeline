@@ -29,6 +29,7 @@ from typing import Any, ClassVar
 
 from vidpipe.contracts import TextCapabilities, TextProvider, TextRequest, TextResponse
 from vidpipe.registry import register
+from vidpipe.runlog import attempt
 from vidpipe.text import (
     InvalidOutput,
     ProviderUnavailable,
@@ -92,13 +93,29 @@ class CliTextProvider(TextProvider):
     def complete(self, request: TextRequest) -> TextResponse:
         prompt = self._prompt(request)
         problem = ""
-        for _ in range(1 + self.max_reprompts):
-            reply = self._call(prompt)
+        for index in range(1 + self.max_reprompts):
+            # Keep command failures out of the validation retry loop.
+            reply = ""
             try:
-                data = extract_json(reply)
-                if request.validator is not None:
-                    request.validator(data)
-            except (InvalidOutput, ValueError) as exc:
+                with attempt(
+                    self,
+                    model=self.model,
+                    parameters={
+                        "timeout_s": self.timeout_s,
+                        "attempt": index + 1,
+                        "response_schema": request.json_schema.get("title"),
+                    },
+                ):
+                    reply = self._call(prompt)
+                    try:
+                        data = extract_json(reply)
+                        if request.validator is not None:
+                            request.validator(data)
+                    except ValueError as exc:
+                        raise InvalidOutput(str(exc)) from exc
+            except InvalidOutput as exc:
+                if not reply:
+                    raise
                 problem = str(exc)
                 prompt = self._reprompt(request, reply, problem)
                 continue

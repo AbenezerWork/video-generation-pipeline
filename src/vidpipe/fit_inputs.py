@@ -12,13 +12,10 @@ from vidpipe.project import Project, ProjectError
 Narrate = Callable[[str, int, str], NarrationInput]
 
 
-def translation_files(project: Project) -> list[str]:
-    """The script files (relative to ``build/``) that every shot's narration text comes from."""
-    return ["script.json", *(f"translation/{lang}.json" for lang in project.config.languages[1:])]
-
-
 def script_for(project: Project, language: str) -> Script | None:
     """A language's script, or ``None`` while it has not been written or translated yet."""
+    if contract := project.storyboard_contract:
+        return contract.script(language)
     name = (
         "script.json"
         if language == project.config.primary_language

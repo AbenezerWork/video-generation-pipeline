@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ContractShot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "exclusiveMinimum": 0,
+          "title": "Id",
+          "type": "integer"
+        },
+        "reason": {
+          "pattern": "\\S",
+          "title": "Reason",
+          "type": "string"
+        },
+        "narration": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Narration",
+          "type": "object"
+        },
+        "visual": {
+          "pattern": "\\S",
+          "title": "Visual",
+          "type": "string"
+        },
+        "motion_type": {
+          "$ref": "#/$defs/MotionType"
+        },
+        "character": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "required": [
+        "id",
+        "reason",
+        "narration",
+        "visual",
+        "motion_type"
+      ],
+      "title": "ContractShot",
+      "type": "object"
+    },
+    "MotionType": {
+      "description": "Shot motion vocabulary, limited to what image-to-video models do well.",
+      "enum": [
+        "push_in",
+        "pan",
+        "ambient"
+      ],
+      "title": "MotionType",
+      "type": "string"
+    },
+    "MusicCue": {
+      "additionalProperties": false,
+      "properties": {
+        "shot": {
+          "exclusiveMinimum": 0,
+          "title": "Shot",
+          "type": "integer"
+        },
+        "note": {
+          "pattern": "\\S",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shot",
+        "note"
+      ],
+      "title": "MusicCue",
+      "type": "object"
+    },
+    "StoryboardMusic": {
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "pattern": "\\S",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "bpm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bpm"
+        },
+        "keyscale": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keyscale"
+        },
+        "cues": {
+          "items": {
+            "$ref": "#/$defs/MusicCue"
+          },
+          "title": "Cues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "title": "StoryboardMusic",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The editable storyboard shared by the text and generation stages.",
+  "properties": {
+    "title": {
+      "pattern": "\\S",
+      "title": "Title",
+      "type": "string"
+    },
+    "shots": {
+      "items": {
+        "$ref": "#/$defs/ContractShot"
+      },
+      "minItems": 1,
+      "title": "Shots",
+      "type": "array"
+    },
+    "music": {
+      "$ref": "#/$defs/StoryboardMusic"
+    }
+  },
+  "required": [
+    "title",
+    "shots",
+    "music"
+  ],
+  "title": "StoryboardContract",
+  "type": "object"
+}

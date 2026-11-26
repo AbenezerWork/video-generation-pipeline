@@ -24,7 +24,10 @@ MODELS = {
 
 
 def _portable_ffmpeg(directory: Path, *, libass: bool) -> None:
-    filters = [" ... sidechaincompress AA->A Compress audio"]
+    filters = [
+        " ... sidechaincompress AA->A Compress audio",
+        " ... loudnorm A->A Normalize loudness",
+    ]
     if libass:
         filters.append(" ... subtitles V->V Render subtitles")
     directory.mkdir()

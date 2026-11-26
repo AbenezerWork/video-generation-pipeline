@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import re
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from vidpipe.config import Visuals
 from vidpipe.contracts import MotionType
@@ -40,7 +41,11 @@ class Script(BaseModel):
     lines: list[ScriptLine]
 
 
+NonBlank = Annotated[str, StringConstraints(pattern=r"\S")]
+
+
 class ShotDraft(BaseModel):
+    reason: NonBlank
     line_id: int
     visual: str
     motion_type: MotionType
@@ -59,6 +64,7 @@ class StoryboardDraft(BaseModel):
 class Shot(BaseModel):
     id: int
     line_id: int
+    reason: str | None = None
     visual: str
     motion_type: MotionType
     character: str | None = None
@@ -67,6 +73,79 @@ class Shot(BaseModel):
 
 class Storyboard(BaseModel):
     shots: list[Shot]
+
+
+class ContractShot(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: int = Field(gt=0)
+    reason: NonBlank
+    narration: dict[str, NonBlank] = Field(min_length=1)
+    visual: NonBlank
+    motion_type: MotionType
+    character: NonBlank | None = None
+    location: NonBlank | None = None
+
+
+class MusicCue(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    shot: int = Field(gt=0)
+    note: NonBlank
+
+
+class StoryboardMusic(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    prompt: NonBlank
+    bpm: int | None = Field(default=None, gt=0)
+    keyscale: NonBlank | None = None
+    cues: list[MusicCue] = Field(default_factory=list[MusicCue])
+
+
+CONTRACT_STAGES = frozenset({"script", "translation", "storyboard"})
+
+
+class StoryboardContract(BaseModel):
+    """The editable storyboard shared by the text and generation stages."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    title: NonBlank
+    shots: list[ContractShot] = Field(min_length=1)
+    music: StoryboardMusic
+
+    @model_validator(mode="after")
+    def _shot_references(self) -> StoryboardContract:
+        ids = {shot.id for shot in self.shots}
+        if len(ids) != len(self.shots):
+            raise ValueError("shot ids must be unique")
+        if unknown := sorted({cue.shot for cue in self.music.cues} - ids):
+            raise ValueError(f"music cues refer to unknown shots: {unknown}")
+        return self
+
+    def script(self, language: str) -> Script:
+        return Script(
+            language=language,
+            title=self.title,
+            lines=[ScriptLine(id=shot.id, text=shot.narration[language]) for shot in self.shots],
+        )
+
+    def storyboard(self) -> Storyboard:
+        return Storyboard(
+            shots=[
+                Shot(
+                    id=shot.id,
+                    line_id=shot.id,
+                    reason=shot.reason,
+                    visual=shot.visual,
+                    motion_type=shot.motion_type,
+                    character=shot.character,
+                    location=shot.location,
+                )
+                for shot in self.shots
+            ]
+        )
 
 
 class NarrationClip(BaseModel):
@@ -106,6 +185,14 @@ class MediaIndex(BaseModel):
             and i.clip == clip
             and (visual_set is None or i.visual_set == visual_set)
         )
+
+
+class MusicIndex(MediaIndex):
+    choice: int = Field(default=1, ge=1)
+
+    @property
+    def selected(self) -> MediaItem:
+        return self.items[self.choice - 1]
 
 
 class FitLimits(BaseModel):

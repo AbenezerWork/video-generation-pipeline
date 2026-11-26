@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, cast
+from typing import Annotated, Any, NotRequired, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import TypedDict
 
 from vidpipe.contracts import ProviderKind
 
@@ -20,6 +21,17 @@ class Visuals(StrEnum):
     SHARED = "shared"
     PER_LANGUAGE = "per_language"
     PRIMARY_ONLY = "primary_only"
+
+
+class ProviderMapping(TypedDict):
+    name: str
+    options: NotRequired[dict[str, Any]]
+    fallback: NotRequired[list[ProviderInput]]
+
+
+type ProviderInput = (
+    str | ProviderMapping | Annotated[list[str | ProviderMapping], Field(min_length=1)]
+)
 
 
 class ProviderSelection(BaseModel):
@@ -81,13 +93,14 @@ class SubtitleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     burn_in: bool = True
+    text_language: str | None = None
     #: Folder of font files libass may use, relative to the project directory (or absolute). Unset:
     #: the project's own ``fonts/`` folder if it has one, else the fonts bundled with vidpipe.
     fonts_dir: str | None = None
     #: Font family per language. A language not listed uses the system default font (fine for Latin
     #: script); Amharic needs Ethiopic glyphs, so it gets the bundled Noto Sans Ethiopic.
     fonts: dict[str, str] = Field(default_factory=lambda: {"am": GEEZ_FONT})
-    #: Text size in libass script units, where the video's height is 288 (so it scales with it).
+    #: Text size relative to the shorter side of the frame, in units of 1/288 of that side.
     font_size: int = Field(default=20, gt=0)
 
 
@@ -100,6 +113,8 @@ class MixConfig(BaseModel):
     music_level: float = Field(default=0.4, gt=0, le=2)
     #: How hard narration pushes the music down (a sidechain compressor's ratio: higher is deeper).
     duck_ratio: float = Field(default=8.0, ge=1, le=20)
+    #: Integrated loudness target for the final mix, in LUFS.
+    loudness_lufs: float = Field(default=-14.0, ge=-70, le=-5)
 
 
 #: What the end card says when ``end_card.text`` does not name the language: a headline line, then
@@ -163,6 +178,20 @@ class ComfyUIConfig(BaseModel):
     url: str | None = None
 
 
+class MusicConfig(BaseModel):
+    """Generate one or more candidates and select one by its one-based index."""
+
+    model_config = ConfigDict(extra="forbid")
+    candidates: int = Field(default=1, ge=1)
+    choice: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def _choice_in_range(self) -> MusicConfig:
+        if self.choice > self.candidates:
+            raise ValueError("music.choice must be within music.candidates")
+        return self
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -179,6 +208,7 @@ class ProjectConfig(BaseModel):
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
     mix: MixConfig = Field(default_factory=MixConfig)
+    music: MusicConfig = Field(default_factory=MusicConfig)
     #: Off unless the project has an ``end_card:`` block (``end_card: {}`` uses the defaults).
     end_card: EndCardConfig | None = None
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
@@ -198,7 +228,7 @@ class ProjectConfig(BaseModel):
         card = self.end_card
         return card.seconds if card is not None and card.enabled else 0.0
 
-    @field_validator("providers", mode="before")
+    @field_validator("providers", mode="before", json_schema_input_type=dict[str, ProviderInput])
     @classmethod
     def _default_text_chains(cls, value: Any) -> Any:
         if not isinstance(value, dict):
@@ -213,6 +243,15 @@ class ProjectConfig(BaseModel):
         if unknown:
             raise ValueError(f"unknown stage(s) in providers: {', '.join(unknown)}")
         return value
+
+    @property
+    def script_languages(self) -> list[str]:
+        language = self.subtitles.text_language
+        return (
+            [*self.languages, language]
+            if language and language not in self.languages
+            else self.languages
+        )
 
     @property
     def primary_language(self) -> str:

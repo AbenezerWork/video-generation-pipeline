@@ -45,6 +45,7 @@ from vidpipe.contracts import (
 )
 from vidpipe.models import Script, ScriptLine
 from vidpipe.project import Project
+from vidpipe.runlog import attempt
 from vidpipe.text import FallbackTextProvider, TextProviderError, ask, failure_count, fallback_note
 
 #: Languages the text translator is declared (and checked) for: English to Amharic is the demo.
@@ -372,13 +373,14 @@ def translate_script(provider: TranslationProvider, script: Script, target: str)
     """Translate ``script`` into ``target``: the same line ids, in order."""
     since = failure_count(provider.chain) if isinstance(provider, TextTranslator) else 0
     try:
-        response = provider.translate(
-            TranslationRequest(
-                texts=[line.text for line in script.lines],
-                source_language=script.language,
-                target_language=target,
+        with attempt(provider, parameters=provider.options):
+            response = provider.translate(
+                TranslationRequest(
+                    texts=[line.text for line in script.lines],
+                    source_language=script.language,
+                    target_language=target,
+                )
             )
-        )
     except TextProviderError as exc:
         raise TranslationError(str(exc)) from exc
     if len(response.texts) != len(script.lines):
@@ -411,8 +413,10 @@ def review_path(language: str) -> str:
 
 def drift_flags(project: Project) -> list[DriftFlag]:
     """Every drifted line of every translation that has been checked, for a gate or report."""
+    if project.storyboard_contract:
+        return []
     flags: list[DriftFlag] = []
-    for language in project.config.languages[1:]:
+    for language in project.config.script_languages[1:]:
         if not (project.build / review_path(language)).is_file():
             continue
         review = project.read_model(review_path(language), TranslationReview)
@@ -432,8 +436,10 @@ def drift_flags(project: Project) -> list[DriftFlag]:
 
 def report_lines(project: Project) -> list[str]:
     """Human-readable warnings about translations that need review (empty when all is well)."""
+    if project.storyboard_contract:
+        return []
     out: list[str] = []
-    for language in project.config.languages[1:]:
+    for language in project.config.script_languages[1:]:
         if not (project.build / review_path(language)).is_file():
             continue
         review = project.read_model(review_path(language), TranslationReview)

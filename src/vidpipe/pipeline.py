@@ -15,12 +15,12 @@ from vidpipe.contracts import Cancelled, MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
 from vidpipe.gates import Approver, GateError, GateKeeper, require_paused_gate
 from vidpipe.lock import writer_lock
-from vidpipe.models import Manifest, StageRecord, Storyboard
+from vidpipe.models import CONTRACT_STAGES, Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
 from vidpipe.regeneration import estimate_regeneration
 from vidpipe.registry import Registry, UnknownProvider, default_registry
 from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
-from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
+from vidpipe.stages import STAGE_NAMES, STAGES, AssemblyStage, Stage, StageContext, StageError
 from vidpipe.stop import RunStopped, StopWatcher
 
 
@@ -88,7 +88,10 @@ def _build_context(
     about = ProjectContext(
         root=project.root, comfyui_url=project.config.comfyui.url, stop_now=stop_now
     )
+    contract = project.storyboard_contract
     for stage, selection in project.config.providers.items():
+        if contract is not None and stage in CONTRACT_STAGES:
+            continue
         kind = STAGE_KINDS.get(stage)
         if kind is None:
             continue  # e.g. `song`: configurable, but not part of the stage graph yet
@@ -120,7 +123,23 @@ def plan(
     on disk; fit problems (a render over 90 s, narration no clip can cover) are added to
     ``problems``. An explicit ``config`` plans a proposed edit against the same project and ledger.
     """
-    project = Project(project_dir, config=config)
+    return _plan(
+        Project(project_dir, config=config),
+        until=until,
+        registry=registry,
+        assembler=assembler,
+        estimate=estimate,
+    )
+
+
+def _plan(
+    project: Project,
+    *,
+    until: str | None,
+    registry: Registry | None,
+    assembler: Assembler | None,
+    estimate: bool = False,
+) -> Plan:
     names = _selected_stages(until)
     problems: list[str] = []
     ctx = _build_context(
@@ -131,8 +150,10 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, provider_label(stage.name, selection)))
-        if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
+        from_contract = project.storyboard_contract is not None and stage.name in CONTRACT_STAGES
+        label = None if from_contract else provider_label(stage.name, selection)
+        planned.append(PlannedStage(stage.name, label))
+        if not from_contract and stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
             continue
@@ -232,10 +253,19 @@ def _run(
 ) -> RunResult:
     project = Project(project_dir)
     names = _selected_stages(until)
+    has_contract = (project.root / "storyboard.json").is_file()
     state = RunStatePublisher(
         project,
         origin=origin,
-        stages=[(name, provider_label(name, project.config.providers.get(name))) for name in names],
+        stages=[
+            (
+                name,
+                None
+                if has_contract and name in CONTRACT_STAGES
+                else provider_label(name, project.config.providers.get(name)),
+            )
+            for name in names
+        ],
         until=until,
         command=command,
         shot=shot,
@@ -272,7 +302,7 @@ def _run_stages(
     approve: Sequence[str],
     approver: Approver | None,
 ) -> RunResult:
-    the_plan = plan(project.root, until=until, registry=registry, assembler=assembler)
+    the_plan = _plan(project, until=until, registry=registry, assembler=assembler)
     problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
     if not the_plan.ok or problems:
         raise PlanError([*the_plan.problems, *problems])
@@ -284,6 +314,7 @@ def _run_stages(
         [],
         stop_now=watcher.now_requested,
     )
+    ctx.run_id = state.state.run_id
     keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
     paused_at: str | None = None
@@ -320,11 +351,10 @@ def _run_stages(
             # One model resident at a time: the stage's provider lets go (also after a failure).
             if used := ctx.providers.get(stage):
                 used.release()
-        selection = project.config.providers.get(stage)
         manifest.stages.append(
             StageRecord(
                 stage=stage,
-                provider=provider_label(stage, selection),
+                provider=the_plan.stages[index].provider,
                 outputs=outputs,
                 generated=ctx.generated,
                 reused=ctx.reused,
@@ -349,6 +379,24 @@ def _artifact_count(stage: Stage, ctx: StageContext) -> int | None:
         return stage.artifact_count(ctx)
     except Exception:  # an earlier stage's output is not there yet: unknown for now
         return None
+
+
+def radio_cut(project_dir: Path) -> list[str]:
+    """Render the existing fit plan and narration as subtitled radio cuts."""
+    with writer_lock(project_dir):
+        project = Project(project_dir)
+        ctx = StageContext(project, {}, FfmpegAssembler())
+        ctx.begin("radio-cut")
+        assembly = AssemblyStage()
+        if problems := assembly.problems(ctx, radio=True):
+            raise PlanError(problems)
+        try:
+            return assembly.render_project(ctx, radio=True)
+        except (OSError, ValueError, LookupError, StopIteration) as exc:
+            raise StageError(
+                f"cannot render radio cut: {exc}. "
+                "Run vidpipe run PROJECT --until fit-planning first."
+            ) from exc
 
 
 def approve(project_dir: Path, gates: Sequence[str]) -> None:
@@ -396,9 +444,12 @@ def redo(
     project = Project(project_dir)
     who = _origin(origin)
     with writer_lock(project.root):
-        if not (project.build / "storyboard.json").is_file():
-            raise PlanError(["nothing to redo: run the storyboard stage first"])
-        storyboard = project.read_model("storyboard.json", Storyboard)
+        if contract := project.storyboard_contract:
+            storyboard = contract.storyboard()
+        else:
+            if not (project.build / "storyboard.json").is_file():
+                raise PlanError(["nothing to redo: run the storyboard stage first"])
+            storyboard = project.read_model("storyboard.json", Storyboard)
         if shot not in {s.id for s in storyboard.shots}:
             known = ", ".join(str(s.id) for s in storyboard.shots)
             raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
