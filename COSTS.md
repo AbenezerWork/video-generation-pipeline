@@ -25,8 +25,7 @@ access to any frontier image, video or music model.
 - **Limit of the ledger:** it keeps only the latest record per artifact. Replaced
   keyframes and clips are not counted. From now on `<project>/runs.jsonl` holds one
   line per generation attempt, with latency and GPU seconds. The figures below
-  predate it. <!-- verify after merge -->
-- All figures are from 25 and 26 November 2026.
+  predate it.- All figures are from 25 and 26 November 2026.
 
 ## Per stage, per film
 
@@ -111,7 +110,6 @@ With a `storyboard.json`, no text model is called at all. Without one, editing
 `build/script.json` is the expensive edit: the translation and the storyboard both
 read it. Loudness normalisation adds a second FFmpeg pass over the audio, whose cost
 has not been measured. See [ARCHITECTURE.md](ARCHITECTURE.md).
-<!-- verify after merge -->
 
 For a walkthrough that regenerates one shot live, change one shot's `visual` (one new
 keyframe, then one clip) or one narration line (one new voice call).

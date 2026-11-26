@@ -58,7 +58,6 @@ vidpipe run / redo / approve / stop / plan / doctor / ui          (cli.py)
   out/                <output_name>_<lang>.mp4 and .srt
 ```
 
-<!-- verify after merge: storyboard.json, runs.jsonl -->
 
 There is no database. The folder is the state.
 
@@ -87,8 +86,7 @@ exporting, and after editing a translated line. Without the file, those stages w
 `build/script.json`, `build/translation/` and `build/storyboard.json` themselves.
 
 `vidpipe schema` writes the JSON Schemas of the storyboard and of `vidpipe.yaml` into
-`schema/`. <!-- verify after merge: storyboard.json, export-storyboard, schema -->
-
+`schema/`.
 Every file between stages is a Pydantic model (`models.py`), so a stage rejects
 malformed input when it reads it, and a text model's reply is validated before it is
 saved.
@@ -115,7 +113,6 @@ part of the stage graph.
 (`build/music/candidate_N`), and `music.choice` (counted from 1) picks the one that
 assembly uses. Changing only the choice reuses every candidate and re-runs assembly.
 Write the reason for the choice in `DESIGN.md`.
-<!-- verify after merge: music.candidates, music.choice -->
 
 ## Providers: registry and plug-ins
 
@@ -191,8 +188,7 @@ Consequences:
 **Known gap.** Output hashes are recorded but, for media, not re-checked on reuse, so
 a corrupted file of the same name would be reused ([failure 31](FAILURES.md)). Files
 written from `storyboard.json` are checked, so the contract always wins over an edit in
-`build/`. <!-- verify after merge -->
-
+`build/`.
 ## The call log
 
 The ledger keeps only the latest record per artifact. `<project>/runs.jsonl` is the
@@ -209,7 +205,6 @@ re-prompts, fallbacks and ComfyUI retries. Reused artifacts add no line.
 | `cost_usd`, `list_price_usd` | charge (0 for local and subscription calls) and a declared list price |
 | `outcome`, `error` | `ok` or `error`, with the error type |
 
-<!-- verify after merge: runs.jsonl -->
 
 Token counts are not recorded.
 
@@ -318,20 +313,16 @@ FFmpeg does everything in one filter graph per language (`assembly.py`):
 Amharic render. The translation stage then also covers that language if needed. Lines
 are wrapped to at most two per cue (about 42 columns), long lines are split over time,
 the size follows the shorter side of the frame, and portrait renders leave more room
-below. <!-- verify after merge: subtitles.text_language -->
-
+below.
 **Loudness.** The final mix is measured and then normalised in a second pass with
 `loudnorm` to `mix.loudness_lufs` (default -14 LUFS, true peak -1 dBTP).
-<!-- verify after merge: mix.loudness_lufs -->
 
 **Provenance.** Each MP4 carries the title and a comment saying it is AI-generated.
-<!-- verify after merge: MP4 metadata -->
 
 **Radio cut.** `vidpipe radio-cut <project>` renders the narration and subtitles over
 black, as `out/<name>_<lang>_radio.mp4`, for the first user test. It uses the score if
 one exists and a quiet placeholder tone otherwise. It needs narration and a fit plan,
-and no GPU. <!-- verify after merge: radio-cut -->
-
+and no GPU.
 ## The UI
 
 `vidpipe ui <project>` serves one project (optional `ui` extra: Starlette, uvicorn,

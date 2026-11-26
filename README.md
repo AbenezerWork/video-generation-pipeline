@@ -24,8 +24,6 @@ Where the challenge's suggested layout lives here:
 | `runs.jsonl` | `<project>/runs.jsonl` |
 | `outputs/` | each project's `build/` (every intermediate) and `out/` (renders) |
 
-<!-- verify after merge: schema/ exists, storyboard.json and runs.jsonl paths, and
-whether the film project and its outputs are committed to the repository -->
 
 ## What it does
 
@@ -49,9 +47,6 @@ make film
 `make film` renders both cuts of the film, from `examples/lions-whisker-16x9` and
 `examples/lions-whisker-9x16`. For one project use `make film PROJECT=<project>`.
 
-<!-- verify after merge: the `make setup` and `make film` targets, and that both film
-project folders are committed. They were not in the repository when this was written;
-the film was made from projects kept outside it -->
 
 Without `make` (Windows has none by default), run one command per project folder:
 
@@ -76,8 +71,7 @@ from a brief writes new text and makes a new film of the same story. To reproduc
 film, keep its `storyboard.json` (and `bible.yaml`) in the project folder: the script,
 translation and storyboard then come from that file and no text model is called.
 Narration, pictures, motion and music are still generated, from the same prompts and
-seeds. <!-- verify after merge: storyboard.json -->
-
+seeds.
 Other commands:
 
 | Command | Does |
@@ -90,14 +84,11 @@ Other commands:
 | `uv run vidpipe export-storyboard <project>` | writes `<project>/storyboard.json`, the editable contract, from a build that has reached the storyboard stage |
 | `uv run vidpipe radio-cut <project>` | narration over black, for a first audience test; needs a run through `fit-planning` |
 
-<!-- verify after merge: schema, export-storyboard, radio-cut -->
 
 Each run appends one line per model call to `<project>/runs.jsonl`. In `vidpipe.yaml`,
 `subtitles.text_language: en` puts English subtitles on the Amharic render,
 `mix.loudness_lufs` sets the loudness of the final mix (default -14 LUFS), and
 `music: {candidates: 3, choice: 2}` generates several scores and uses the chosen one.
-<!-- verify after merge: runs.jsonl, subtitles.text_language, mix.loudness_lufs,
-music.candidates, music.choice -->
 
 ## What you need
 
@@ -107,7 +98,7 @@ music.candidates, music.choice -->
 | ComfyUI 0.46.3 | running separately at `127.0.0.1:8188`, with ComfyUI-GGUF at the pinned commit |
 | Model files | about 34 GB: FLUX.2 klein 4B, Wan 2.2 TI2V 5B, ACE-Step 1.5 and their encoders ([list](docs/setup.md#comfyui)) |
 | FFmpeg | `ffmpeg` and `ffprobe` with libass, `sidechaincompress` and `libx264` |
-| A text CLI, signed in | Claude Code or Codex CLI (paid subscription), to write a new film. Not needed when the project has a `storyboard.json` <!-- verify after merge --> |
+| A text CLI, signed in | Claude Code or Codex CLI (paid subscription), to write a new film. Not needed when the project has a `storyboard.json` |
 | Internet | for the text CLI and Edge TTS narration |
 | Python 3.12+ and `uv` | |
 

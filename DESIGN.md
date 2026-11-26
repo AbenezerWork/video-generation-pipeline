@@ -10,21 +10,15 @@ The submitted film: an Ethiopian folk tale narrated in Amharic, in 16:9 and 9:16
 Both are H.264 at 24 fps with AAC audio, burned-in subtitles, a sidecar `.srt` and an
 AI end card. They share one script, narration and score; only the pictures differ.
 The demo projects live outside this repository, in
-`%USERPROFILE%\.t3\vidpipe-demos\`. <!-- verify after merge: `make film` expects
-`examples/lions-whisker-16x9` and `examples/lions-whisker-9x16`; once they are
-committed, point the paths here and in the table at them -->
-
+`%USERPROFILE%\.t3\vidpipe-demos\`.
 The cuts described here have Amharic subtitles. English subtitles on the Amharic
 render come from `subtitles.text_language: en`, and the mix is normalised to
 -14 LUFS by `mix.loudness_lufs`; both need a re-assembly of the delivered files.
-<!-- verify after merge: re-render, then update this paragraph and the table -->
 
 **Before re-running the film's existing projects with the new code,** run
 `vidpipe export-storyboard <project>`. The storyboard prompt now also asks for a shot
 reason, so without a `storyboard.json` a run would write a new storyboard over the
 hand-edited one and redraw every shot. Check `vidpipe plan` before running.
-<!-- verify after merge: confirm with `vidpipe plan` that keyframes and clips are
-reused -->
 
 
 ## 1. Audience and intent
@@ -75,8 +69,7 @@ From the 16:9 `build/storyboard.json`, fit plan and script. "Picture" summarises
 storyboard's `visual`. The reasons were written up from the storyboard and the design
 notes after the render. Seconds are the Amharic render. The film's build predates the
 `reason` field, so an export fills it with a placeholder: copy these reasons into the
-project's `storyboard.json`. <!-- verify after merge: export-storyboard, reason -->
-The author should check them: TO BE CONFIRMED BY THE AUTHOR.
+project's `storyboard.json`.The author should check them: TO BE CONFIRMED BY THE AUTHOR.
 
 | # | s | Narration (English source) | Picture | Motion | Why this shot exists |
 |---:|---:|---|---|---|---|
@@ -170,8 +163,7 @@ cropping a 16:9 frame would keep only about 30% of it.
   the card.
 - **Score candidates and choice:** one score was generated for the delivered cut. If
   candidates are generated with `music.candidates`, record the choice and reason here:
-  TO BE FILLED BY THE AUTHOR. <!-- verify after merge: music.candidates, music.choice -->
-- **Subtitles:** Noto Sans Ethiopic. In the vertical cut long lines wrap to 2 to 4
+  TO BE FILLED BY THE AUTHOR.- **Subtitles:** Noto Sans Ethiopic. In the vertical cut long lines wrap to 2 to 4
   lines.
 - **End card:** 5 s in Amharic, with "AI-generated video" repeated in English.
 
@@ -195,7 +187,6 @@ Judged from still frames; each can be redrawn with `vidpipe redo shot N`.
 Build the cut with `uv run vidpipe radio-cut <project>`: narration and subtitles over
 a black screen, written to `out/<name>_<lang>_radio.mp4`. It plays the score if the
 project already has one, as this film's does, and a placeholder tone otherwise.
-<!-- verify after merge: radio-cut -->
 
 **Date and method (in person, call, Slack):** TO BE FILLED BY THE AUTHOR
 

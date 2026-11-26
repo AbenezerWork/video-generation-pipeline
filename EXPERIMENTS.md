@@ -494,4 +494,4 @@ These came out of the design interview. They are decisions, not experiments.
   recorded choice (`music.candidates`, `music.choice`), loudness normalisation
   (`mix.loudness_lufs`), English subtitles on the Amharic render
   (`subtitles.text_language: en`), and `vidpipe radio-cut`.
-  <!-- verify after merge -->
+ 

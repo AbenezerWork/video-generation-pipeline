@@ -205,14 +205,12 @@ Status: **fixed** (the cause is gone), **worked around** (we avoid it), **open**
   audit, a file replaced by different bytes of the same size was still reused. Hand
   edits are intentional here, but corruption would pass too. Only files written from
   `storyboard.json` are now hash-checked; media is not.
-  <!-- verify after merge -->
-
+ 
 ### 32. A partial run checks every provider
 
 - **Open:** `plan --until brief` failed because the music provider was misconfigured,
   although music was not part of the run (architecture audit).
-  <!-- verify after merge -->
-
+ 
 ### 35. The ledger forgets replaced attempts
 
 - **Broke:** the ledger keeps one record per artifact. When a keyframe is redrawn, the
@@ -220,8 +218,7 @@ Status: **fixed** (the cause is gone), **worked around** (we avoid it), **open**
   16:9 are not in its totals.
 - **Fix:** `<project>/runs.jsonl` appends one line per generation attempt, failures
   included, so replaced attempts stay on record from now on.
-  <!-- verify after merge -->
-- **Still open:** the films already made cannot be reconstructed; [COSTS.md](COSTS.md)
+ - **Still open:** the films already made cannot be reconstructed; [COSTS.md](COSTS.md)
   estimates the missing time.
 
 ## Format
@@ -313,8 +310,7 @@ extra man, and a second woman).
   the frame height and wraps to 2 to 4 lines over the lower half of the picture.
 - **Fix:** size from the shorter side of the frame, at most two lines per cue with long
   lines split over time, and more bottom room in portrait.
-  <!-- verify after merge -->
-- **Still open:** the delivered files need re-assembly and a look on a phone.
+ - **Still open:** the delivered files need re-assembly and a look on a phone.
 
 ### 29. No native-speaker check
 
@@ -325,8 +321,7 @@ extra man, and a second woman).
 
 - **Open:** the storyboard model sees character names but not descriptions, and a
   keyframe gets only its main character's description. Both caused the wardrobe and
-  lion problems above. <!-- verify after merge -->
-
+  lion problems above.
 ## Delivery
 
 ### 34. The mix is much quieter than platforms expect
@@ -336,8 +331,7 @@ extra man, and a second woman).
   Khalid Amharic -24.2, English -20.6. The brief's guide is about -14 LUFS.
 - **Cause:** assembly ducked and limited the mix but did not normalise loudness.
 - **Fix:** a two-pass `loudnorm` to `mix.loudness_lufs` (default -14 LUFS, true peak
-  -1 dBTP). <!-- verify after merge -->
-- **Still open:** the films need re-assembly and re-measurement. Assembly uses no
+  -1 dBTP).- **Still open:** the films need re-assembly and re-measurement. Assembly uses no
   GPU.
 
 ### 36. No AI marker inside the file
@@ -346,5 +340,4 @@ extra man, and a second woman).
   encoder tag. Disclosure rests on the end card and on the platform label set when
   posting.
 - **Fix:** assembly writes a title and an "AI-generated" comment into each MP4.
-  <!-- verify after merge -->
-- **Still open:** the delivered files need re-assembly. See [ETHICS.md](ETHICS.md).
+ - **Still open:** the delivered files need re-assembly. See [ETHICS.md](ETHICS.md).
