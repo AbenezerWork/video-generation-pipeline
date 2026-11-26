@@ -265,7 +265,7 @@ def test_each_stage_offers_only_the_providers_implementing_its_contract(ui: UiSe
         "storyboard": TEXT,
         # Text providers translate too (vidpipe wraps them), besides translation providers.
         "translation": TEXT | {"fake-translation", "fake-translation-upper"},
-        "narration": {"edge-tts", "fake-tts", "fake-tts-en-only"},
+        "narration": {"addis-ai", "edge-tts", "fake-tts", "fake-tts-en-only"},
         "keyframes": {"comfyui-keyframer", "fake-keyframer", "fake-keyframer-text-only"},
         "video": {"comfyui-i2v", "fake-i2v", "fake-i2v-hosted"},
         "music": {"comfyui-music", "fake-music"},
