@@ -42,16 +42,21 @@ film in 16:9 and 9:16.
 ## One command
 
 ```
-uv sync
+make setup
 make film
 ```
 
-<!-- verify after merge: the `make film` target, which project folder it renders, and
-that GNU make is available on Windows -->
+`make film` renders both cuts of the film, from `examples/lions-whisker-16x9` and
+`examples/lions-whisker-9x16`. For one project use `make film PROJECT=<project>`.
 
-Without `make`, the same run is one command per project folder:
+<!-- verify after merge: the `make setup` and `make film` targets, and that both film
+project folders are committed. They were not in the repository when this was written;
+the film was made from projects kept outside it -->
+
+Without `make` (Windows has none by default), run one command per project folder:
 
 ```
+uv sync
 uv run vidpipe run <project> --auto        # every stage, skipping the approval gates
 ```
 

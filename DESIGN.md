@@ -10,8 +10,9 @@ The submitted film: an Ethiopian folk tale narrated in Amharic, in 16:9 and 9:16
 Both are H.264 at 24 fps with AAC audio, burned-in subtitles, a sidecar `.srt` and an
 AI end card. They share one script, narration and score; only the pictures differ.
 The demo projects live outside this repository, in
-`%USERPROFILE%\.t3\vidpipe-demos\`. <!-- verify after merge: if `make film` commits the
-film project to the repo, point here -->
+`%USERPROFILE%\.t3\vidpipe-demos\`. <!-- verify after merge: `make film` expects
+`examples/lions-whisker-16x9` and `examples/lions-whisker-9x16`; once they are
+committed, point the paths here and in the table at them -->
 
 The cuts described here have Amharic subtitles. English subtitles on the Amharic
 render come from `subtitles.text_language: en`, and the mix is normalised to
