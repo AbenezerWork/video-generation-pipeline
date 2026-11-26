@@ -39,16 +39,18 @@ Status: **fixed** (the cause is gone), **worked around** (we avoid it), **open**
 | 25 | Lion lost its mane, elder changed skin tone, stray people | model | worked around |
 | 26 | Weak shots left in the finished films | model | open |
 | 27 | Amharic drift: Coffee, Khalid line 12, Lion's Whisker line 7 | language | handled per line |
-| 28 | Long Amharic subtitles, large in portrait | language | fix in progress |
+| 28 | Long Amharic subtitles, large in portrait | language | caption layout updated |
 | 29 | No native-speaker check of the Amharic | language | open |
 | 30 | `doctor` missed a missing Addis key | pipeline | open |
 | 31 | A changed output file can be reused | pipeline | open |
 | 32 | A partial run checks providers it will not use | pipeline | open |
-| 33 | Second characters and clothing are not described to the models | pipeline | open |
-| 34 | Final mix far below platform loudness | audio | fix in progress |
-| 35 | Ledger loses the cost of replaced attempts | measurement | fix in progress |
-| 36 | No AI marker in the MP4 metadata | disclosure | fix in progress |
+| 33 | Second characters and clothing are missing from prompts | pipeline | fixed in v2 |
+| 34 | Final mix far below platform loudness | audio | loudness fixed, portrait peak above target |
+| 35 | Ledger loses the cost of replaced attempts | measurement | fixed for new runs |
+| 36 | No AI marker in the MP4 metadata | disclosure | fixed and checked in both cuts |
 | 37 | Real GPU out-of-memory recovery never exercised | memory | open |
+| 38 | V2 motion prompt changed during the full render | process | adjusted after pilot checks |
+| 39 | Storyboard export dropped fields used by the prompts | pipeline | fixed |
 
 ## Setup and tools
 
@@ -152,6 +154,23 @@ Status: **fixed** (the cause is gone), **worked around** (we avoid it), **open**
   GPU job has run out of memory, so the recovery path has never worked for real. The
   keyframe spike ran about 60 jobs and never triggered it.
 
+### 38. V2 motion prompt changed during the full render
+
+- **Broke:** the first v2 landscape pass put coloured bars in some clips. Shot 10
+  A/B tests found that omitting the scene and asking shapes to stay steady could
+  each trigger the bars. Commit `31b01f5` at 17:18 local records the revised prompt.
+- **Cost:** the 26 Nov work spanned about 15:49 to 19:06 local. The two v2 landscape
+  logs each report 16 generated clips, and the portrait log reports 16. ComfyUI
+  logged about 44.42 GPU-min for the first landscape video pass alone. Its
+  earliest 16-clip batch is inside a roughly 46-minute gap between retained ledger
+  entries. See [COSTS.md](COSTS.md#v2-render-time) for the measured seconds and the
+  limits on attributing them. The exact idle time and the cost of the prompt
+  change alone cannot be recovered.
+- **Decision:** settle the rules on two or three pilot shots before a full render.
+  Then run both formats back to back unattended. An 8 to 12 shot version is a
+  shorter option. At 10 shots with similar clip lengths, video time would fall
+  by roughly a third (estimate).
+
 ## Pipeline
 
 ### 13. Narration longer than one clip
@@ -218,8 +237,18 @@ Status: **fixed** (the cause is gone), **worked around** (we avoid it), **open**
   16:9 are not in its totals.
 - **Fix:** `<project>/runs.jsonl` appends one line per generation attempt, failures
   included, so replaced attempts stay on record from now on.
- - **Still open:** the films already made cannot be reconstructed; [COSTS.md](COSTS.md)
-  estimates the missing time.
+- **Older runs:** the server log recovers execution totals for part of the v2 run.
+  It lacks the per-attempt timestamps and artifact IDs needed for a full
+  reconstruction. See [COSTS.md](COSTS.md#v2-render-time).
+
+### 39. Storyboard export dropped fields used by the prompts
+
+- **Broke:** exporting to `storyboard.json` dropped `others`, `people` and
+  `movement`. Importing that file could change the keyframe and motion prompts
+  and invalidate the corresponding renders.
+- **Fix:** keep all three fields in the editable contract, JSON Schema, export and
+  import. The storyboard contract test round-trips the count and movement through
+  the CLI.
 
 ## Format
 
@@ -306,11 +335,12 @@ extra man, and a second woman).
 
 ### 28. Subtitle length and size
 
-- **Broke:** Amharic lines run long. In the delivered 9:16 cut the text is sized from
+- **Broke:** Amharic lines run long. In the v1 9:16 cut the text is sized from
   the frame height and wraps to 2 to 4 lines over the lower half of the picture.
 - **Fix:** size from the shorter side of the frame, at most two lines per cue with long
   lines split over time, and more bottom room in portrait.
- - **Still open:** the delivered files need re-assembly and a look on a phone.
+- **Check:** the final portrait Amharic cut has paged English captions. A phone
+  check is still open.
 
 ### 29. No native-speaker check
 
@@ -319,25 +349,31 @@ extra man, and a second woman).
 
 ### 33. The models are told too little about the cast
 
-- **Open:** the storyboard model sees character names but not descriptions, and a
-  keyframe gets only its main character's description. Both caused the wardrobe and
-  lion problems above.
+- **Broke:** the storyboard saw only character names, and the keyframe prompt
+  described only the main character. This contributed to the wardrobe and mane
+  problems above.
+- **Fix:** v2 gives the storyboard the cast descriptions and repeats the relevant
+  secondary descriptions in the keyframe prompt. The rule and remaining drift are
+  recorded in [EXPERIMENTS.md](EXPERIMENTS.md#25-give-each-model-the-details-it-needs-26-nov).
+
 ## Delivery
 
 ### 34. The mix is much quieter than platforms expect
 
-- **Broke:** measured with ffmpeg `ebur128` on 26 November on the delivered files:
+- **Broke:** measured with ffmpeg `ebur128` on 26 November on the earlier cuts:
   Lion's Whisker Amharic **-24.4 LUFS** (true peak -8.0 dBFS), English -20.9 LUFS;
   Khalid Amharic -24.2, English -20.6. The brief's guide is about -14 LUFS.
 - **Cause:** assembly ducked and limited the mix but did not normalise loudness.
 - **Fix:** a two-pass `loudnorm` to `mix.loudness_lufs` (default -14 LUFS, true peak
-  -1 dBTP).- **Still open:** the films need re-assembly and re-measurement. Assembly uses no
-  GPU.
+  -1 dBTP). Assembly uses no GPU.
+- **Check:** `ebur128=peak=true` measured -14.0 LUFS on both final Amharic MP4s.
+  Encoded true peak was -1.0 dBTP in landscape and -0.6 dBTP in portrait.
+  Portrait is 0.4 dB above the target.
 
 ### 36. No AI marker inside the file
 
-- **Broke:** `ffprobe` on the delivered MP4s shows only the container brand and the
-  encoder tag. Disclosure rests on the end card and on the platform label set when
-  posting.
+- **Broke:** `ffprobe` on the earlier MP4s showed only the container brand and the
+  encoder tag. The end card carried the disclosure.
 - **Fix:** assembly writes a title and an "AI-generated" comment into each MP4.
- - **Still open:** the delivered files need re-assembly. See [ETHICS.md](ETHICS.md).
+- **Check:** `ffprobe` found the title, comment and description on both final
+  Amharic MP4s. See [ETHICS.md](ETHICS.md).

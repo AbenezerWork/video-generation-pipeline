@@ -27,16 +27,18 @@ in [FAILURES.md](FAILURES.md), timing and cost in [COSTS.md](COSTS.md).
 | Music | ACE-Step 1.5 Turbo | 90 s of audio in about 23 s, under 6.3 GB VRAM | 10 |
 | Text | Claude, Codex and Gemini CLIs with fallback | Uses existing subscriptions instead of per-call API billing; Claude took over translation when Codex hit its quota | 11, 12, 19 |
 | English voice | Edge TTS | Free, no key, good quality | 13 |
-| Amharic voice | Edge TTS by default, Addis Voices 2 available | Edge works out of the box; Addis is a dedicated Amharic option | 13 |
+| Amharic voice | Edge TTS by default, Addis Voices 2 for Lion's Whisker | Three viewers found the earlier voice robotic. The Addis take also changes clip timing | 13 |
 | Demo resolution | 512x288 at 24 fps, then 640x352 for Khalid | Both stable on the 8 GB card; 640x352 takes about 3 min per 5 s clip | 9 |
 | Shot timing | Speed change up to 1.3x first, then a continuation clip | Avoids frozen frames while keeping generation cost down | 7, 8 |
 | Visuals across languages | One shared set, sized to the longer narration | Halves GPU time versus per-language visuals | 8 |
-| Look | Live-action by default, plus storyboard rules | The video model animates photographic footage best; the rules stop rearing goats and cloned people | 15, 16, 17 |
+| Look | Live-action by default, plus storyboard rules | Photographic footage held up better in motion. Cast descriptions and counts helped with duplicates | 15, 16, 17, 25 |
 | Script length | 6 to 18 lines, under 90 s, or the brief's own count | A hard-coded 60 s cap cut the Khalid script short | 18 |
 | UI | Local Starlette app with live run state, one-writer lock, English only | See runs as they happen; never let two runs overwrite each other | 24 |
 | Disclosure | Optional AI end card in every language | It has to survive re-renders, so it lives in the pipeline | 20 |
 | Aspect ratio | `output_size` crop-and-scale; portrait generated fresh, not cropped | Exact 16:9 and 9:16 from multiple-of-32 model sizes; a crop would lose 70% of the frame | 21 |
 | Review point | Check every keyframe before animating | A bad still costs about 7 s to redraw; a clip costs about 3 min | 23 |
+| Final mix | Two-pass loudness normalisation | The earlier mixes measured -20.6 to -24.4 LUFS | 26 |
+| Captions | English subtitles on the Amharic cut | The brief calls for English captions timed to the native-language narration | 27 |
 
 ## Entries
 
@@ -239,15 +241,28 @@ in [FAILURES.md](FAILURES.md), timing and cost in [COSTS.md](COSTS.md).
   dedicated Amharic service can be swapped in by config.
 - **Change:** Edge TTS (`am-ET-AmehaNeural`, `am-ET-MekdesNeural`), then
   `addis-ai` (voice `am-hamen`, key from `ADDIS_API_KEY`) for Amharic.
-- **Result:** both produced valid audio. Durations are read from the MP3 in pure
-  Python, so no ffprobe is needed. On the same Amharic translation file (identical
-  SHA-256), the ten lines totalled 49.61 s with Edge and 47.49 s with Addis
-  (ledgers). Mean call time was 7.4 s and 5.3 s per line; both depend on the
-  network. No listening comparison is recorded. The architecture audit found that
-  because one adapter covers both languages, `doctor` checked only Edge and missed
-  a missing Addis key.
-- **Decision:** Edge TTS stays the default for English and Amharic; Addis is an
-  option. A per-language voice setting is the proposed fix for the doctor gap.
+- **Result:** both produced valid audio. The 25 Nov ledgers for the coffee projects
+  have the same Amharic translation file (identical SHA-256). The ten MP3 durations
+  and mean wall time per line were:
+
+  | Project | Amharic provider in the ledger | Total audio | Wall time per line |
+  |---|---|---:|---:|
+  | `coffee-origin`, `coffee-origin-realistic-en` | Edge TTS | 49.61 s | 7.4 s |
+  | `coffee-origin-live-action`, `coffee-origin-realistic` | Addis AI (`am-hamen`) | 47.49 s | 5.3 s |
+
+  The projects in each row share the same narration records. Durations come from
+  the MP3s and call times depend on the network. The architecture audit found that
+  `doctor` checked only Edge and missed a missing Addis key.
+- **Decision:** keep Edge as the default. All three radio-cut viewers found the
+  Google voice robotic, so Lion's Whisker moved to Addis for Amharic (see
+  [DESIGN.md §8–9](DESIGN.md#8-user-test-1-the-radio-cut)). The landscape fit plan
+  dropped from 70.46 to 62.85 s before the end card. Nine of 16 shared clips became
+  shorter and all nine were regenerated, as recorded in `final-run.log` and
+  `runs.jsonl` (24.01 GPU-min for video). The portrait fit plan independently
+  measured 64.57 s before the card. Seven shared clips became shorter and all
+  seven were regenerated (18.45 GPU-min for video). The projects made separate
+  Addis calls, so the timing changed by a different amount in each format.
+  See [COSTS.md](COSTS.md#final-addis-rerender).
 
 ### 14. A full real-provider run, then resume and re-roll (ticket 15)
 
@@ -366,7 +381,7 @@ in [FAILURES.md](FAILURES.md), timing and cost in [COSTS.md](COSTS.md).
 - **Result:** 640x352 becomes exact 1280x720 with a 2% side crop, and changing it
   re-runs only assembly. The workflow digest leaves out limits, so existing clips
   stayed valid. A 9:16 crop of a 16:9 frame would keep only about 30% of the picture
-  and lose a person from every two-person shot. `ffprobe` on the delivered files
+  and lose a person from every two-person shot. `ffprobe` on the v1 files
   shows 1280x720 and 720x1280 at 24 fps.
 - **Decision:** generate the vertical cut fresh from the same storyboard at 352x640.
   Text, narration, timing and music are reused by copying the project's `build/`
@@ -445,6 +460,65 @@ in [FAILURES.md](FAILURES.md), timing and cost in [COSTS.md](COSTS.md).
   stale worktrees were still to do.
 - **Decision:** ship it as an optional `ui` extra.
 
+### 25. Give each model the details it needs (26 Nov)
+
+- **Hypothesis:** explicit cast descriptions and counts will cut bad keyframes.
+  One small movement and one camera instruction will make the clips easier to animate.
+- **Change:** the storyboard model now sees the bible's character descriptions.
+  Keyframe prompts describe the secondary bible characters the visual names
+  (`others`) and state the shot's `people` count (at most four). Wan gets the
+  `visual`, a separate `movement` line and one camera sentence. Its longer negative
+  prompt includes the official Chinese list plus artefact and camera terms.
+  See [model strengths and the shot 10 A/B](docs/research/model-strengths.md).
+- **Result:** in the shot 10 A/B, the movement-only prompt and the sentence asking
+  shapes to stay steady each produced coloured bars. Keeping the scene description
+  and removing that sentence gave a clean sample with the new negative prompt.
+  The landscape comparison used v1's `keyframe-review.jpg` and `frames-am.jpg`,
+  and v2 sheets from `build/keyframes/shot_*.png` and the Amharic MP4, with one
+  middle and one late sample per shot.
+
+  | Check | What the sheets show |
+  |---|---|
+  | Mane | The v2 lion has a dark mane in shots 10 to 13. The reviewed v1 sheet already shows manes after the manual prompt fixes. |
+  | Stray or duplicate people | V1's gate sheet has a figure behind Almaz in shot 5 and extra figures around the elder in shot 15. In the v2 sheet Almaz is alone in both. Shot 15 now shows her listening by the fire. Earlier v2 trials still drew duplicate lions and elders. |
+  | Skin tone | The v2 husband is darker than in v1. The elder's skin tone still varies between shots. |
+  | Costume | Almaz keeps the red-trimmed white shawl in shot 16, and Dawit is in blue in shots 3 and 16. Almaz's head covering still changes between shots. |
+  | Artefacts | The v1 green streaks in shots 4 and 13 did not show up in the sampled v2 frames. Shot 4 still has a strong shift in light. Some faces soften late in a shot, and Almaz is partly cropped in shot 5. The later Addis landscape rerender has red blocks in shot 12. |
+
+  V1 landscape needed 12 gate re-rolls. The v2 ledgers retain 16 keyframes per
+  format and record four explicit re-rolls per format: landscape shot 11 three
+  times and shot 15 once, portrait shot 11 twice and shots 15 and 16 once each.
+  The landscape `kf-run.log` and `kf-run2.log` also each report 16 generated
+  keyframes. Whole passes and prompt edits are outside the manual re-roll count.
+- **Decision:** keep the cast and motion rules and the keyframe gate. Test motion
+  on two or three shots before rendering a full cut. The sheets sample still
+  frames, so they cannot establish how often the clips flicker.
+
+### 26. Normalise the final mix (26 Nov)
+
+- **Hypothesis:** normalising after ducking will raise the mix to the brief's
+  loudness guide.
+- **Change:** added two-pass FFmpeg `loudnorm` controlled by `mix.loudness_lufs`,
+  with a -14 LUFS default and a -1 dBTP true-peak target.
+- **Result:** the earlier Lion's Whisker and Khalid mixes measured -20.6 to
+  -24.4 LUFS. FFmpeg `ebur128=peak=true` measured both final Amharic MP4s at
+  -14.0 LUFS. Encoded true peaks were -1.0 dBTP in landscape and -0.6 dBTP in
+  portrait. See [FAILURES.md](FAILURES.md#34-the-mix-is-much-quieter-than-platforms-expect).
+- **Decision:** keep the target in the project config and measure the encoded mix.
+
+### 27. English subtitles on the Amharic cut (26 Nov)
+
+- **Hypothesis:** English captions can follow the Amharic shot timing while
+  keeping the Amharic voice.
+- **Change:** set `subtitles.text_language: en`. Assembly uses the English
+  source lines and times them to each shot of the Amharic fit plan.
+- **Result:** the final sidecars contain 16 English cues in landscape and 23
+  in portrait. The cue boundaries at each shot change match the Amharic fit plan
+  to within 1 ms in both cuts. The captions are visible in sampled frames across
+  all 16 shots of each cut.
+- **Decision:** use English burned-in captions and keep the matching sidecar for
+  the Amharic cut.
+
 ## Planning decisions (25 Nov, before any code)
 
 These came out of the design interview. They are decisions, not experiments.
@@ -487,11 +561,9 @@ These came out of the design interview. They are decisions, not experiments.
   has since run real storyboard and translation jobs).
 - The FLUX.2 VAE repack carries a non-commercial licence tag. Check it before any
   commercial use (see [ETHICS.md](ETHICS.md)).
-- No user test (radio cut or near-final cut) is recorded yet; see
-  [DESIGN.md](DESIGN.md).
+- The radio-cut and picture-cut user tests are recorded in [DESIGN.md](DESIGN.md).
+  No viewer test of the final Addis cuts is recorded.
 - No comparison with a frontier model: there was no paid access.
-- These features have no trial logged here yet: several music candidates with a
-  recorded choice (`music.candidates`, `music.choice`), loudness normalisation
-  (`mix.loudness_lufs`), English subtitles on the Amharic render
-  (`subtitles.text_language: en`), and `vidpipe radio-cut`.
- 
+- There is no trial here for generating several music candidates and recording
+  a choice (`music.candidates`, `music.choice`), or for the pipeline's
+  `vidpipe radio-cut` command. The user test used a radio cut made separately.
