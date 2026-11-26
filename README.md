@@ -16,6 +16,30 @@ A project is a directory with `brief.md`, `vidpipe.yaml` and optionally `bible.y
 [project bible](#the-project-bible)); artifacts go to `build/`, renders to `out/`. The sample project
 uses fake providers only; see [keyframes on ComfyUI](#keyframes-on-comfyui) to draw real ones.
 
+## Build a film from one command
+
+    make setup
+    make test
+    make film
+
+`make film` runs every project in `FILM_PROJECTS`, which defaults to
+`examples/lions-whisker-16x9 examples/lions-whisker-9x16` when those project directories are
+available. To render a single project, use `make film PROJECT=examples/sample`. The sample is
+included and exercises the full pipeline with fake providers.
+
+On Windows without Make, run the same checks and render commands directly.
+
+    uv sync --locked --all-extras
+    uv run --locked ruff check src tests
+    uv run --locked ruff format --check src tests
+    uv run --locked pyright
+    uv run --locked pytest -q
+    uv run vidpipe run examples/lions-whisker-16x9 --auto
+    uv run vidpipe run examples/lions-whisker-9x16 --auto
+
+For the offline sample, use `uv run vidpipe run examples/sample --auto`. All full renders need
+FFmpeg and ffprobe.
+
 ## Artifacts, skip-unchanged and resume
 
 Every generated artifact is recorded in `build/ledger.json` (key, input hash, provider and options,
