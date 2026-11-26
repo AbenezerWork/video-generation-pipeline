@@ -1,5 +1,6 @@
 """Built-in providers. Importing this package registers them."""
 
+from vidpipe.providers import addis as addis
 from vidpipe.providers import cli_text as cli_text
 from vidpipe.providers import comfy_i2v as comfy_i2v
 from vidpipe.providers import comfy_keyframer as comfy_keyframer
