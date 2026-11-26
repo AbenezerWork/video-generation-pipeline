@@ -11,6 +11,7 @@ A provider-pluggable studio pipeline for short video. See `.scratch/vidpipe/spec
 | [EXPERIMENTS.md](EXPERIMENTS.md) | numbered trials: hypothesis, change, result, decision |
 | [FAILURES.md](FAILURES.md) | what broke, what we tried, what fixed it |
 | [COSTS.md](COSTS.md) | measured time and GPU minutes, list-price equivalent |
+| [Final-run logs](docs/evidence/README.md) | model calls from the final landscape and portrait renders |
 | [ETHICS.md](ETHICS.md) | consent record, licences, labelling, private data |
 | [docs/setup.md](docs/setup.md) | installing tools and models |
 
