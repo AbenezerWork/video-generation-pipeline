@@ -405,6 +405,7 @@ def test_the_config_is_served_with_its_schema_and_current_yaml(ui: UiServer, pro
         "gates",
         "subtitles",
         "mix",
+        "music",
         "comfyui",
         "providers",
     ):
@@ -413,7 +414,12 @@ def test_the_config_is_served_with_its_schema_and_current_yaml(ui: UiServer, pro
     assert check["ok"] is True and check["errors"] == []
     assert check["yaml"] == (project / "vidpipe.yaml").read_text(encoding="utf-8")
     # Defaults the file leaves out are filled in, as the CLI reads the config.
-    assert check["effective"]["mix"] == {"music_level": 0.4, "duck_ratio": 8.0}
+    assert check["effective"]["mix"] == {
+        "music_level": 0.4,
+        "duck_ratio": 8.0,
+        "loudness_lufs": -14.0,
+    }
+    assert check["effective"]["music"] == {"candidates": 1, "choice": 1}
 
 
 @pytest.mark.parametrize(
@@ -463,7 +469,11 @@ def test_a_valid_draft_validates_and_the_cli_accepts_it(ui: UiServer, project: P
     check = post(ui, "/api/config/validate", {"document": draft}).json()
 
     assert (check["ok"], check["errors"]) == (True, [])
-    assert check["effective"]["mix"] == {"music_level": 0.6, "duck_ratio": 8.0}
+    assert check["effective"]["mix"] == {
+        "music_level": 0.6,
+        "duck_ratio": 8.0,
+        "loudness_lufs": -14.0,
+    }
     (project / "vidpipe.yaml").write_text(check["yaml"], encoding="utf-8")
     assert main(["plan", str(project)]) == 0
 
