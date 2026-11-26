@@ -265,9 +265,11 @@ providers:
 ```
 
 The video size is set by the workflow, independently of the keyframe and
-assembly dimensions. Jobs run sequentially. If ComfyUI runs out of memory at
-the default size, the workflow retries once at 512x288 and keeps the planned
-duration. The ledger records each clip's measured duration and ComfyUI
+assembly dimensions. Either orientation is accepted within the pixels of 832x480,
+so a portrait 352x640 works for vertical video (see `output_size` under Assembly).
+Jobs run sequentially. If ComfyUI runs out of memory at the default size, the
+workflow retries once at 512x288 (288x512 for a portrait frame) and keeps the
+planned duration. The ledger records each clip's measured duration and ComfyUI
 execution time, including failed attempts that preceded success. At 640x352
 on an RTX 4060 Laptop GPU with 8 GB VRAM, the three-shot run took about 37
 seconds of ComfyUI execution per second of video.
@@ -334,6 +336,34 @@ subtitles:
 mix:
   music_level: 0.4
   duck_ratio: 8
+```
+
+**Aspect ratio (`output_size`).** The video model draws at its own size (640x352 by default, a
+multiple of 32 on each side, so not exactly 16:9). `output_size` renders the final videos at another
+frame: each clip is scaled to cover it and cropped to its shape, so 640x352 becomes exact 16:9 with a
+2% side crop. For vertical video, generate in portrait and render at 9:16; the Wan workflow accepts
+either orientation within the pixels of 832x480. Changing `output_size` re-runs only assembly.
+
+```yaml
+# 16:9                                   # 9:16
+width: 640                               # width: 352
+height: 352                              # height: 640
+output_size: {width: 1280, height: 720}  # output_size: {width: 720, height: 1280}
+providers:
+  video: {name: comfyui-i2v, options: {settings: {width: 640, height: 352}}}  # 352x640 for 9:16
+```
+
+**AI disclosure end card (`end_card`).** Off unless set. It adds a card on black after the last
+shot: a headline and smaller lines saying the video is AI-generated and that any resemblance to
+real people or voices is coincidental. Default wording is built in for English and Amharic (the
+Amharic card repeats "AI-generated video" in English). Other languages get the English wording
+unless `text` gives their own; the first line is the headline. The music is generated long enough
+to play under the card and fades out over its last 3 s, and the 90 s limit includes the card.
+
+```yaml
+end_card:
+  seconds: 5                         # up to 15
+  text: {en: "Made with AI\nAny resemblance to real people is coincidental."}  # optional
 ```
 
 **Fonts.** Noto Sans Ethiopic (Regular and Bold, SIL OFL 1.1) is bundled in `assets/fonts/` with its

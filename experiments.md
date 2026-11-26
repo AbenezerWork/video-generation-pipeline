@@ -25,6 +25,7 @@ ticket under [`.scratch/vidpipe/issues/`](.scratch/vidpipe/issues/).
 | Script length | 6 to 18 lines, under 90 s, or the brief's own count | A hard-coded 60 s cap cut the Khalid script short |
 | UI | Local Starlette app with live run state, one-writer lock, English only | See runs as they happen; never let two runs overwrite each other |
 | Disclosure | Optional AI end card in every language | It has to survive re-renders, so it lives in the pipeline |
+| Aspect ratio | `output_size` crop-and-scale; portrait generated fresh, not cropped | Exact 16:9 and 9:16 from multiple-of-32 model sizes; a crop would lose 70% of the frame |
 
 ## Planning decisions (25 Nov 2026)
 
@@ -307,6 +308,77 @@ discovers coffee when his goat eats the berries. At least 60 seconds.
     service);
   - check the model licences;
   - have a native speaker review the Amharic, including the end card.
+
+## Aspect ratios: exact 16:9 and native 9:16 (26 Nov 2026)
+
+- **Finding:** the Khalid cut was 640x352, which is 1.82:1, not 16:9. The video
+  model needs both sides to be multiples of 32, and 360 isn't one.
+- **Decision:** `output_size` in `vidpipe.yaml` renders the final video at another
+  frame. Each clip is scaled to cover it and cropped to its shape, so 640x352
+  becomes exact 1280x720 with a 2% side crop. Changing it re-runs only assembly.
+- **Finding:** the Wan mapping capped height at 480, which ruled out portrait
+  frames. Its out-of-memory step-down sizes were landscape-only too.
+- **Decision:** limit Wan by pixel count instead (832x480 worth, in either
+  orientation), and turn the step-down sizes for portrait frames (352x640 steps
+  down to 288x512). The workflow digest excludes limits, so existing clips stayed
+  valid.
+- **Decision:** generate the vertical cut fresh, not by cropping. A 9:16 crop of
+  a 16:9 frame keeps only about 30% of the picture and loses people in every
+  two-person shot. Drawing the same storyboard again at 352x640 let the image
+  model recompose each shot vertically. Text, narration, timing and music were
+  reused by copying the project's `build/` folder, so only keyframes and clips
+  cost GPU time.
+
+## Full run: The Lion's Whisker, Amharic in 16:9 and 9:16 (26 Nov 2026)
+
+- **Choice of story:** five Ethiopian tales were considered: The Lion's Whisker,
+  Saint Yared and the caterpillar, Fire on the Mountain, Lalibela and the bees,
+  and the Meskel smoke. The Lion's Whisker was chosen for its few characters, an
+  animal that barely has to move, and an arc built on patience that suits slow
+  camera work. It's retold in our own words, with our own names (Almaz, Dawit).
+- **Brief:** 16 lines of about 10 words, one fewer word than Khalid, because
+  Amharic runs longer. The brief tells the storyboard the lion is always calm:
+  lying, walking slowly or eating. Music at 76 BPM in A minor, for suspense.
+- **Translation:** the back-check flagged line 7. The Amharic verb for "nodded"
+  (ራሳቸውን ነቀነቁ) can also mean "shook his head". It was rewritten as "agreed"
+  (ተስማሙ), and the re-check passed. Line 10 ("resting" read back as "asleep") was
+  kept. Hand edits to the translation and storyboard were kept by the ledger, and
+  only the dependent artifacts regenerated.
+- **Keyframe gate catches (16:9):**
+  - The lion lost its mane in shots where Almaz was the main character.
+  - The elder came out lighter-skinned in two shots.
+  - Stray figures appeared behind Almaz, and the elder appeared twice in one
+    shot.
+  - The storyboard dressed Dawit differently from the bible.
+
+  Fixed by naming the mane in those shots, adding the elder's skin tone to the
+  bible, adding "alone, the only person in the shot", and editing Dawit's
+  clothes. That took 12 rerolls at about 7 s each, before any video GPU time was
+  spent. In portrait, two more shots needed the same fix (an extra man, and a
+  second woman).
+- **Result:**
+  - Both cuts are 75.5 s (70.5 s of narration plus the 5 s card), at 1280x720
+    and 720x1280. Both decode cleanly.
+  - Amharic speeds were 0.90–1.08x, with no continuation clips.
+  - GPU time: about 48 min for 16:9 and 44 min for 9:16. The 9:16 run was
+    interrupted by a server restart after 2 clips, and the resumed run kept them.
+- **Weak spots:**
+  - two green streak artefacts in the 16:9 cut (shots 4 and 13);
+  - Almaz's costume changes in shot 16;
+  - the elder's skin tone still varies a little;
+  - portrait subtitles are large, sized by frame height, wrapping to 2–4 lines.
+- **Pipeline gaps this run exposed:**
+  - **The storyboard model sees character names but not their descriptions**, so
+    it invents clothing that conflicts with the bible.
+  - **A shot passes only its main character's description to the keyframer**, so
+    a second character, like the lion, drifts.
+  - **The image model fills empty space with extra people**, so solo shots need
+    to say so.
+
+  Each is worth a prompt change in the pipeline. Subtitle size should also
+  scale with the frame's shorter side, not its height.
+- **Only Amharic was delivered.** The pipeline writes the script in English, its
+  working language, so an English cut is rendered as a by-product.
 
 ## Open questions
 
