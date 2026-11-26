@@ -187,6 +187,14 @@ class MediaIndex(BaseModel):
         )
 
 
+class MusicIndex(MediaIndex):
+    choice: int = Field(default=1, ge=1)
+
+    @property
+    def selected(self) -> MediaItem:
+        return self.items[self.choice - 1]
+
+
 class FitLimits(BaseModel):
     """The numbers a fit plan was made with: the video provider's clip range and the house rules."""
 

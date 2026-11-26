@@ -69,6 +69,7 @@ from vidpipe.models import (
     FitPlan,
     MediaIndex,
     MediaItem,
+    MusicIndex,
     Narration,
     NarrationClip,
     Script,
@@ -831,6 +832,10 @@ class VideoStage(Stage):
 class MusicStage(Stage):
     name = "music"
 
+    def artifact_count(self, ctx: StageContext) -> int:
+        count = ctx.project.config.music.candidates
+        return count + 1 if count > 1 else count
+
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("music", MusicProvider)
         brief = ctx.project.read_model("brief.json", Brief)
@@ -847,15 +852,58 @@ class MusicStage(Stage):
             if score.cues:
                 prompt += "\n" + "\n".join(f"Shot {cue.shot}: {cue.note}" for cue in score.cues)
             extras = score.model_dump(include={"bpm", "keyscale"}, exclude_none=True)
-        seed = 0
+        config = ctx.project.config.music
+        if config.candidates == 1:
+            path = self._compose(
+                ctx, provider, "music", "music/music.wav", prompt, total, extras, 1
+            )
+            return _write_index(ctx, "music.json", [_item(ctx, None, path)])
+
+        paths = [
+            self._compose(
+                ctx,
+                provider,
+                f"music/candidate_{i}",
+                f"music/candidate_{i}.wav",
+                prompt,
+                total,
+                extras,
+                i,
+            )
+            for i in range(1, config.candidates + 1)
+        ]
+        index = MusicIndex(items=[_item(ctx, None, path) for path in paths], choice=config.choice)
+        selected = ctx.produce(
+            "music/choice",
+            inputs=Inputs(values={"candidates": [item.path for item in index.items]}),
+            parameters={"choice": index.choice},
+            make=lambda: Made(
+                [ctx.project.write_model("music.json", index)], data={"path": index.selected.path}
+            ),
+            replace_edited=True,
+        )
+        return [*_rels(ctx, selected), *(item.path for item in index.items)]
+
+    @staticmethod
+    def _compose(
+        ctx: StageContext,
+        provider: MusicProvider,
+        key: str,
+        relative: str,
+        prompt: str,
+        total: float,
+        extras: dict[str, Any],
+        candidate: int,
+    ) -> Path:
+        seed = candidate - 1
 
         def make() -> Made:
-            out = ctx.project.artifact_path("music/music.wav")
+            out = ctx.project.artifact_path(relative)
             request = MusicRequest(
                 prompt=prompt, duration_s=total, seed=seed, output_path=out, extras=extras
             )
             with attempt(provider, parameters=provider.options) as call:
-                result = _generate("music", lambda: provider.compose(request))
+                result = _generate(key, lambda: provider.compose(request))
                 call.gpu_seconds = result.record.gpu_seconds
                 call.output_seconds = result.duration_s
             if not result.duration_s >= total:
@@ -867,13 +915,17 @@ class MusicStage(Stage):
             )
 
         made = ctx.produce(
-            "music",
+            key,
             inputs=Inputs(values={"prompt": prompt}),
-            parameters={"duration_s": total, **extras},
+            parameters={
+                "duration_s": total,
+                **extras,
+                **({"candidate": candidate} if key != "music" else {}),
+            },
             seed=seed,
             make=make,
         )
-        return _write_index(ctx, "music.json", [_item(ctx, None, made.paths[0])])
+        return made.paths[0]
 
 
 class AssemblyStage(Stage):
@@ -901,7 +953,7 @@ class AssemblyStage(Stage):
         plan = project.read_model("fit_plan.json", FitPlan)
         narration = project.read_model("narration.json", Narration)
         video = project.read_model("video.json", MediaIndex)
-        music_item = project.read_model("music.json", MediaIndex).items[0]
+        music_item = project.read_model("music.json", MusicIndex).selected
         size, margin, columns = subtitle_layout(*config.render_size, config.subtitles.font_size)
         shots = {s.shot_id: s for s in plan.shots}
         storyboard = project.read_model("storyboard.json", Storyboard)

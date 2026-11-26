@@ -188,8 +188,9 @@ def _estimate(
         calls, seconds = fit.clip_count, fit.clip_seconds
         detail = f"{_plural(calls, 'clip')}, {seconds:g} s of video"
     elif stage == "music" and fit is not None:
-        calls, seconds = 1, float(fit.music_seconds)
-        detail = f"{seconds:g} s of music"
+        calls = config.music.candidates
+        seconds = float(fit.music_seconds) * calls
+        detail = f"{_plural(calls, 'candidate')}, {seconds:g} s of music"
     else:
         return estimate
     cost = provider.cost.estimate(calls=calls, output_seconds=seconds)

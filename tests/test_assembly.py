@@ -256,6 +256,39 @@ def test_final_mix_is_normalized_to_the_loudness_target(
 
 
 @pytest.mark.needs_ffmpeg
+def test_music_candidates_are_logged_and_only_the_selected_track_is_mixed(
+    make_project: MakeProject,
+) -> None:
+    project = make_project(music={"candidates": 3, "choice": 2})
+
+    assert run_cli("run", str(project)) == 0
+
+    ledger = project / "build/ledger.json"
+    artifacts = read_json(ledger)["artifacts"]
+    index = read_json(project / "build/music.json")
+    paths = [f"music/candidate_{i}.wav" for i in (1, 2, 3)]
+    assert [item["path"] for item in index["items"]] == paths
+    assert all((project / "build" / path).is_file() for path in paths)
+    assert index["choice"] == artifacts["music/choice"]["parameters"]["choice"] == 2
+    assert "file:build/music/candidate_2.wav" in artifacts["assembly/am"]["inputs"]
+    assert [artifacts[f"music/candidate_{i}"]["seed"] for i in (1, 2, 3)] == [0, 1, 2]
+    log = project / "runs.jsonl"
+    original = log.read_text(encoding="utf-8")
+    entries = [json.loads(line) for line in original.splitlines()]
+    assert [
+        (entry["artifact"], entry["seed"]) for entry in entries if entry["stage"] == "music"
+    ] == [(f"music/candidate_{i}", i - 1) for i in (1, 2, 3)]
+
+    edit_config(project, music={"candidates": 3, "choice": 3})
+    assert run_cli("run", str(project)) == 0
+    artifacts = read_json(ledger)["artifacts"]
+    assert artifacts["music/choice"]["data"]["path"] == paths[2]
+    assert "file:build/music/candidate_3.wav" in artifacts["assembly/am"]["inputs"]
+    assert "file:build/music/candidate_2.wav" not in artifacts["assembly/am"]["inputs"]
+    assert log.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.needs_ffmpeg
 def test_music_level_drops_under_narration(make_project: MakeProject) -> None:
     # Each shot: 2 s of narration, then 2 s of silence, so the music is heard both ways.
     project = make_project(

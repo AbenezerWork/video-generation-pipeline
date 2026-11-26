@@ -176,6 +176,20 @@ class ComfyUIConfig(BaseModel):
     url: str | None = None
 
 
+class MusicConfig(BaseModel):
+    """Generate one or more candidates and select one by its one-based index."""
+
+    model_config = ConfigDict(extra="forbid")
+    candidates: int = Field(default=1, ge=1)
+    choice: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def _choice_in_range(self) -> MusicConfig:
+        if self.choice > self.candidates:
+            raise ValueError("music.choice must be within music.candidates")
+        return self
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -192,6 +206,7 @@ class ProjectConfig(BaseModel):
     gates: list[str] = Field(default_factory=lambda: list(DEFAULT_GATES))
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
     mix: MixConfig = Field(default_factory=MixConfig)
+    music: MusicConfig = Field(default_factory=MusicConfig)
     #: Off unless the project has an ``end_card:`` block (``end_card: {}`` uses the defaults).
     end_card: EndCardConfig | None = None
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)

@@ -77,6 +77,26 @@
       "title": "MixConfig",
       "type": "object"
     },
+    "MusicConfig": {
+      "additionalProperties": false,
+      "description": "Generate one or more candidates and select one by its one-based index.",
+      "properties": {
+        "candidates": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Candidates",
+          "type": "integer"
+        },
+        "choice": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Choice",
+          "type": "integer"
+        }
+      },
+      "title": "MusicConfig",
+      "type": "object"
+    },
     "OutputSize": {
       "additionalProperties": false,
       "description": "The rendered frame when it differs from the generated one: the picture is scaled to cover\nit and cropped to its shape (``1280x720`` from 640x352 trims 2% of the width).",
@@ -265,6 +285,9 @@
     },
     "mix": {
       "$ref": "#/$defs/MixConfig"
+    },
+    "music": {
+      "$ref": "#/$defs/MusicConfig"
     },
     "end_card": {
       "anyOf": [

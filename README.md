@@ -422,6 +422,19 @@ second. Assembly trims the same score to each render and ducks it under the narr
 records the measured duration, ComfyUI execution time and any retry. On out-of-memory, the
 bundled workflow retries with smaller decode tiles and the requested duration intact.
 
+To audition three candidates, set this in `vidpipe.yaml`:
+
+```yaml
+music:
+  candidates: 3
+  choice: 2          # one-based; defaults to 1
+```
+
+The stage writes `build/music/candidate_1.*` through `candidate_3.*` with distinct seeds.
+The choice is recorded in `build/music.json` and the ledger. Changing only `choice` reuses
+the candidates and reassembles from the selected track. The default single-track run keeps
+the existing `build/music/music.*` path.
+
 For a hosted ComfyUI instance with the same checkpoint, set `options.url` on the music provider to
 the instance's address. This is a manual switch. To use another music backend, register a
 `MusicProvider` and select it by name in the same YAML field. The sample selects `fake-music`

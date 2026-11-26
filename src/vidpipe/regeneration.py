@@ -115,7 +115,10 @@ def estimate_regeneration(
         if gpu is not None and estimate.calls and artifacts is not None:
             # The existing planner prices stages in aggregate, including providers
             # that charge per second. Allocate that estimate over the remaining work.
-            gpu *= artifacts / estimate.calls if stage.name != "translation" else 1
+            provider_artifacts = artifacts
+            if stage.name == "music" and project.config.music.candidates > 1:
+                provider_artifacts -= 1  # the choice is recorded after the candidates
+            gpu *= provider_artifacts / estimate.calls if stage.name != "translation" else 1
         impacts.append(
             StageRegeneration(
                 stage=stage.name, artifacts=artifacts, gpu_minutes=gpu, possible=possible
