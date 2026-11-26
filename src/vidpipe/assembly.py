@@ -92,6 +92,7 @@ class LanguageRender(BaseModel):
 
 class AssemblyJob(BaseModel):
     renders: list[LanguageRender]
+    title: str | None = None
     width: int
     height: int
     fps: int
@@ -294,6 +295,10 @@ class FfmpegAssembler(Assembler):
 
         args += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", f"[{audio_label}]"]
         args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-t", f"{total}"]
+        provenance = "AI-generated with vidpipe; see ETHICS.md"
+        args += ["-metadata", f"comment={provenance}", "-metadata", f"description={provenance}"]
+        if job.title is not None:
+            args += ["-metadata", f"title={job.title}"]
         args += ["-movflags", "+faststart", str(render.output)]
         return args
 

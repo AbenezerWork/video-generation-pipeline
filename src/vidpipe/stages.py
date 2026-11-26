@@ -996,6 +996,7 @@ class AssemblyStage(Stage):
             font_size=font_size,
             margin_v=52 if portrait else 12,
         )
+        title = project.read_model("brief.json", Brief).title
         card_font = subtitles.fonts.get(lang)
         card = config.end_card if config.end_card and config.end_card.enabled else None
         card_text = card.text_for(lang) if card else None
@@ -1041,6 +1042,7 @@ class AssemblyStage(Stage):
                 end_card.ass.write_text(script, encoding="utf-8", newline="\n")
             job = AssemblyJob(
                 renders=[render],
+                title=title,
                 width=render_width,
                 height=render_height,
                 fps=config.fps,
@@ -1072,6 +1074,7 @@ class AssemblyStage(Stage):
             ),
             parameters={
                 "language": lang,
+                "title": title,
                 "width": render_width,
                 "height": render_height,
                 "fps": config.fps,

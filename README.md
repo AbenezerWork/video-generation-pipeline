@@ -500,6 +500,9 @@ uploads, retries, the step-down, cancellation and memory release:
 
 ## Assembly, ducking and subtitles
 
+MP4 metadata carries the brief's title and the comment and description
+`AI-generated with vidpipe; see ETHICS.md`.
+
 Set `subtitles.text_language: en` for English captions on an Amharic render. Alternate-language
 cues use that render's shot timings. Captions wrap to about 42 characters per line with up to two
 lines per cue. Longer cues share the shot or narration segment's time across multiple pages.

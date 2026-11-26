@@ -161,6 +161,9 @@ def test_each_render_is_a_playable_video_with_audio_within_90_seconds(
         streams = {s["codec_type"]: s for s in probe["streams"]}
         assert sorted(streams) == ["audio", "video"]
         assert (streams["video"]["width"], streams["video"]["height"]) == (160, 90)
+        tags = probe["format"]["tags"]
+        assert tags["title"] == read_json(project / "build/brief.json")["title"]
+        assert tags["comment"] == tags["description"] == "AI-generated with vidpipe; see ETHICS.md"
         duration = float(probe["format"]["duration"])
         assert duration == pytest.approx(expected[lang], abs=0.2)
         assert duration <= 90
