@@ -154,7 +154,8 @@ cropping a 16:9 frame would keep only about 30% of it.
 
 ## 6. Sound, subtitles and end card
 
-- **Voice:** `am-ET-AmehaNeural` (Edge TTS). Amharic speeds on screen were 0.90 to
+- **Voice:** `am-ET-AmehaNeural` (Edge TTS) in the cut the viewers saw. All three
+  testers found it robotic, so the narration moves to Addis AI (`am-hamen`); see section 9. Amharic speeds on screen were 0.90 to
   1.08x with no continuation clips.
 - **Translation:** Claude Opus 5.5, checked by back-translation. Line 7 was rewritten;
   line 10 ("resting" read back as "asleep") was kept.
@@ -163,7 +164,8 @@ cropping a 16:9 frame would keep only about 30% of it.
   the card.
 - **Score candidates and choice:** one score was generated for the delivered cut. If
   candidates are generated with `music.candidates`, record the choice and reason here:
-  TO BE FILLED BY THE AUTHOR.- **Subtitles:** Noto Sans Ethiopic. In the vertical cut long lines wrap to 2 to 4
+  TO BE FILLED BY THE AUTHOR.
+- **Subtitles:** Noto Sans Ethiopic. In the vertical cut long lines wrap to 2 to 4
   lines.
 - **End card:** 5 s in Amharic, with "AI-generated video" repeated in English.
 
@@ -208,26 +210,64 @@ TO BE FILLED BY THE AUTHOR
 
 ## 9. User test 2: the near-final cut
 
-> **TO BE FILLED BY THE AUTHOR.** No near-final test is recorded. Do not write
-> anything here that a real person did not say or do.
+Three people watched a cut with pictures, narration, score and subtitles: two
+technical viewers and one non-technical viewer.
 
-**Date and method:** TO BE FILLED BY THE AUTHOR
+**What was shown:** the Amharic cut of *The Lion's Whisker*, narrated with Edge TTS
+(`am-ET-AmehaNeural`).
 
-**What was shown (aspect ratio, file, length):** TO BE FILLED BY THE AUTHOR
-
-| Tester (initials or role, with permission) | Same person as in test 1? | What they said or did | Shot numbers they mentioned |
+| Tester | Background | What they said | What they noticed in the pictures |
 |---|---|---|---|
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
+| Viewer A | Technical | The narration voice sounded robotic | No notes, except the recurring artefacts |
+| Viewer B | Technical | The narration voice sounded robotic | No notes, except the recurring artefacts |
+| Viewer C | Non-technical | The most positive of the three, but also found the voice robotic | No notes, except the recurring artefacts |
 
-Questions to ask: Which picture did you remember? Did anyone or anything look wrong?
-Could you read the subtitles on your phone? Was the voice clear over the music?
+**What we heard:** every viewer, technical or not, flagged the same thing: the
+synthetic voice. Nobody had notes on the story, the characters or the look. The only
+visual comment was the occasional model artefact, such as flicker or a stray glow.
 
-**What we changed because of it** (shot or line, before, after, regeneration logged):
-TO BE FILLED BY THE AUTHOR
+**What we changed because of it:**
 
-**What we decided not to change, and why:** TO BE FILLED BY THE AUTHOR
+1. **The narration voice: Edge TTS → Addis AI.** The voice was the one thing all three
+   viewers raised, so the Amharic narration moves to Addis AI (`addis-ai`, voice
+   `am-hamen`), a dedicated Amharic voice service the pipeline already supports. English
+   stays on Edge TTS. In `vidpipe.yaml`:
+
+   ```yaml
+   narration:
+     name: addis-ai
+     options: {amharic_voice: am-hamen}   # needs ADDIS_API_KEY in the environment
+   ```
+
+   Re-voicing re-runs only narration, fit planning and assembly. Keyframes and clips
+   are reused, unless a new line runs longer than its shot's clip.
+
+2. **Artefacts: what was already in place, and what was tightened.** The pipeline
+   already did these to keep artefacts down:
+   - **Live-action look by default.** The video model smears and warps stylised
+     images; photographic keyframes animate far more cleanly (EXPERIMENTS.md).
+   - **Three gentle camera moves only** (push-in, pan, ambient), with motion prompts
+     tuned per move. Fast or complex motion is where Wan 2.2 breaks down.
+   - **Short clips.** At most 5 s per clip, and speed changes capped at 1.3×, so no
+     clip is stretched far from how it was generated.
+   - **Storyboard rules aimed at known failure modes:**
+     - animals stay on four legs;
+     - at most four people per shot, and solo shots say "alone, the only person in
+       the shot";
+     - hands stay simple;
+     - secondary characters are described so they don't mutate.
+   - **Keyframe review before animation.** Every still is checked on a contact sheet
+     before any GPU time goes on video. Bad stills are fixed in the storyboard or
+     re-rolled with `vidpipe redo shot N`. The second film needed 12 rerolls here.
+   - **Single-shot re-rolls afterwards.** A clip with a visible artefact can be redone
+     on its own with a new seed, at about 3 minutes of GPU, without touching the rest.
+
+   In response to this feedback, the v2 render goes further: it rewrites the prompt
+   rules from documented strengths and weaknesses of Wan 2.2 and FLUX.2 klein (see
+   `docs/research/model-strengths.md` and the rules comparison in EXPERIMENTS.md).
+
+**What we decided not to change, and why:** the story, structure and visual style.
+None of the three viewers raised them.
 
 ## 10. Changes made during production (not from user tests)
 
