@@ -6,7 +6,7 @@ A provider-pluggable studio pipeline for short video. See `.scratch/vidpipe/spec
 
 | Document | What is in it |
 |---|---|
-| [DESIGN.md](DESIGN.md) | the submitted film: audience, shot reasons, visual rules, user tests |
+| [DESIGN.md](DESIGN.md) | the film's audience, shot reasons, visual rules, user tests and cut status |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | stages, contracts, providers, caching, failure handling, UI |
 | [EXPERIMENTS.md](EXPERIMENTS.md) | numbered trials: hypothesis, change, result, decision |
 | [FAILURES.md](FAILURES.md) | what broke, what we tried, what fixed it |
@@ -34,33 +34,39 @@ optional AI end card. Ten stages, each done by a provider you can swap in
 `vidpipe.yaml`. Everything is cached by content hash, so a rerun redoes only what
 changed.
 
-It made *The Lion's Whisker*, an Ethiopian folk tale narrated in Amharic, as a 75.5 s
-film in 16:9 and 9:16.
+The demo is *The Lion's Whisker*, an Ethiopian folk tale narrated in Amharic.
+The final cuts run 67.85 s in landscape and 69.57 s in portrait. See
+[DESIGN.md](DESIGN.md) for the cut details.
 
 ## One command
+
+Before rendering either cut, follow the [tool and model setup](docs/setup.md) and
+set `ADDIS_API_KEY` in your shell environment for Amharic narration. English
+narration uses Edge TTS. Both speech providers need network access.
+See [Amharic narration with Addis AI](#amharic-narration-with-addis-ai) for the
+Edge TTS alternative for Amharic.
 
 ```
 make setup
 make film
 ```
 
-`make film` renders both cuts of the film, from `examples/lions-whisker-16x9` and
-`examples/lions-whisker-9x16`. For one project use `make film PROJECT=<project>`.
+`make film` runs the projects in `FILM_PROJECTS`, which defaults to
+`examples/lions-whisker-16x9` and `examples/lions-whisker-9x16`. For one project,
+use `make film PROJECT=<project>`.
 
-Before rendering either cut, follow the [tool and model setup](docs/setup.md) and
-set `ADDIS_API_KEY` in your shell environment for Amharic narration. English
-narration uses Edge TTS. Both speech providers need network access.
-
-Without `make` (Windows has none by default), run one command per project folder:
+Without `make` (Windows has none by default), install the dependencies and run
+once per project folder:
 
 ```
-uv sync
+uv sync --locked --all-extras
 uv run vidpipe run <project> --auto        # every stage, skipping the approval gates
 ```
 
-A project folder holds `brief.md`, `vidpipe.yaml` and optionally `bible.yaml`. The
-film's 16:9 and 9:16 cuts are two projects with the same text and different sizes. Run
-the same command again to resume: finished work is reused.
+A project folder holds `brief.md`, `vidpipe.yaml` and optionally `bible.yaml` (the
+[project bible](#the-project-bible)). Artifacts go to `build/` and renders to `out/`.
+The two film projects use the same text at different frame sizes. Run the same
+command again to resume finished work from the cache.
 
 To check a clean clone without a GPU, run the sample, which uses fake providers and
 needs only FFmpeg:
@@ -85,7 +91,7 @@ Other commands:
 | `uv run vidpipe ui <project>` | web console |
 | `uv run vidpipe schema` | writes JSON Schemas for `storyboard.json` and `vidpipe.yaml` into `schema/` |
 | `uv run vidpipe export-storyboard <project>` | writes `<project>/storyboard.json`, the editable contract, from a build that has reached the storyboard stage |
-| `uv run vidpipe radio-cut <project>` | narration over black, for a first audience test; needs a run through `fit-planning` |
+| `radio-cut` | narration over black for a first audience test. See [Radio cut](#radio-cut). |
 
 
 Each run appends one line per model call to `<project>/runs.jsonl`. In `vidpipe.yaml`,
@@ -102,20 +108,20 @@ Each run appends one line per model call to `<project>/runs.jsonl`. In `vidpipe.
 | Model files | about 34 GB: FLUX.2 klein 4B, Wan 2.2 TI2V 5B, ACE-Step 1.5 and their encoders ([list](docs/setup.md#comfyui)) |
 | FFmpeg | `ffmpeg` and `ffprobe` with libass, `sidechaincompress` and `libx264` |
 | A text CLI, signed in | Claude Code or Codex CLI (paid subscription), to write a new film. Not needed when the project has a `storyboard.json` |
-| Internet | for the text CLI and Edge TTS narration |
+| Internet | for the text CLI, Edge TTS and Addis AI narration |
 | Python 3.12+ and `uv` | |
 
 ## What it costs
 
 | | Per format | Both formats |
 |---|---|---|
-| GPU time, *The Lion's Whisker* | 47.8 min (16:9), 43.6 min (9:16) | 91.4 min |
-| Paid per call | $0 | $0 |
+| V1 GPU time, *The Lion's Whisker* | 47.8 min (16:9), 43.6 min (9:16) | 91.4 min |
+| V1 paid per call | $0 | $0 |
 | Needs | your own GPU and an existing Claude or Codex subscription | |
 | Hosted media APIs at list price (estimate) | about $2.70 | about $5.30, plus text |
 
-About 95% of the GPU time is video: one 5 s clip at 640x352 takes about 3 minutes.
-Sources and assumptions are in [COSTS.md](COSTS.md).
+About 95% of the GPU time is video. One 5 s clip at 640x352 takes about 3 minutes.
+See [COSTS.md](COSTS.md) for v2 and the Addis rerender.
 
 ## Our stack vs the brief's suggested stack
 
@@ -142,41 +148,17 @@ stage without changing the others.
 
 ## Try it step by step
 
+`doctor` checks the dependencies for the selected project. `plan` resolves its
+providers and estimates clip and GPU costs without generating anything.
+
 ```
-uv sync
-uv run vidpipe plan examples/sample          # resolve providers, fit plan and GPU/cost estimate; generates nothing
-uv run vidpipe run examples/sample --until music   # everything except the ffmpeg render
-uv run vidpipe doctor examples/sample        # check the dependencies for this project
-uv run vidpipe run examples/sample            # full render (needs ffmpeg + ffprobe)
+uv run vidpipe doctor examples/sample
+uv run vidpipe plan examples/sample
+uv run vidpipe run examples/sample --until music   # everything except assembly
 ```
 
-A project is a directory with `brief.md`, `vidpipe.yaml` and optionally `bible.yaml` (the
-[project bible](#the-project-bible)); artifacts go to `build/`, renders to `out/`. The sample project
-uses fake providers only; see [keyframes on ComfyUI](#keyframes-on-comfyui) to draw real ones.
-
-## Build a film from one command
-
-    make setup
-    make test
-    make film
-
-`make film` runs every project in `FILM_PROJECTS`, which defaults to
-`examples/lions-whisker-16x9 examples/lions-whisker-9x16` when those project directories are
-available. To render a single project, use `make film PROJECT=examples/sample`. The sample is
-included and exercises the full pipeline with fake providers.
-
-On Windows without Make, run the same checks and render commands directly.
-
-    uv sync --locked --all-extras
-    uv run --locked ruff check src tests
-    uv run --locked ruff format --check src tests
-    uv run --locked pyright
-    uv run --locked pytest -q
-    uv run vidpipe run examples/lions-whisker-16x9 --auto
-    uv run vidpipe run examples/lions-whisker-9x16 --auto
-
-For the offline sample, use `uv run vidpipe run examples/sample --auto`. All full renders need
-FFmpeg and ffprobe.
+Resume through assembly with the [full render command](#one-command). See
+[keyframes on ComfyUI](#keyframes-on-comfyui) to draw real stills.
 
 ## Artifacts, skip-unchanged and resume
 
@@ -202,7 +184,6 @@ Run through the storyboard stage, then export the build's script, translations a
 
     uv run vidpipe run examples/sample --until storyboard --auto
     uv run vidpipe export-storyboard examples/sample
-    uv run vidpipe run examples/sample --auto
 
 When the project has a `storyboard.json`, every run validates it and uses its title, narration and
 shots for the script, translation and storyboard stages. Each shot has a stable positive integer
@@ -788,7 +769,14 @@ music, a `SubtitleTrack` and the `MixSettings`.
 
 ## Development
 
-- `uv run pytest` runs the fast suite on fake providers. Three seams: the pipeline run through
+Run `make test` after setup, or run the checks directly:
+
+    uv run --locked ruff check src tests
+    uv run --locked ruff format --check src tests
+    uv run --locked pyright
+    uv run --locked pytest -q
+
+- The fast suite runs on fake providers. Three seams: the pipeline run through
   the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`), the per-contract provider conformance suite
   (`tests/conformance/`), and the UI's HTTP API (`tests/test_ui_run_view.py`, a real server on a free
   port watching CLI runs; skipped without the `ui` extra). ComfyUI providers are tested against an in-process fake server
@@ -801,7 +789,6 @@ music, a `SubtitleTrack` and the `MixSettings`.
 - Real-provider tests (ComfyUI, CLIs, edge-tts) carry `@pytest.mark.integration` and only run with
   `uv run pytest -m integration`. A registered provider with `fake = False` is collected into the
   conformance suite with that marker automatically.
-- `uv run ruff check . && uv run ruff format --check . && uv run pyright`
 
 ### Narration (edge-tts)
 

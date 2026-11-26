@@ -5,15 +5,18 @@ price.
 
 ## In short
 
-| | Lion's Whisker 16:9 | Lion's Whisker 9:16 | Both cuts |
+| | Lion's Whisker v1 16:9 | Lion's Whisker v1 9:16 | Both v1 cuts |
 |---|---:|---:|---:|
 | GPU time (measured) | 47.8 min | 43.6 min | 91.4 min |
 | Cash paid per call | $0 | $0 | $0 |
 | Rented GPU, same minutes (estimate) | $0.27 to $0.71 | $0.25 to $0.65 | $0.52 to $1.36 |
 | Hosted media APIs, list price (estimate, without text) | $2.68 | $2.62 | $5.30 |
 
-Video is 95% of the GPU time. No frontier comparison was possible: there was no paid
-access to any frontier image, video or music model.
+Video is 95% of the v1 GPU time. The v2 ledgers retain 91.72 GPU-min for both
+formats. The final Addis rerenders added 24.39 GPU-min in landscape and 18.84
+in portrait, including their replacement scores. See the [v2 totals](#v2-retained-artifacts)
+and [Addis rerender](#final-addis-rerender). There was no paid access to a
+frontier image, video or music model for comparison.
 
 ## Where the numbers come from
 
@@ -23,11 +26,12 @@ access to any frontier image, video or music model.
   execution time) and `wall_seconds` (time around the provider call) per artifact.
   The projects live outside the repository in `%USERPROFILE%\.t3\vidpipe-demos\`.
 - **Limit of the ledger:** it keeps only the latest record per artifact. Replaced
-  keyframes and clips are not counted. From now on `<project>/runs.jsonl` holds one
-  line per generation attempt, with latency and GPU seconds. The figures below
-  predate it.- All figures are from 25 and 26 November 2026.
+  keyframes and clips drop out of its totals. New runs record generation attempts
+  in `<project>/runs.jsonl`, with latency and GPU seconds. The v1 and v2 runs
+  predate those logs. The Addis rerender has them.
+- All run figures are from 25 and 26 November 2026.
 
-## Per stage, per film
+## Per stage, Lion's Whisker v1
 
 "Calls" are artifacts in the ledger. Wall time is the sum over calls, in seconds.
 GPU time is zero for hosted and CPU stages.
@@ -53,6 +57,67 @@ and not counted twice.
 Elapsed time from first to last artifact was 55 min for 16:9, including keyframe
 review and edits, and 52 min for 9:16, including a gap of about 7 min around a server
 restart.
+
+## V2 retained artifacts
+
+Sum of `gpu_seconds` by stage from `lions-whisker-v2-16x9/build/ledger.json` and
+`lions-whisker-v2-9x16/build/ledger.json`. Each ledger holds 16 keyframes and
+16 clips. Text, narration, fit planning and assembly account for zero GPU seconds.
+
+| Stage | 16:9 GPU s | 9:16 GPU s | Both GPU s |
+|---|---:|---:|---:|
+| Keyframes | 144.061 | 113.686 | 257.747 |
+| Video | 2,624.642 | 2,594.420 | 5,219.062 |
+| Music | 26.249 | reused | 26.249 |
+| **Total** | **2,794.952 (46.58 min)** | **2,708.106 (45.14 min)** | **5,503.058 (91.72 min)** |
+
+The portrait ledger also contains the copied 26.249 s music record. Its raw sum is
+2,734.355 s. The table counts the score once. The v2 video records average
+163.1 s per clip (2.72 min). V1 averaged 163.6 s including a 1.7 s result after a
+restart, or 168.9 s across the other 31 clips.
+
+## V2 render time
+
+The v2 work ran from about **15:49 to 19:06 local** on 26 Nov (about 3 h 17 min).
+The first landscape keyframe transcript was last written at 15:49 and the
+portrait `build/run_state.json` records completion at 19:06:27.
+
+| Source | Recorded work |
+|---|---|
+| Landscape `full-run.log`, `full-run2.log` and portrait `full-run.log` | 16 generated clips in each pass (48 across the three logs). The ledgers retain 32 clips. |
+| Comfy Desktop `logs/app.log` | 111 completed prompts, totalling 176.87 min of reported execution, from the first retained landscape still (10.79 s) through the last portrait clip (160.21 s). |
+| Ledger and server log comparison | 65 retained jobs (32 keyframes, 32 clips, one score), matched in time order by duration. About 85.15 min of the logged execution is outside those retained records. |
+| Archived first landscape pass | 16 consecutive video completions before the 26.26 s score, totalling 44.42 min. The archive at `lions-whisker-v2-16x9/render1/` holds the first render and A/B samples. |
+
+The roughly 46-minute gap in the retained ledger between the landscape stills and
+the score includes that first video pass. The next roughly 21-minute gap, between
+portrait stills and the resumed landscape video, contains seven more completions
+totalling 16.87 min in the server log. Their position fits the shot 10 A/B work.
+The server lines give durations and order, with no per-prompt timestamps or shot
+IDs. From the first ledger anchor (15:51:40) to portrait completion, about 18 min
+of elapsed time remains after subtracting logged prompt execution. This includes
+assembly and time between prompts. Exact GPU idle time, the full set of overwritten
+shot IDs and seeds, and the GPU cost caused solely by the prompt change cannot
+be recovered. There was no per-attempt `runs.jsonl` for this v2 run.
+
+## Final Addis rerender
+
+| Cut | Amharic story time in fit plan | Shared clips planned shorter | Verified new GPU work |
+|---|---|---:|---|
+| 16:9 | 70.46 s → 62.85 s | 9 of 16 | 9 clips (1,440.751 s) plus one score (22.877 s) |
+| 9:16 | 70.46 s → 64.57 s | 7 of 16 | 7 clips (1,107.005 s) plus one score (23.528 s) |
+
+Each project's `final-run.log` records two assemblies and agrees with
+`runs.jsonl` on the new clip count. Landscape regenerated shots 2, 3, 5, 6, 7,
+8, 9, 10 and 12. Portrait regenerated shots 2, 3, 6, 7, 8, 9 and 12. The
+new clips and score took **24.39 GPU-min** in landscape and **18.84 GPU-min**
+in portrait. Assembly finished at 19:54:04 and 20:15:32 local respectively
+in `build/run_state.json`.
+
+Final retained totals are **2,727.170 s (45.45 min)** in
+`lions-whisker-final-16x9/build/ledger.json` and **2,700.729 s (45.01 min)** in
+`lions-whisker-final-9x16/build/ledger.json`. These totals include reused
+keyframes and clips and one newly generated score per cut.
 
 ## Per stage, the other films
 
@@ -114,7 +179,7 @@ has not been measured. See [ARCHITECTURE.md](ARCHITECTURE.md).
 For a walkthrough that regenerates one shot live, change one shot's `visual` (one new
 keyframe, then one clip) or one narration line (one new voice call).
 
-## Call counts per film
+## V1 call counts per film
 
 | Kind | Per film, two languages | Notes |
 |---|---|---|
@@ -128,7 +193,7 @@ keyframe, then one clip) or one narration line (one new voice call).
 
 Token counts were not recorded.
 
-## Re-rolls not in the totals
+## V1 re-rolls outside the retained totals
 
 The 14 Lion's Whisker keyframe re-rolls were overwritten in the ledger. At about 7 s
 each that is about **1.6 min** of extra GPU time (estimate). Work lost in the
