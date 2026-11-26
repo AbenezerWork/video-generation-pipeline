@@ -59,7 +59,7 @@ from vidpipe.contracts import (
     TTSRequest,
     UnsupportedRequest,
 )
-from vidpipe.fit import FIT_VERSION, NarrationInput, limits_for, plan_fit
+from vidpipe.fit import FIT_VERSION, MAX_RENDER_S, NarrationInput, limits_for, plan_fit
 from vidpipe.fit_inputs import collect_shots, translation_files
 from vidpipe.models import (
     Brief,
@@ -208,6 +208,10 @@ def _ask[M: BaseModel](
         raise StageError(str(exc)) from exc
 
 
+#: The most script lines that fit the render limit at about five seconds a line.
+MAX_SCRIPT_LINES = int(MAX_RENDER_S // 5)
+
+
 def _check_script(draft: ScriptDraft) -> None:
     if blank := [i for i, line in enumerate(draft.lines, start=1) if not line.strip()]:
         raise ValueError(f"script lines are blank: {blank}")
@@ -239,7 +243,9 @@ class ScriptStage(Stage):
             f"Rules:\n"
             f"- Put one sentence per entry of `lines`, in the order they are spoken.\n"
             f"- Keep each line short enough to speak in 3 to 5 seconds (at most 14 words).\n"
-            f"- Use 6 to 12 lines, so the whole video stays under 60 seconds.\n"
+            f"- Use 6 to {MAX_SCRIPT_LINES} lines, so the whole video stays under "
+            f"{MAX_RENDER_S:g} seconds. Use the line count the brief asks for if it gives one "
+            f"within that range.\n"
             f"- Plain narration only: no stage directions, headings, numbering or markup.\n\n"
             f"Brief:\n{brief.body}"
         )

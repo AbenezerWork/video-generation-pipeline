@@ -69,6 +69,20 @@ def test_script_and_storyboard_are_written_by_a_cli_text_provider(
     assert manifest["script"] == manifest["storyboard"] == "gemini-cli"
 
 
+def test_the_script_may_fill_the_render_limit_and_follows_the_briefs_line_count(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("gemini", SCRIPT, GOOD_STORYBOARD)
+    project = cli_project(make_project, "gemini-cli")
+
+    assert run_until_storyboard(project) == 0
+
+    asked = fake_clis.calls("gemini")[0].stdin
+    assert "under 90 seconds" in asked and "60 seconds" not in asked
+    assert "6 to 18 lines" in asked
+    assert "line count the brief asks for" in asked
+
+
 def test_a_motion_type_outside_the_vocabulary_is_re_prompted(
     make_project: MakeProject, fake_clis: FakeClis
 ) -> None:
