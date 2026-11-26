@@ -7,6 +7,7 @@ traffic the fake server received.
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -45,6 +46,15 @@ def test_a_failed_job_is_retried_with_a_new_seed_and_the_record_says_so(
     assert f"retry with new seed {third} after error" in record["fallback"]
     assert "something went wrong in the sampler" in record["fallback"]
     assert record["gpu_seconds"] == 3 * 2.5  # failed attempts used the GPU too
+    logged = [json.loads(line) for line in (project / "runs.jsonl").read_text("utf-8").splitlines()]
+    calls = [entry for entry in logged if entry["artifact"] == "keyframes/shot_01"]
+    assert [(entry["seed"], entry["outcome"]) for entry in calls] == [
+        (first, "error"),
+        (second, "error"),
+        (third, "ok"),
+    ]
+    assert [entry["gpu_seconds"] for entry in calls] == [2.5, 2.5, 2.5]
+    assert {entry["model"] for entry in calls} == {record["data"]["workflow"]}
     # Retries change the seed and nothing else.
     assert record["data"]["settings"]["reference_megapixels"] == 0.5
     others = [ledger(project)[f"keyframes/shot_0{n}"]["fallback"] for n in (2, 3)]

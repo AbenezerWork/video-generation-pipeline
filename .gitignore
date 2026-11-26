@@ -10,3 +10,4 @@ examples/**/out/
 .env
 *.env
 .env.*
+examples/**/runs.jsonl

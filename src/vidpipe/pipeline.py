@@ -284,6 +284,7 @@ def _run_stages(
         [],
         stop_now=watcher.now_requested,
     )
+    ctx.run_id = state.state.run_id
     keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
     paused_at: str | None = None

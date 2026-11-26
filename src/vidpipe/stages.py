@@ -79,6 +79,7 @@ from vidpipe.models import (
     StoryboardDraft,
 )
 from vidpipe.project import Project
+from vidpipe.runlog import CallSite, attempt, run_artifact
 from vidpipe.subtitles import (
     Cue,
     end_card_ass,
@@ -104,6 +105,7 @@ class StageContext:
     assembler: Assembler
     #: Name of the stage being run (set by the runner); selects the provider recorded and hashed.
     stage: str = ""
+    run_id: str | None = None
     #: Artifacts generated / reused so far by the stage being run.
     generated: int = 0
     reused: int = 0
@@ -130,13 +132,27 @@ class StageContext:
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
         selection = self.project.config.providers.get(self.stage)
+
+        def tracked() -> Made:
+            if self.run_id is None:
+                return make()
+            site = CallSite(
+                self.project.root / "runs.jsonl",
+                self.run_id,
+                self.stage,
+                key,
+                parameters or {},
+                seed,
+            )
+            return run_artifact(site, make)
+
         produced = self.store.produce(
             key,
             stage=self.stage,
             provider=self.providers.get(self.stage),
             options=selection.options if selection else None,
             inputs=inputs,
-            make=make,
+            make=tracked,
             parameters=parameters,
             seed=seed,
             expected_outputs=expected_outputs,
@@ -511,7 +527,9 @@ class NarrationStage(Stage):
                 def make(text: str = text, lang: str = lang, key: str = key) -> Made:
                     out = ctx.project.artifact_path(f"{key}.wav")
                     request = TTSRequest(text=text, language=lang, output_path=out)
-                    result = _generate(key, lambda: provider.synthesize(request))
+                    with attempt(provider, parameters=provider.options) as call:
+                        result = _generate(key, lambda: provider.synthesize(request))
+                        call.output_seconds = result.duration_s
                     return Made([result.path], data={"duration_s": result.duration_s})
 
                 made = ctx.produce(
@@ -648,9 +666,11 @@ class KeyframesStage(Stage):
                     reference_images=[r.path for r in brief.references],
                     output_path=ctx.project.artifact_path(f"{key}.png"),
                 )
-                result = _generate(
-                    f"keyframe for shot {shot.id}", lambda: provider.generate(request)
-                )
+                with attempt(provider, parameters=provider.options) as call:
+                    result = _generate(
+                        f"keyframe for shot {shot.id}", lambda: provider.generate(request)
+                    )
+                    call.gpu_seconds = result.record.gpu_seconds
                 return _recorded(
                     result.path,
                     result.record,
@@ -754,7 +774,10 @@ class VideoStage(Stage):
                     seed=seed,
                     output_path=ctx.project.artifact_path(f"{key}.mp4"),
                 )
-                result = provider.animate(request)
+                with attempt(provider, parameters=provider.options) as call:
+                    result = provider.animate(request)
+                    call.gpu_seconds = result.record.gpu_seconds
+                    call.output_seconds = result.duration_s
             return _recorded(
                 result.path, result.record, seed=request.seed, duration_s=result.duration_s
             )
@@ -786,7 +809,10 @@ class MusicStage(Stage):
         def make() -> Made:
             out = ctx.project.artifact_path("music/music.wav")
             request = MusicRequest(prompt=prompt, duration_s=total, seed=seed, output_path=out)
-            result = _generate("music", lambda: provider.compose(request))
+            with attempt(provider, parameters=provider.options) as call:
+                result = _generate("music", lambda: provider.compose(request))
+                call.gpu_seconds = result.record.gpu_seconds
+                call.output_seconds = result.duration_s
             if not result.duration_s >= total:
                 raise StageError(
                     f"music: provider returned {result.duration_s:g} s for a {total:g} s score"

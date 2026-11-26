@@ -99,6 +99,17 @@ def test_a_motion_type_outside_the_vocabulary_is_re_prompted(
     shots = read_json(project / "build" / "storyboard.json")["shots"]
     assert {s["motion_type"] for s in shots} <= {"push_in", "pan", "ambient"}
     assert len(fake_clis.calls("gemini")) == 3  # script, then storyboard + one re-prompt
+    log = project / "runs.jsonl"
+    original = log.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in original.splitlines()]
+    storyboard_calls = [r for r in records if r["artifact"] == "storyboard"]
+    assert [r["outcome"] for r in storyboard_calls] == ["error", "ok"]
+    assert storyboard_calls[0]["error"] == "InvalidOutput"
+    assert [r["parameters"]["attempt"] for r in storyboard_calls] == [1, 2]
+    assert {r["run_id"] for r in records} == {read_json(project / "build/run_state.json")["run_id"]}
+
+    assert run_until_storyboard(project) == 0
+    assert log.read_text(encoding="utf-8") == original
 
 
 def test_a_storyboard_that_skips_or_invents_script_lines_is_re_prompted(

@@ -34,6 +34,7 @@ from vidpipe.contracts import (
 )
 from vidpipe.providers._audio import audio_duration_s
 from vidpipe.registry import register
+from vidpipe.runlog import attempt
 
 DEFAULT_VOICES: dict[str, str] = {
     "en": "en-US-AriaNeural",
@@ -64,10 +65,14 @@ class EdgeTTS(TTSProvider):
         extras = {k: v for k, v in request.extras.items() if k in ("rate", "pitch", "volume")}
         extras.setdefault("rate", self.rate)
         last: Exception | None = None
-        for _ in range(ATTEMPTS):
+        for index in range(ATTEMPTS):
             try:
-                asyncio.run(edge_tts.Communicate(request.text, voice, **extras).save(str(path)))
-                return TTSResult(path=path, duration_s=audio_duration_s(path))
+                with attempt(
+                    self, model=voice, parameters={**extras, "attempt": index + 1}
+                ) as call:
+                    asyncio.run(edge_tts.Communicate(request.text, voice, **extras).save(str(path)))
+                    call.output_seconds = audio_duration_s(path)
+                    return TTSResult(path=path, duration_s=call.output_seconds)
             except _TRANSIENT as exc:
                 last = exc
                 with contextlib.suppress(FileNotFoundError):

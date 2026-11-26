@@ -34,6 +34,22 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## Provider call log
+
+Each generation attempt appends one UTF-8 JSON line to the project's `runs.jsonl`. Failed calls,
+text re-prompts, provider fallbacks and ComfyUI retries each have their own record. Cached work
+adds no lines.
+
+| Field | Meaning |
+| --- | --- |
+| `ts`, `run_id` | ISO 8601 UTC call start and the ID from `build/run_state.json`. |
+| `stage`, `artifact` | Stage name and ledger artifact key. |
+| `provider`, `model` | Provider name and model, workflow or voice when known. |
+| `parameters`, `seed` | Generation settings and the actual attempt's seed, when applicable. |
+| `latency_s`, `gpu_seconds` | Wall time and backend-reported GPU time in seconds. GPU time can be null. |
+| `cost_usd`, `list_price_usd` | Known incremental charge (zero for local or subscription calls) and optional provider list-price estimate. |
+| `outcome`, `error` | `ok` or `error`, plus a short error type for failed attempts. |
+
 ## One run at a time
 
 A project has at most one run in progress. `vidpipe run`, `redo` and `approve` hold an OS file lock
