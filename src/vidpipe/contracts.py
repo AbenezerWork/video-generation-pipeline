@@ -44,10 +44,16 @@ class MotionType(StrEnum):
     AMBIENT = "ambient"
 
 
+#: One camera sentence per motion type: shown to the storyboard model, and the camera part of an
+#: image-to-video prompt. One move each, worded the way Wan 2.2 follows it; a pan names a fixed
+#: focal length because "pan" alone also zoomed in (docs/research/model-strengths.md).
 MOTION_DESCRIPTIONS: dict[MotionType, str] = {
-    MotionType.PUSH_IN: "the camera slowly pushes in towards the subject",
-    MotionType.PAN: "the camera slowly pans sideways across the scene",
-    MotionType.AMBIENT: "the camera is still; only gentle motion in the scene (wind, steam, light)",
+    MotionType.PUSH_IN: "The camera pushes in slowly and smoothly towards the subject, a small "
+    "gentle move.",
+    MotionType.PAN: "The camera pans slowly and steadily to the right at a fixed focal length; the "
+    "scene slides left across the frame and the subject stays the same size.",
+    MotionType.AMBIENT: "Fixed camera with no camera movement; only the subject and the scene move "
+    "gently (wind, breathing, smoke, light).",
 }
 
 

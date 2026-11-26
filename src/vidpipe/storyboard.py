@@ -72,6 +72,9 @@ def export_storyboard(root: Path) -> Path:
                         motion_type=shot.motion_type,
                         character=shot.character,
                         location=shot.location,
+                        others=shot.others,
+                        people=shot.people,
+                        movement=shot.movement,
                     )
                     for shot in board.shots
                 ],

@@ -56,6 +56,41 @@
           ],
           "default": null,
           "title": "Location"
+        },
+        "others": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Others"
+        },
+        "people": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "People"
+        },
+        "movement": {
+          "default": "",
+          "title": "Movement",
+          "type": "string"
         }
       },
       "required": [

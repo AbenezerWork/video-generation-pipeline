@@ -43,6 +43,9 @@ class Script(BaseModel):
 
 NonBlank = Annotated[str, StringConstraints(pattern=r"\S")]
 
+#: The most people a shot may show: beyond that the image model miscounts and clones faces.
+MAX_PEOPLE = 4
+
 
 class ShotDraft(BaseModel):
     reason: NonBlank
@@ -53,6 +56,12 @@ class ShotDraft(BaseModel):
     #: protagonist, ``"none"`` means nobody appears.
     character: str | None = None
     location: str | None = None
+    #: Ids of the other bible characters seen in the shot (``None``: not given).
+    others: list[str] | None = None
+    #: How many people are in the picture, the cast included (``None``: not given).
+    people: int | None = Field(default=None, ge=0, le=MAX_PEOPLE)
+    #: What moves during the clip, told to the video model (empty: it gets ``visual``).
+    movement: str = ""
 
 
 class StoryboardDraft(BaseModel):
@@ -69,6 +78,9 @@ class Shot(BaseModel):
     motion_type: MotionType
     character: str | None = None
     location: str | None = None
+    others: list[str] | None = None
+    people: int | None = Field(default=None, ge=0, le=MAX_PEOPLE)
+    movement: str = ""
 
 
 class Storyboard(BaseModel):
@@ -85,6 +97,12 @@ class ContractShot(BaseModel):
     motion_type: MotionType
     character: NonBlank | None = None
     location: NonBlank | None = None
+    #: Other bible characters the visual shows by name (their descriptions reach the keyframe).
+    others: list[NonBlank] | None = None
+    #: How many people are in the picture, the cast included.
+    people: int | None = Field(default=None, ge=0, le=MAX_PEOPLE)
+    #: What moves during the clip, for the video model.
+    movement: str = ""
 
 
 class MusicCue(BaseModel):
@@ -142,6 +160,9 @@ class StoryboardContract(BaseModel):
                     motion_type=shot.motion_type,
                     character=shot.character,
                     location=shot.location,
+                    others=shot.others,
+                    people=shot.people,
+                    movement=shot.movement,
                 )
                 for shot in self.shots
             ]

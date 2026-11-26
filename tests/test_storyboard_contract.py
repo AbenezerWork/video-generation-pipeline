@@ -82,3 +82,22 @@ def test_exported_storyboard_controls_text_and_regenerates_only_the_edited_shots
         read_json(project / "build/script.json")["lines"][0]["text"]
         == (contract["shots"][0]["narration"]["en"])
     )
+
+
+def test_export_keeps_the_shot_fields_that_shape_keyframe_and_motion_prompts(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+    assert main(["run", str(project), "--auto", "--until", "storyboard"]) == 0
+    board_path = project / "build/storyboard.json"
+    board = read_json(board_path)
+    board["shots"][0].update(people=1, movement="Mist drifts slowly.", others=None)
+    board_path.write_text(json.dumps(board), encoding="utf-8")
+
+    assert main(["export-storyboard", str(project)]) == 0
+    shot = read_json(project / "storyboard.json")["shots"][0]
+    assert (shot["people"], shot["movement"]) == (1, "Mist drifts slowly.")
+
+    assert main(["run", str(project), "--auto", "--until", "storyboard"]) == 0
+    rebuilt = read_json(board_path)["shots"][0]
+    assert (rebuilt["people"], rebuilt["movement"]) == (1, "Mist drifts slowly.")

@@ -465,21 +465,39 @@ locations:
 
 - Each entry needs a `description`, a `reference` picture (`.png`, `.jpg`, `.webp`), or both. Ids
   are lowercase letters, digits, `-` and `_`. Write descriptions in English.
-- **Casting.** The storyboard stage tells its text provider the ids and names, and each shot gets
-  `character` and `location` in `build/storyboard.json`. A shot with no `character` shows the
-  protagonist; `"none"` means nobody (use it for object and scenery shots, or the model may draw the
-  protagonist into them); no `location` means none. Hand-edit the storyboard to recast a shot.
-  Adding, removing or renaming entries re-runs the storyboard (overwriting hand edits); rewording
-  or replacing a picture redraws only the keyframes that use it.
+- **Casting.** The storyboard stage tells its text provider every entry's id, name and
+  description (so it does not dress a character differently from the bible), and each shot gets
+  `character`, `others` and `location` in `build/storyboard.json`. A shot with no `character` shows
+  the protagonist; `"none"` means nobody (use it for object and scenery shots, or the model may draw
+  the protagonist into them); `others` lists the further bible characters seen in the shot; no
+  `location` means none. Hand-edit the storyboard to recast a shot. Changing the bible's entries or
+  descriptions re-runs the storyboard (overwriting hand edits); replacing a picture redraws only
+  the keyframes that use it.
 - **What a keyframe receives** (`vidpipe.bible.keyframe_brief`): the pictures of the shot's
   character, then its location, then the style, as many as the keyframer accepts (two for the default
-  model). The prompt is the shot's `visual` plus a sentence per entry: "image N" for an entry whose
-  picture was passed, its description otherwise. A keyframer that takes no pictures gets
-  descriptions only, so give every entry one. The style description is always included.
+  model). The prompt is the shot's `visual`, then a sentence per entry ("image N" for an entry whose
+  picture was passed, its description otherwise), then the description of every other bible
+  character in the shot, so a secondary character keeps its look. Without an `others` list, the
+  characters the visual names count (a possessive such as "the lion's whisker" does not). When the
+  storyboard gives `people`, the prompt states the headcount ("exactly one person… no other people
+  anywhere in the background"), since the image model fills empty space with strangers. A keyframer
+  that takes no pictures gets descriptions only, so give every entry one. The style description is
+  always included.
+- **Write descriptions subject first:** age, skin tone, build, hair, then clothes. The image model
+  weighs early words most and drifts towards lighter skin when the tone is not stated.
 - **The default look is live-action.** Without a `style`, the storyboard and every keyframe are
   asked for photorealistic live-action footage (`vidpipe.bible.DEFAULT_LOOK`), because the video
   model animates real-looking footage far better than illustration. A `style` replaces it. Keep
   the style to the look (lighting, lens, texture): anything it describes appears in every shot.
+- **The prompt rules.** The storyboard is told what the image and video models do badly
+  (`vidpipe.stages.STORYBOARD_RULES`): few people and an exact count, animals on four legs, simple
+  hands, interiors named as such, no text; and for motion, one slow movement, no talking, no hand
+  work, no walking towards the camera, and a camera move matched to the shot size. Each shot's
+  `visual` and `movement` (what moves) become the video prompt, with one camera sentence per
+  motion type (`vidpipe.contracts.MOTION_DESCRIPTIONS`) and nothing phrased as a prohibition:
+  Wan 2.2 5B painted bars into the frame both without the picture described and with "nothing
+  appears" in the prompt. The research behind each rule is in
+  [`docs/research/model-strengths.md`](docs/research/model-strengths.md).
 - Each keyframe's ledger record lists the prompt, the pictures (with content hashes), the seed and
   the settings it was drawn with.
 
