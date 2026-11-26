@@ -1,8 +1,9 @@
 """Animate a keyframe with the bundled Wan 2.2 TI2V 5B workflow.
 
-The request's prompt is the shot's ``movement`` (what moves), to which this adds the camera move
-and a steadiness sentence; the negative prompt is the workflow's (Wan's official one) plus the
-camera moves the motion type rules out.
+The request's prompt is the shot's picture and what moves in it, to which this adds one camera
+sentence; the negative prompt is the workflow's (Wan's official one) plus the camera moves the
+motion type rules out. The positive prompt says only what to show, never what not to: Wan's encoder
+does not read "nothing appears" as a prohibition (docs/research/model-strengths.md).
 """
 
 from __future__ import annotations
@@ -29,12 +30,6 @@ from vidpipe.registry import register
 
 FPS = 24
 
-#: Said in every prompt: Wan 2.2 5B is weakest at keeping faces, hands and bodies intact.
-STEADY = (
-    "Slow, natural, realistic motion; faces, hands and bodies keep their shape, and nothing "
-    "appears or disappears."
-)
-
 #: Added to the workflow's negative prompt: the camera moves each motion type must not make.
 MOTION_NEGATIVES: dict[MotionType, str] = {
     MotionType.PAN: "zoom in, zoom out, dolly in, push in",
@@ -43,14 +38,14 @@ MOTION_NEGATIVES: dict[MotionType, str] = {
 }
 
 
-def motion_prompt(movement: str, motion_type: MotionType) -> str:
-    """The image-to-video prompt: what moves, then one camera sentence. The picture itself is not
-    described again; Wan's own prompt rewriter drops static description from i2v prompts and
-    keeps them under 100 words (docs/research/model-strengths.md)."""
-    movement = movement.strip()
-    if movement and movement[-1] not in ".!?":
-        movement += "."
-    return " ".join(p for p in (movement, MOTION_DESCRIPTIONS[motion_type], STEADY) if p)
+def motion_prompt(scene: str, motion_type: MotionType) -> str:
+    """The image-to-video prompt: ``scene`` (the picture and what moves in it), then one camera
+    sentence. Wan's own i2v prompt rewriter keeps only the motion, but the 5B model left without
+    the picture described painted bars and blobs into the lower frame in our A/B runs."""
+    scene = scene.strip()
+    if scene and scene[-1] not in ".!?":
+        scene += "."
+    return " ".join(p for p in (scene, MOTION_DESCRIPTIONS[motion_type]) if p)
 
 
 def _video_seconds(ffprobe: str, path: Path) -> float:

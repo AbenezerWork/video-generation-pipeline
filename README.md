@@ -298,9 +298,10 @@ locations:
   (`vidpipe.stages.STORYBOARD_RULES`): few people and an exact count, animals on four legs, simple
   hands, interiors named as such, no text; and for motion, one slow movement, no talking, no hand
   work, no walking towards the camera, and a camera move matched to the shot size. Each shot's
-  `movement` (what moves) becomes the video prompt, with one camera sentence per motion type
-  (`vidpipe.contracts.MOTION_DESCRIPTIONS`); the picture is not described to the video model
-  again. The research behind each rule is in
+  `visual` and `movement` (what moves) become the video prompt, with one camera sentence per
+  motion type (`vidpipe.contracts.MOTION_DESCRIPTIONS`) and nothing phrased as a prohibition:
+  Wan 2.2 5B painted bars into the frame both without the picture described and with "nothing
+  appears" in the prompt. The research behind each rule is in
   [`docs/research/model-strengths.md`](docs/research/model-strengths.md).
 - Each keyframe's ledger record lists the prompt, the pictures (with content hashes), the seed and
   the settings it was drawn with.

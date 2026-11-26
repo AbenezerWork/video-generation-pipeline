@@ -231,7 +231,7 @@ def test_the_video_size_budget_allows_either_orientation(
 
 
 @pytest.mark.needs_ffmpeg
-def test_the_video_model_is_told_what_moves_and_how_the_camera_moves_not_the_picture(
+def test_the_video_model_is_told_the_picture_what_moves_and_how_the_camera_moves(
     make_project: MakeProject,
     comfy: FakeComfyUI,
     fake_clis: FakeClis,
@@ -258,11 +258,15 @@ def test_the_video_model_is_told_what_moves_and_how_the_camera_moves_not_the_pic
 
     positive = [job.input("positive", "text") for job in comfy.jobs]
     negative = [job.input("negative", "text") for job in comfy.jobs]
-    assert positive[0].startswith("The man walks slowly to the right; mist drifts. The camera pans")
-    assert "misty ridge" not in positive[0]  # the keyframe already shows the picture
-    assert "fixed focal length" in positive[0] and "keep their shape" in positive[0]
-    assert positive[1].startswith("The goat chews slowly and flicks an ear. Fixed camera")
-    # An older storyboard with no movement falls back to its visual.
+    # The picture, what moves, then the camera; nothing said in the negative.
+    assert positive[0] == (
+        "Wide shot of a herder on a misty ridge. The man walks slowly to the right; mist drifts. "
+        "The camera pans slowly and steadily to the right at a fixed focal length; the scene "
+        "slides left across the frame and the subject stays the same size."
+    )
+    assert positive[1].startswith("Close-up of a goat grazing. The goat chews slowly")
+    assert "Fixed camera" in positive[1]
+    # An older storyboard has no movement: the visual and the camera.
     assert positive[2].startswith("A steaming cup of coffee. The camera pushes in")
     assert all("背景人很多" in n for n in negative)  # Wan's own: "many people in the background"
     assert negative[0].endswith("zoom in, zoom out, dolly in, push in")

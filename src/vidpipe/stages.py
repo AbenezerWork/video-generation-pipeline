@@ -218,6 +218,11 @@ def _item(ctx: StageContext, shot_id: int | None, path: Path) -> MediaItem:
     return MediaItem(shot_id=shot_id, path=path.relative_to(ctx.project.build).as_posix())
 
 
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text if not text or text[-1] in ".!?" else f"{text}."
+
+
 def _write_index(ctx: StageContext, name: str, items: list[MediaItem]) -> list[str]:
     return [ctx.project.write_model(name, MediaIndex(items=items)), *(i.path for i in items)]
 
@@ -772,9 +777,9 @@ class VideoStage(Stage):
         clip: ClipPlan,
         source: Path,
     ) -> Path:
-        # What moves, not the picture again: the keyframe already shows it. Older storyboards
-        # have no movement, so they fall back to the visual.
-        prompt = shot.movement.strip() or shot.visual
+        # The picture, then what moves in it. Without the picture described, Wan 2.2 5B invented
+        # objects in the lower frame (docs/research/model-strengths.md).
+        prompt = " ".join(p for p in (_sentence(shot.visual), _sentence(shot.movement)) if p)
         seed = ctx.shot_seed(shot.id)
         label = f"video for shot {shot.id}"
         if clip.continues is not None:
