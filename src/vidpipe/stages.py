@@ -380,6 +380,21 @@ class TranslationStage(Stage):
         return _rels(ctx, made)
 
 
+#: What the image and video models get wrong, so the storyboard avoids asking for it (learned from
+#: the coffee-origin demo runs; see experiments.md).
+STORYBOARD_RULES = (
+    "Rules for every shot, because the image and video models fail at these:\n"
+    "- Animals stand, walk or graze naturally on four legs; never rearing, jumping or posed like "
+    "people.\n"
+    "- Show objects in their real-world arrangement: food inside the pan, the pan resting over "
+    "the fire, liquid poured into the vessel that holds it.\n"
+    "- Anyone other than the shot's character must look clearly different from them (another "
+    "age, other clothes and hair); say so in the visual.\n"
+    "- Keep hands simple (holding, resting, offering); no intricate hand work.\n"
+    "- At most four people in a shot, each clearly visible."
+)
+
+
 class StoryboardStage(Stage):
     name = "storyboard"
 
@@ -392,19 +407,22 @@ class StoryboardStage(Stage):
         provider = ctx.provider("storyboard", TextProvider)
         lines = "\n".join(f"{line.id}. {line.text}" for line in script.lines)
         motions = "\n".join(f"  - {m.value}: {MOTION_DESCRIPTIONS[m]}" for m in MotionType)
+        bible = _bible(ctx)
         prompt = (
-            "Storyboard this narration script for a short stylized video. Give each script line "
-            "one shot, in script order.\n\n"
+            "Storyboard this narration script for a short video. Give each script line one shot, "
+            "in script order.\n\n"
             "For each shot:\n"
             "- `line_id`: the number of the script line the shot illustrates.\n"
-            "- `visual`: one concrete sentence describing a single still image: subject, setting, "
-            "light and mood. No complex action, no text or lettering in the image.\n"
+            "- `visual`: one concrete sentence describing the shot as the camera sees it: framing "
+            "(shot size and camera angle), subject, setting, light and mood. One simple moment "
+            "that can move gently; no complex action, no text or lettering in the image.\n"
             "- `motion_type`: exactly one of the following (the video model can do nothing else):\n"
             f"{motions}\n\n"
-            f"Script:\n{lines}"
+            f"Script:\n{lines}\n\n"
+            f"The look of every shot:\n{bible.look}\n\n"
+            f"{STORYBOARD_RULES}"
         )
         valid_ids = {line.id for line in script.lines}
-        bible = _bible(ctx)
         if casting := bible.casting_instructions():
             prompt += f"\n\nThe cast. For each shot also give:\n{casting}"
 
@@ -477,9 +495,8 @@ class NarrationStage(Stage):
 
                 def make(text: str = text, lang: str = lang, key: str = key) -> Made:
                     out = ctx.project.artifact_path(f"{key}.wav")
-                    result = provider.synthesize(
-                        TTSRequest(text=text, language=lang, output_path=out)
-                    )
+                    request = TTSRequest(text=text, language=lang, output_path=out)
+                    result = _generate(key, lambda: provider.synthesize(request))
                     return Made([result.path], data={"duration_s": result.duration_s})
 
                 made = ctx.produce(

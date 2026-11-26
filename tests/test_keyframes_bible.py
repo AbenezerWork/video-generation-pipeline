@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tests.cli_text_fixtures import FakeClis
 from tests.conftest import SAMPLE, MakeProject, nothing_generated
@@ -218,7 +219,82 @@ def test_a_project_without_a_bible_draws_the_storyboards_description_alone(
 
     shots = read_json(project / "build" / "storyboard.json")["shots"]
     record = ledger(project)["keyframes/shot_02"]["data"]
-    assert (record["prompt"], record["references"]) == (shots[1]["visual"], [])
+    assert record["references"] == []
+    assert record["prompt"].startswith(shots[1]["visual"])
+    assert "photorealistic" in record["prompt"].lower()  # the default look still applies
+
+
+def set_bible_style(project: Path, description: str | None) -> None:
+    path = project / "bible.yaml"
+    bible = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if description is None:
+        bible.pop("style", None)
+    else:
+        bible["style"] = {"description": description}
+    path.write_text(yaml.safe_dump(bible), encoding="utf-8")  # pyright: ignore[reportUnknownMemberType]
+
+
+def three_shots() -> str:
+    shots = [{"line_id": i, "visual": f"shot {i}", "motion_type": "ambient"} for i in (1, 2, 3)]
+    return json.dumps({"shots": shots})
+
+
+def test_without_a_style_the_storyboard_and_keyframes_ask_for_live_action_footage(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("claude", three_shots())
+    project = make_project(providers={"storyboard": "claude-cli"})
+    set_bible_style(project, None)
+
+    assert run_keyframes(project) == 0
+
+    asked = fake_clis.calls("claude")[0].stdin.lower()
+    assert "live-action" in asked and "photorealistic" in asked
+    assert "stylized" not in asked and "illustration" not in asked.split("no illustration")[0]
+    prompts = [ledger(project)[f"keyframes/shot_0{n}"]["data"]["prompt"] for n in (1, 2, 3)]
+    assert all("photorealistic live-action" in p.lower() for p in prompts)
+
+
+def test_the_storyboard_is_told_what_the_image_and_video_models_get_wrong(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("claude", three_shots())
+    project = make_project(providers={"storyboard": "claude-cli"})
+
+    assert main(["run", str(project), "--until", "storyboard"]) == 0
+
+    asked = fake_clis.calls("claude")[0].stdin.lower()
+    assert "four legs" in asked  # animals: natural poses, no rearing or jumping
+    assert "real-world arrangement" in asked  # objects where they physically belong
+    assert "clearly different from" in asked  # other people do not copy the main character
+    assert "simple" in asked and "hands" in asked  # no intricate hand work
+
+
+def test_people_beside_the_main_character_are_drawn_as_different_people(
+    make_project: MakeProject,
+) -> None:
+    project = make_project()
+
+    assert run_keyframes(project) == 0
+
+    with_her = ledger(project)["keyframes/shot_01"]["data"]["prompt"]
+    assert "anyone else in the shot looks clearly different" in with_her.lower()
+
+
+def test_a_bibles_style_replaces_the_default_look(
+    make_project: MakeProject, fake_clis: FakeClis
+) -> None:
+    fake_clis.reply("claude", three_shots())
+    project = make_project(providers={"storyboard": "claude-cli"})
+    set_bible_style(project, "Flat gouache poster art.")
+
+    assert run_keyframes(project) == 0
+
+    asked = fake_clis.calls("claude")[0].stdin
+    assert "Flat gouache poster art." in asked and "photorealistic" not in asked.lower()
+    prompts = [ledger(project)[f"keyframes/shot_0{n}"]["data"]["prompt"] for n in (1, 2, 3)]
+    assert all("Flat gouache poster art." in p for p in prompts)
+    assert not any("photorealistic" in p.lower() for p in prompts)
 
 
 @pytest.mark.parametrize(

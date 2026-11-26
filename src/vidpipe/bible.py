@@ -2,7 +2,7 @@
 
 ::
 
-    style: {description: "Warm painterly storybook illustration."}
+    style: {description: "Photorealistic documentary footage, soft morning light."}
     characters:                      # the first one is the protagonist
       - id: aster
         name: Aster
@@ -15,6 +15,9 @@ Each entry has a ``description`` (English), a ``reference`` picture (a path rela
 directory), or both. A keyframe gets pictures for as many entries as its provider accepts, the
 character first, then the location, then the style (ADR 0001); the prompt calls them "image 1",
 "image 2". An entry whose picture is not passed contributes its description in words instead.
+
+Without a ``style``, every shot gets :data:`DEFAULT_LOOK`: the video model animates live-action
+footage far better than illustration, so realism is the default and a style is the exception.
 
 A storyboard shot names its ``character`` and ``location`` by id. A shot without a ``character``
 shows the protagonist (``none``: nobody); a shot without a ``location`` has none.
@@ -68,6 +71,13 @@ class Entry(_Described):
         return self.name.strip() or self.id
 
 
+#: The look of every shot when the bible sets no style.
+DEFAULT_LOOK = (
+    "Photorealistic live-action film footage: real people, places and materials, natural light "
+    "and physically plausible detail. No illustration, painting or animation."
+)
+
+
 class Bible(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -106,6 +116,12 @@ class Bible(BaseModel):
                     raise BibleError(f"the bible has no {kind} {wanted!r} ({kind}s: {known})")
                 found.append(entry)
         return found[0], found[1]
+
+    @property
+    def look(self) -> str:
+        """How every shot should look: the style's description, or :data:`DEFAULT_LOOK`."""
+        described = self.style.description.strip() if self.style else ""
+        return described or DEFAULT_LOOK
 
     def casting_instructions(self) -> str:
         """What the storyboarding model is told about the cast (empty without entries). Only ids
@@ -206,18 +222,19 @@ def keyframe_brief(
             )
         else:
             sentences.append(f"Main character: {who.title}. {_sentence(who.description)}")
+        # Without this, the character's description is applied to everyone in the picture.
+        sentences.append(
+            "Anyone else in the shot looks clearly different from the main character: another "
+            "age, other clothes and hair."
+        )
     if where is not None:
         if number := image(where.id, where):
             sentences.append(f"Setting: {where.title}, the place shown in image {number}.")
         else:
             sentences.append(f"Setting: {where.title}. {_sentence(where.description)}")
-    if (style := bible.style) is not None:
-        words = _sentence(style.description)
-        if number := image("style", style):
-            words = f"{words} Match the art style of image {number}.".strip()
-        if words:
-            sentences.append(f"Style: {words}")
-    if not sentences:
-        return KeyframeBrief(visual.strip(), references)
+    words = _sentence(bible.look)
+    if bible.style is not None and (number := image("style", bible.style)):
+        words = f"{words} Match the look of image {number}."
+    sentences.append(f"Style: {words}")
     prompt = " ".join(s.strip() for s in (_sentence(visual), *sentences))
     return KeyframeBrief(prompt.strip(), references)

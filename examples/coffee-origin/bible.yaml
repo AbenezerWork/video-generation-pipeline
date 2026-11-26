@@ -1,20 +1,24 @@
 # The project bible: who and where the story is about, and how it should look.
-# Keyframes receive the `reference` pictures (paths relative to this folder); the descriptions are
+# Keyframes receive any `reference` pictures (paths relative to this folder); the descriptions are
 # used where no picture is passed. Write in English. See "The project bible" in the README.
+# The look is live-action: the video model animates real-looking footage far better than
+# illustration. Describe the look only; put actions in the shots, or they leak into every shot.
 style:
   description: >
-    Warm hand-painted storybook illustration, soft watercolour textures, gentle morning light.
+    Photorealistic live-action documentary footage set in the Ethiopian highlands. Natural skin,
+    wool, stone and coffee-cherry texture, subdued earthy colours and physically plausible
+    daylight. Every shot depicts a single simple moment with clear foreground subjects and
+    restrained camera movement. One full-frame film still with a single composition.
 characters:
   # The first character is the protagonist: the default for every shot.
   - id: protagonist
     name: the protagonist
     description: >
-      A ten-year-old girl from a highland village: two black braids with a red ribbon, indigo
-      dress, yellow shawl, leather satchel.
-    reference: bible/protagonist.jpg  # placeholder sheet drawn with the keyframer itself
+      A young Ethiopian goat herder with dark brown skin, two black braids, a rust-red woven shawl
+      and plain indigo clothing. Keep the same clothing and hairstyle in every appearance.
 locations:
   # No picture: the description goes into the prompt of shots that take place here.
   - id: highlands
-    name: the highland village
+    name: the Ethiopian highland village
     description: >
-      Round stone houses with thatched roofs on green terraced slopes, mist in the valleys.
+      Round stone houses with thatched roofs on terraced slopes, mist in the valleys.

@@ -255,7 +255,7 @@ shown) and `segments` (`text`, `start_s`/`end_s` in the render, `clip`: subtitle
 
 ```yaml
 style:
-  description: "Warm hand-painted storybook illustration, soft watercolour textures."
+  description: "Photorealistic live-action documentary footage, soft morning light."
   reference: bible/style.png             # optional
 characters:                              # the first one is the protagonist
   - id: aster
@@ -281,6 +281,10 @@ locations:
   model). The prompt is the shot's `visual` plus a sentence per entry: "image N" for an entry whose
   picture was passed, its description otherwise. A keyframer that takes no pictures gets
   descriptions only, so give every entry one. The style description is always included.
+- **The default look is live-action.** Without a `style`, the storyboard and every keyframe are
+  asked for photorealistic live-action footage (`vidpipe.bible.DEFAULT_LOOK`), because the video
+  model animates real-looking footage far better than illustration. A `style` replaces it. Keep
+  the style to the look (lighting, lens, texture): anything it describes appears in every shot.
 - Each keyframe's ledger record lists the prompt, the pictures (with content hashes), the seed and
   the settings it was drawn with.
 
@@ -298,7 +302,7 @@ keyframer = ComfyKeyframer()
 keyframer.generate(
     KeyframeRequest(
         prompt="Character reference sheet of one girl ... front view, side view and face, plain "
-        "light background. Warm hand-painted storybook illustration.",
+        "light background. Photorealistic studio photograph.",
         width=1280,
         height=720,
         seed=1,
@@ -530,6 +534,20 @@ providers:
 ```
 
 Each narration clip's real length is `duration_s` in `build/narration.json`, read from the MP3.
+
+### Amharic narration with Addis AI
+
+Set `ADDIS_API_KEY` in the process environment and select `addis-ai` for narration.
+This sends Amharic lines to Addis Voices 2 and uses Edge TTS for English.
+
+```yaml
+providers:
+  narration: {name: addis-ai, options: {amharic_voice: am-hamen}}
+```
+
+The provider measures the downloaded MP3 so the fit plan uses the actual speech timing.
+See the [Addis AI text-to-speech guide](https://docs.addisassistant.com/docs/capabilities/text-to-speech)
+for voices and pricing.
 
 ### Adding a provider
 
