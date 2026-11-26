@@ -347,7 +347,7 @@
         <article class="card"><h4>ComfyUI</h4><dl>
           <dt>Does</dt><dd>FLUX.2 stills, Wan moving shots, ACE-Step music.</dd>
           <dt>How</dt><dd>HTTP: images to <code>/upload/image</code>, graphs to <code>/prompt</code>, polling <code>/history/{id}</code> and <code>/queue</code>, files from <code>/view</code>. Can cancel and free memory; the doctor reads its node and model lists.</dd>
-        </dl><p class="src"><a href="../src/vidpipe/comfy/client.py">comfy/client.py</a> · <a href="workflows/README.md">workflow format</a></p></article>
+        </dl><p class="src"><a href="../src/vidpipe/comfy/client.py">comfy/client.py</a> · <a href="../workflows/README.md">workflow format</a></p></article>
         <article class="card"><h4>FFmpeg and ffprobe</h4><dl>
           <dt>Does</dt><dd>Final assembly, last-frame extraction, checking clip lengths.</dd>
           <dt>How</dt><dd>Local programs found through <code>VIDPIPE_FFMPEG_DIR</code> or <code>PATH</code>, given file paths and filter arguments; ffprobe returns media details as data.</dd>
@@ -429,50 +429,50 @@
       <details>
         <summary><strong>workflows/</strong><span>ComfyUI graphs and how to fill them</span></summary>
         <ul>
-          <li><a href="workflows/README.md"><code>README.md</code></a><span>How mappings and graphs work.</span></li>
-          <li><a href="workflows/keyframe_flux2_klein_4b.mapping.yaml"><code>keyframe_flux2_klein_4b.mapping.yaml</code></a><span>Keyframe mapping; picks a graph by reference count.</span></li>
-          <li><a href="workflows/keyframe_flux2_klein_4b_t2i.json"><code>keyframe_flux2_klein_4b_t2i.json</code></a><span>Still from text only.</span></li>
-          <li><a href="workflows/keyframe_flux2_klein_4b_ref1.json"><code>keyframe_flux2_klein_4b_ref1.json</code></a><span>Still with one reference image.</span></li>
-          <li><a href="workflows/keyframe_flux2_klein_4b_ref2.json"><code>keyframe_flux2_klein_4b_ref2.json</code></a><span>Still with two reference images.</span></li>
-          <li><a href="workflows/video_wan22_ti2v_5b.mapping.yaml"><code>video_wan22_ti2v_5b.mapping.yaml</code></a><span>Video mapping, clip limits and resolution fallback.</span></li>
-          <li><a href="workflows/video_wan22_ti2v_5b.json"><code>video_wan22_ti2v_5b.json</code></a><span>Wan image-to-video graph.</span></li>
-          <li><a href="workflows/music_ace_step.mapping.yaml"><code>music_ace_step.mapping.yaml</code></a><span>Music mapping and duration limits.</span></li>
-          <li><a href="workflows/music_ace_step.json"><code>music_ace_step.json</code></a><span>ACE-Step instrumental graph.</span></li>
+          <li><a href="../workflows/README.md"><code>README.md</code></a><span>How mappings and graphs work.</span></li>
+          <li><a href="../workflows/keyframe_flux2_klein_4b.mapping.yaml"><code>keyframe_flux2_klein_4b.mapping.yaml</code></a><span>Keyframe mapping; picks a graph by reference count.</span></li>
+          <li><a href="../workflows/keyframe_flux2_klein_4b_t2i.json"><code>keyframe_flux2_klein_4b_t2i.json</code></a><span>Still from text only.</span></li>
+          <li><a href="../workflows/keyframe_flux2_klein_4b_ref1.json"><code>keyframe_flux2_klein_4b_ref1.json</code></a><span>Still with one reference image.</span></li>
+          <li><a href="../workflows/keyframe_flux2_klein_4b_ref2.json"><code>keyframe_flux2_klein_4b_ref2.json</code></a><span>Still with two reference images.</span></li>
+          <li><a href="../workflows/video_wan22_ti2v_5b.mapping.yaml"><code>video_wan22_ti2v_5b.mapping.yaml</code></a><span>Video mapping, clip limits and resolution fallback.</span></li>
+          <li><a href="../workflows/video_wan22_ti2v_5b.json"><code>video_wan22_ti2v_5b.json</code></a><span>Wan image-to-video graph.</span></li>
+          <li><a href="../workflows/music_ace_step.mapping.yaml"><code>music_ace_step.mapping.yaml</code></a><span>Music mapping and duration limits.</span></li>
+          <li><a href="../workflows/music_ace_step.json"><code>music_ace_step.json</code></a><span>ACE-Step instrumental graph.</span></li>
         </ul>
       </details>
       <details>
         <summary><strong>tests/</strong><span>Proof that it works</span></summary>
         <ul>
-          <li><a href="tests/__init__.py"><code>__init__.py</code></a><span>Marks the package.</span></li>
-          <li><a href="tests/conftest.py"><code>conftest.py</code></a><span>Temporary projects and FFmpeg-aware fixtures.</span></li>
-          <li><a href="tests/cli_text_fixtures.py"><code>cli_text_fixtures.py</code></a><span>Fixtures for the text CLIs.</span></li>
-          <li><a href="tests/fake_cli.py"><code>fake_cli.py</code></a><span>A stand-in text CLI.</span></li>
-          <li><a href="tests/fake_comfyui.py"><code>fake_comfyui.py</code></a><span>A stand-in ComfyUI server.</span></li>
-          <li><a href="tests/recording.py"><code>recording.py</code></a><span>Records provider calls for checking.</span></li>
-          <li><a href="tests/test_assembly.py"><code>test_assembly.py</code></a><span>Renders, subtitles and the sound mix.</span></li>
-          <li><a href="tests/test_comfy_config.py"><code>test_comfy_config.py</code></a><span>ComfyUI settings and graph choice.</span></li>
-          <li><a href="tests/test_comfy_failures.py"><code>test_comfy_failures.py</code></a><span>Failures, retries and cancelling.</span></li>
-          <li><a href="tests/test_comfy_integration.py"><code>test_comfy_integration.py</code></a><span>Live keyframes on a real ComfyUI.</span></li>
-          <li><a href="tests/test_comfy_music.py"><code>test_comfy_music.py</code></a><span>Music, fake and live.</span></li>
-          <li><a href="tests/test_comfy_video.py"><code>test_comfy_video.py</code></a><span>Clips, continuations and recovery.</span></li>
-          <li><a href="tests/test_comfy_video_integration.py"><code>test_comfy_video_integration.py</code></a><span>Live Wan clips and continuations.</span></li>
-          <li><a href="tests/test_doctor.py"><code>test_doctor.py</code></a><span>Dependency checks.</span></li>
-          <li><a href="tests/test_fit_plan.py"><code>test_fit_plan.py</code></a><span>Timing, speed and extra clips.</span></li>
-          <li><a href="tests/test_gates.py"><code>test_gates.py</code></a><span>Approvals.</span></li>
-          <li><a href="tests/test_keyframes_bible.py"><code>test_keyframes_bible.py</code></a><span>References and per-shot keyframes.</span></li>
-          <li><a href="tests/test_narration_edge_tts.py"><code>test_narration_edge_tts.py</code></a><span>Edge narration and timing.</span></li>
-          <li><a href="tests/test_pipeline.py"><code>test_pipeline.py</code></a><span>Full run with fake providers.</span></li>
-          <li><a href="tests/test_plan_dry_run.py"><code>test_plan_dry_run.py</code></a><span>Plans and estimates, with no generation.</span></li>
-          <li><a href="tests/test_resume.py"><code>test_resume.py</code></a><span>Reuse, invalidation and resuming.</span></li>
-          <li><a href="tests/test_text_stages.py"><code>test_text_stages.py</code></a><span>Script and storyboard checks.</span></li>
-          <li><a href="tests/test_translation.py"><code>test_translation.py</code></a><span>Translation and drift review.</span></li>
-          <li><a href="tests/conformance/__init__.py"><code>conformance/__init__.py</code></a><span>Marks the contract tests.</span></li>
-          <li><a href="tests/conformance/suites.py"><code>conformance/suites.py</code></a><span>Shared checks every provider must pass.</span></li>
-          <li><a href="tests/conformance/test_cli_text.py"><code>conformance/test_cli_text.py</code></a><span>Text CLIs against the shared checks.</span></li>
-          <li><a href="tests/conformance/test_comfy_keyframer.py"><code>conformance/test_comfy_keyframer.py</code></a><span>The ComfyUI keyframer contract.</span></li>
-          <li><a href="tests/conformance/test_cost_model.py"><code>conformance/test_cost_model.py</code></a><span>Declared time and cost estimates.</span></li>
-          <li><a href="tests/conformance/test_providers.py"><code>conformance/test_providers.py</code></a><span>Every registered provider.</span></li>
-          <li><a href="tests/conformance/test_translation_text.py"><code>conformance/test_translation_text.py</code></a><span>Translation through text providers.</span></li>
+          <li><a href="../tests/__init__.py"><code>__init__.py</code></a><span>Marks the package.</span></li>
+          <li><a href="../tests/conftest.py"><code>conftest.py</code></a><span>Temporary projects and FFmpeg-aware fixtures.</span></li>
+          <li><a href="../tests/cli_text_fixtures.py"><code>cli_text_fixtures.py</code></a><span>Fixtures for the text CLIs.</span></li>
+          <li><a href="../tests/fake_cli.py"><code>fake_cli.py</code></a><span>A stand-in text CLI.</span></li>
+          <li><a href="../tests/fake_comfyui.py"><code>fake_comfyui.py</code></a><span>A stand-in ComfyUI server.</span></li>
+          <li><a href="../tests/recording.py"><code>recording.py</code></a><span>Records provider calls for checking.</span></li>
+          <li><a href="../tests/test_assembly.py"><code>test_assembly.py</code></a><span>Renders, subtitles and the sound mix.</span></li>
+          <li><a href="../tests/test_comfy_config.py"><code>test_comfy_config.py</code></a><span>ComfyUI settings and graph choice.</span></li>
+          <li><a href="../tests/test_comfy_failures.py"><code>test_comfy_failures.py</code></a><span>Failures, retries and cancelling.</span></li>
+          <li><a href="../tests/test_comfy_integration.py"><code>test_comfy_integration.py</code></a><span>Live keyframes on a real ComfyUI.</span></li>
+          <li><a href="../tests/test_comfy_music.py"><code>test_comfy_music.py</code></a><span>Music, fake and live.</span></li>
+          <li><a href="../tests/test_comfy_video.py"><code>test_comfy_video.py</code></a><span>Clips, continuations and recovery.</span></li>
+          <li><a href="../tests/test_comfy_video_integration.py"><code>test_comfy_video_integration.py</code></a><span>Live Wan clips and continuations.</span></li>
+          <li><a href="../tests/test_doctor.py"><code>test_doctor.py</code></a><span>Dependency checks.</span></li>
+          <li><a href="../tests/test_fit_plan.py"><code>test_fit_plan.py</code></a><span>Timing, speed and extra clips.</span></li>
+          <li><a href="../tests/test_gates.py"><code>test_gates.py</code></a><span>Approvals.</span></li>
+          <li><a href="../tests/test_keyframes_bible.py"><code>test_keyframes_bible.py</code></a><span>References and per-shot keyframes.</span></li>
+          <li><a href="../tests/test_narration_edge_tts.py"><code>test_narration_edge_tts.py</code></a><span>Edge narration and timing.</span></li>
+          <li><a href="../tests/test_pipeline.py"><code>test_pipeline.py</code></a><span>Full run with fake providers.</span></li>
+          <li><a href="../tests/test_plan_dry_run.py"><code>test_plan_dry_run.py</code></a><span>Plans and estimates, with no generation.</span></li>
+          <li><a href="../tests/test_resume.py"><code>test_resume.py</code></a><span>Reuse, invalidation and resuming.</span></li>
+          <li><a href="../tests/test_text_stages.py"><code>test_text_stages.py</code></a><span>Script and storyboard checks.</span></li>
+          <li><a href="../tests/test_translation.py"><code>test_translation.py</code></a><span>Translation and drift review.</span></li>
+          <li><a href="../tests/conformance/__init__.py"><code>conformance/__init__.py</code></a><span>Marks the contract tests.</span></li>
+          <li><a href="../tests/conformance/suites.py"><code>conformance/suites.py</code></a><span>Shared checks every provider must pass.</span></li>
+          <li><a href="../tests/conformance/test_cli_text.py"><code>conformance/test_cli_text.py</code></a><span>Text CLIs against the shared checks.</span></li>
+          <li><a href="../tests/conformance/test_comfy_keyframer.py"><code>conformance/test_comfy_keyframer.py</code></a><span>The ComfyUI keyframer contract.</span></li>
+          <li><a href="../tests/conformance/test_cost_model.py"><code>conformance/test_cost_model.py</code></a><span>Declared time and cost estimates.</span></li>
+          <li><a href="../tests/conformance/test_providers.py"><code>conformance/test_providers.py</code></a><span>Every registered provider.</span></li>
+          <li><a href="../tests/conformance/test_translation_text.py"><code>conformance/test_translation_text.py</code></a><span>Translation through text providers.</span></li>
         </ul>
       </details>
       <details>
@@ -492,51 +492,51 @@
       <details>
         <summary><strong>docs/ and root files</strong><span>Setup, decisions, fonts and config</span></summary>
         <ul>
-          <li><a href="README.md"><code>README.md</code></a><span>Usage, commands and provider setup.</span></li>
-          <li><a href="AGENTS.md"><code>AGENTS.md</code></a><span>Instructions for coding agents.</span></li>
-          <li><a href="pyproject.toml"><code>pyproject.toml</code></a><span>Package info, CLI entry point and tool settings.</span></li>
-          <li><a href="uv.lock"><code>uv.lock</code></a><span>Pinned Python dependencies.</span></li>
+          <li><a href="../README.md"><code>README.md</code></a><span>Usage, commands and provider setup.</span></li>
+          <li><a href="../AGENTS.md"><code>AGENTS.md</code></a><span>Instructions for coding agents.</span></li>
+          <li><a href="../pyproject.toml"><code>pyproject.toml</code></a><span>Package info, CLI entry point and tool settings.</span></li>
+          <li><a href="../uv.lock"><code>uv.lock</code></a><span>Pinned Python dependencies.</span></li>
           <li><a href=".gitignore"><code>.gitignore</code></a><span>Keeps generated files out of git.</span></li>
           <li><a href=".gitattributes"><code>.gitattributes</code></a><span>Git file settings.</span></li>
-          <li><a href="assets/icon.svg"><code>assets/icon.svg</code></a><span>Project icon.</span></li>
-          <li><a href="assets/fonts/NotoSansEthiopic-Regular.ttf"><code>assets/fonts/NotoSansEthiopic-Regular.ttf</code></a><span>Amharic subtitle font.</span></li>
-          <li><a href="assets/fonts/NotoSansEthiopic-Bold.ttf"><code>assets/fonts/NotoSansEthiopic-Bold.ttf</code></a><span>Amharic subtitle font, bold.</span></li>
-          <li><a href="assets/fonts/OFL.txt"><code>assets/fonts/OFL.txt</code></a><span>Font license.</span></li>
-          <li><a href="assets/fonts/README.md"><code>assets/fonts/README.md</code></a><span>About the fonts.</span></li>
-          <li><a href="docs/setup.md"><code>docs/setup.md</code></a><span>Installing tools and models; running the doctor.</span></li>
-          <li><a href="docs/agents/domain.md"><code>docs/agents/domain.md</code></a><span>Domain docs convention.</span></li>
-          <li><a href="docs/agents/issue-tracker.md"><code>docs/agents/issue-tracker.md</code></a><span>Issue tracker convention.</span></li>
-          <li><a href="docs/agents/triage-labels.md"><code>docs/agents/triage-labels.md</code></a><span>Ticket labels.</span></li>
-          <li><a href="docs/adr/0001-keyframe-model.md"><code>docs/adr/0001-keyframe-model.md</code></a><span>Why FLUX.2 for keyframes, with measurements.</span></li>
-          <li><a href="docs/adr/assets/01-character-reference-sheet.jpg"><code>docs/adr/assets/01-character-reference-sheet.jpg</code></a><span>Character reference from the keyframe study.</span></li>
-          <li><a href="docs/adr/assets/02-five-shots-from-reference.jpg"><code>docs/adr/assets/02-five-shots-from-reference.jpg</code></a><span>Five shots from one reference.</span></li>
-          <li><a href="docs/adr/assets/03-ten-shot-soak-832x480.jpg"><code>docs/adr/assets/03-ten-shot-soak-832x480.jpg</code></a><span>Ten-shot soak test.</span></li>
-          <li><a href="docs/adr/assets/04-second-reference-location.jpg"><code>docs/adr/assets/04-second-reference-location.jpg</code></a><span>Two-reference location trial.</span></li>
-          <li><a href="docs/adr/assets/05-text-only-vs-with-reference.jpg"><code>docs/adr/assets/05-text-only-vs-with-reference.jpg</code></a><span>Text-only versus with a reference.</span></li>
-          <li><a href="docs/assets/keyframes-sample-project.jpg"><code>docs/assets/keyframes-sample-project.jpg</code></a><span>Sample project keyframes.</span></li>
-          <li><a href="docs/assets/keyframes-two-references.jpg"><code>docs/assets/keyframes-two-references.jpg</code></a><span>Keyframes with two references.</span></li>
+          <li><a href="../assets/icon.svg"><code>assets/icon.svg</code></a><span>Project icon.</span></li>
+          <li><a href="../assets/fonts/NotoSansEthiopic-Regular.ttf"><code>assets/fonts/NotoSansEthiopic-Regular.ttf</code></a><span>Amharic subtitle font.</span></li>
+          <li><a href="../assets/fonts/NotoSansEthiopic-Bold.ttf"><code>assets/fonts/NotoSansEthiopic-Bold.ttf</code></a><span>Amharic subtitle font, bold.</span></li>
+          <li><a href="../assets/fonts/OFL.txt"><code>assets/fonts/OFL.txt</code></a><span>Font license.</span></li>
+          <li><a href="../assets/fonts/README.md"><code>assets/fonts/README.md</code></a><span>About the fonts.</span></li>
+          <li><a href="setup.md"><code>docs/setup.md</code></a><span>Installing tools and models; running the doctor.</span></li>
+          <li><a href="agents/domain.md"><code>docs/agents/domain.md</code></a><span>Domain docs convention.</span></li>
+          <li><a href="agents/issue-tracker.md"><code>docs/agents/issue-tracker.md</code></a><span>Issue tracker convention.</span></li>
+          <li><a href="agents/triage-labels.md"><code>docs/agents/triage-labels.md</code></a><span>Ticket labels.</span></li>
+          <li><a href="adr/0001-keyframe-model.md"><code>docs/adr/0001-keyframe-model.md</code></a><span>Why FLUX.2 for keyframes, with measurements.</span></li>
+          <li><a href="adr/assets/01-character-reference-sheet.jpg"><code>docs/adr/assets/01-character-reference-sheet.jpg</code></a><span>Character reference from the keyframe study.</span></li>
+          <li><a href="adr/assets/02-five-shots-from-reference.jpg"><code>docs/adr/assets/02-five-shots-from-reference.jpg</code></a><span>Five shots from one reference.</span></li>
+          <li><a href="adr/assets/03-ten-shot-soak-832x480.jpg"><code>docs/adr/assets/03-ten-shot-soak-832x480.jpg</code></a><span>Ten-shot soak test.</span></li>
+          <li><a href="adr/assets/04-second-reference-location.jpg"><code>docs/adr/assets/04-second-reference-location.jpg</code></a><span>Two-reference location trial.</span></li>
+          <li><a href="adr/assets/05-text-only-vs-with-reference.jpg"><code>docs/adr/assets/05-text-only-vs-with-reference.jpg</code></a><span>Text-only versus with a reference.</span></li>
+          <li><a href="assets/keyframes-sample-project.jpg"><code>docs/assets/keyframes-sample-project.jpg</code></a><span>Sample project keyframes.</span></li>
+          <li><a href="assets/keyframes-two-references.jpg"><code>docs/assets/keyframes-two-references.jpg</code></a><span>Keyframes with two references.</span></li>
           <li><a href="architecture-audit.html"><code>architecture-audit.html</code></a><span>This page.</span></li>
         </ul>
       </details>
       <details>
         <summary><strong>.scratch/vidpipe/</strong><span>The spec and its fifteen tickets</span></summary>
         <ul>
-          <li><a href=".scratch/vidpipe/spec.md"><code>spec.md</code></a><span>What the pipeline must do, and the decisions behind it.</span></li>
-          <li><a href=".scratch/vidpipe/issues/01-walking-skeleton.md"><code>issues/01-walking-skeleton.md</code></a><span>End-to-end run on fakes.</span></li>
-          <li><a href=".scratch/vidpipe/issues/02-artifact-hashing-resume.md"><code>issues/02-artifact-hashing-resume.md</code></a><span>Reuse and resume.</span></li>
-          <li><a href=".scratch/vidpipe/issues/03-gates-redo.md"><code>issues/03-gates-redo.md</code></a><span>Approvals and shot redo.</span></li>
-          <li><a href=".scratch/vidpipe/issues/04-fit-planner-plan.md"><code>issues/04-fit-planner-plan.md</code></a><span>Fit planning and dry runs.</span></li>
-          <li><a href=".scratch/vidpipe/issues/05-assembly-subtitles.md"><code>issues/05-assembly-subtitles.md</code></a><span>Assembly, ducking and subtitles.</span></li>
-          <li><a href=".scratch/vidpipe/issues/06-text-providers.md"><code>issues/06-text-providers.md</code></a><span>Script and storyboard providers.</span></li>
-          <li><a href=".scratch/vidpipe/issues/07-translation-amharic.md"><code>issues/07-translation-amharic.md</code></a><span>Amharic translation and drift review.</span></li>
-          <li><a href=".scratch/vidpipe/issues/08-edge-tts-narration.md"><code>issues/08-edge-tts-narration.md</code></a><span>Edge TTS narration.</span></li>
-          <li><a href=".scratch/vidpipe/issues/09-keyframe-spike.md"><code>issues/09-keyframe-spike.md</code></a><span>Keyframe model study.</span></li>
-          <li><a href=".scratch/vidpipe/issues/10-comfyui-keyframes-bible.md"><code>issues/10-comfyui-keyframes-bible.md</code></a><span>ComfyUI keyframes and the bible.</span></li>
-          <li><a href=".scratch/vidpipe/issues/11-image-to-video.md"><code>issues/11-image-to-video.md</code></a><span>Wan animation.</span></li>
-          <li><a href=".scratch/vidpipe/issues/12-continuation-oom.md"><code>issues/12-continuation-oom.md</code></a><span>Continuation clips and memory fallback.</span></li>
-          <li><a href=".scratch/vidpipe/issues/13-music-song.md"><code>issues/13-music-song.md</code></a><span>Music and the song stub.</span></li>
-          <li><a href=".scratch/vidpipe/issues/14-doctor-setup.md"><code>issues/14-doctor-setup.md</code></a><span>Doctor and setup guide.</span></li>
-          <li><a href=".scratch/vidpipe/issues/15-demo-run.md"><code>issues/15-demo-run.md</code></a><span>The bilingual demo.</span></li>
+          <li><a href="../.scratch/vidpipe/spec.md"><code>spec.md</code></a><span>What the pipeline must do, and the decisions behind it.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/01-walking-skeleton.md"><code>issues/01-walking-skeleton.md</code></a><span>End-to-end run on fakes.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/02-artifact-hashing-resume.md"><code>issues/02-artifact-hashing-resume.md</code></a><span>Reuse and resume.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/03-gates-redo.md"><code>issues/03-gates-redo.md</code></a><span>Approvals and shot redo.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/04-fit-planner-plan.md"><code>issues/04-fit-planner-plan.md</code></a><span>Fit planning and dry runs.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/05-assembly-subtitles.md"><code>issues/05-assembly-subtitles.md</code></a><span>Assembly, ducking and subtitles.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/06-text-providers.md"><code>issues/06-text-providers.md</code></a><span>Script and storyboard providers.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/07-translation-amharic.md"><code>issues/07-translation-amharic.md</code></a><span>Amharic translation and drift review.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/08-edge-tts-narration.md"><code>issues/08-edge-tts-narration.md</code></a><span>Edge TTS narration.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/09-keyframe-spike.md"><code>issues/09-keyframe-spike.md</code></a><span>Keyframe model study.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/10-comfyui-keyframes-bible.md"><code>issues/10-comfyui-keyframes-bible.md</code></a><span>ComfyUI keyframes and the bible.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/11-image-to-video.md"><code>issues/11-image-to-video.md</code></a><span>Wan animation.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/12-continuation-oom.md"><code>issues/12-continuation-oom.md</code></a><span>Continuation clips and memory fallback.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/13-music-song.md"><code>issues/13-music-song.md</code></a><span>Music and the song stub.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/14-doctor-setup.md"><code>issues/14-doctor-setup.md</code></a><span>Doctor and setup guide.</span></li>
+          <li><a href="../.scratch/vidpipe/issues/15-demo-run.md"><code>issues/15-demo-run.md</code></a><span>The bilingual demo.</span></li>
         </ul>
       </details>
       <details>
