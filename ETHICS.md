@@ -9,7 +9,7 @@ Depending on the providers chosen, AI generates the script, translations, storyb
 voice, images, motion and score. An edited `storyboard.json` can supply the text and
 picture prompts instead. The sample project uses deterministic fake providers. The
 project config names the providers, and the build ledger and `runs.jsonl` record the
-calls, seeds and settings. <!-- verify after merge: storyboard.json, runs.jsonl -->
+calls, seeds and settings.
 
 ## 1. Consent record
 
