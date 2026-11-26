@@ -91,13 +91,14 @@ class SubtitleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     burn_in: bool = True
+    text_language: str | None = None
     #: Folder of font files libass may use, relative to the project directory (or absolute). Unset:
     #: the project's own ``fonts/`` folder if it has one, else the fonts bundled with vidpipe.
     fonts_dir: str | None = None
     #: Font family per language. A language not listed uses the system default font (fine for Latin
     #: script); Amharic needs Ethiopic glyphs, so it gets the bundled Noto Sans Ethiopic.
     fonts: dict[str, str] = Field(default_factory=lambda: {"am": GEEZ_FONT})
-    #: Text size in libass script units, where the video's height is 288 (so it scales with it).
+    #: Text size relative to the shorter side of the frame, in units of 1/288 of that side.
     font_size: int = Field(default=20, gt=0)
 
 
@@ -223,6 +224,15 @@ class ProjectConfig(BaseModel):
         if unknown:
             raise ValueError(f"unknown stage(s) in providers: {', '.join(unknown)}")
         return value
+
+    @property
+    def script_languages(self) -> list[str]:
+        language = self.subtitles.text_language
+        return (
+            [*self.languages, language]
+            if language and language not in self.languages
+            else self.languages
+        )
 
     @property
     def primary_language(self) -> str:

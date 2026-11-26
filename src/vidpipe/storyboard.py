@@ -42,7 +42,7 @@ def export_storyboard(root: Path) -> Path:
             board = project.read_model("storyboard.json", Storyboard)
             lines: dict[str, dict[int, str]] = {}
             title = project.load_brief().title
-            for language in project.config.languages:
+            for language in project.config.script_languages:
                 script = script_for(project, language)
                 if script is None:
                     raise ValueError(f"missing built script for {language!r}")

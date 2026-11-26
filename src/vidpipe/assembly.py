@@ -59,6 +59,7 @@ class SubtitleTrack(BaseModel):
     font: str | None = None
     #: In libass script units, where the video's height is 288.
     font_size: int = 20
+    margin_v: int = 12
 
 
 class MixSettings(BaseModel):
@@ -270,7 +271,11 @@ class FfmpegAssembler(Assembler):
         if render.subtitles is not None and burn:
             track = render.subtitles
             filter_ = subtitles_filter(
-                track.srt, fonts_dir=track.fonts_dir, font=track.font, font_size=track.font_size
+                track.srt,
+                fonts_dir=track.fonts_dir,
+                font=track.font,
+                font_size=track.font_size,
+                margin_v=track.margin_v,
             )
             parts.append(f"[joined]{filter_}[{shots_label}]")
         if card is not None:

@@ -173,7 +173,7 @@ def _estimate(
     if stage in ("script", "storyboard"):
         calls, detail = 1, "1 call"
     elif stage == "translation":
-        calls = len(config.languages) - 1
+        calls = len(config.script_languages) - 1
         detail = _plural(calls, "language")
     elif not shots:
         return estimate  # everything below needs the storyboard's shots

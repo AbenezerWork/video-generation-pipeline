@@ -47,7 +47,7 @@ class Project:
         try:
             contract = StoryboardContract.model_validate_json(path.read_text(encoding="utf-8"))
             for shot in contract.shots:
-                if missing := sorted(set(self.config.languages) - shot.narration.keys()):
+                if missing := sorted(set(self.config.script_languages) - shot.narration.keys()):
                     raise ValueError(
                         f"shot {shot.id} is missing narration for {', '.join(missing)}"
                     )

@@ -500,6 +500,12 @@ uploads, retries, the step-down, cancellation and memory release:
 
 ## Assembly, ducking and subtitles
 
+Set `subtitles.text_language: en` for English captions on an Amharic render. Alternate-language
+cues use that render's shot timings. Captions wrap to about 42 characters per line with up to two
+lines per cue. Longer cues share the shot or narration segment's time across multiple pages.
+Subtitle size follows the shorter frame dimension, and portrait renders reserve extra space
+below the captions. Sidecar names follow the render language.
+
 `vidpipe run` ends with the assembly stage: for each language it writes `out/<output_name>_<lang>.mp4`
 (`demo_en.mp4`, `demo_am.mp4`) and the sidecar `out/<output_name>_<lang>.srt`, and each render stays
 within the 90 s limit (fit-planning refuses longer plans, and assembly checks again).
@@ -519,6 +525,7 @@ within the 90 s limit (fit-planning refuses longer plans, and assembly checks ag
 ```yaml
 subtitles:
   burn_in: true
+  text_language: en    # optional; defaults to each render's narration language
   fonts_dir: fonts                   # relative to the project dir (or absolute). Default: ./fonts if
                                      # it exists, else the fonts bundled with vidpipe (assets/fonts)
   fonts: {am: Noto Sans Ethiopic}    # font family per language; others use the system default font

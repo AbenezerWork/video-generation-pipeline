@@ -87,6 +87,7 @@ from vidpipe.subtitles import (
     font_files,
     font_problems,
     resolve_fonts_dir,
+    wrap_cue,
     write_srt,
 )
 from vidpipe.text import TextProviderError, ask, failure_count, fallback_note
@@ -333,7 +334,7 @@ class TranslationStage(Stage):
     name = "translation"
 
     def _targets(self, ctx: StageContext) -> list[str]:
-        return ctx.languages[1:]
+        return ctx.project.config.script_languages[1:]
 
     def problems(self, ctx: StageContext) -> list[str]:
         if ctx.project.storyboard_contract or not self._targets(ctx):
@@ -882,9 +883,12 @@ class AssemblyStage(Stage):
 
     def problems(self, ctx: StageContext) -> list[str]:
         config = ctx.project.config
+        subtitle_languages = (
+            [config.subtitles.text_language] if config.subtitles.text_language else ctx.languages
+        )
         return [
             *ctx.assembler.problems(),
-            *font_problems(config.subtitles, ctx.languages, ctx.project.root),
+            *font_problems(config.subtitles, subtitle_languages, ctx.project.root),
         ]
 
     def artifact_count(self, ctx: StageContext) -> int:
@@ -910,6 +914,12 @@ class AssemblyStage(Stage):
                 )
             segments: list[ShotSegment] = []
             cues: list[Cue] = []
+            text_language = config.subtitles.text_language or lang
+            alternate_lines = (
+                {line.id: line.text for line in ctx.script(text_language).lines}
+                if text_language != lang
+                else {}
+            )
             offset = 0.0
             for shot in storyboard.shots:
                 fit = shots[shot.id].languages[lang]
@@ -936,10 +946,19 @@ class AssemblyStage(Stage):
                         ],
                     )
                 )
-                cues += [
-                    Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s)
-                    for s in fit.segments
-                ]
+                if alternate_lines:
+                    cues += wrap_cue(
+                        Cue(
+                            text=alternate_lines[shot.line_id],
+                            start_s=offset,
+                            end_s=offset + fit.seconds,
+                        )
+                    )
+                else:
+                    for s in fit.segments:
+                        cues += wrap_cue(
+                            Cue(text=s.text, start_s=offset + s.start_s, end_s=offset + s.end_s)
+                        )
                 offset += fit.seconds
             stem = f"{config.output_name}_{lang}"
             outputs += self._render(
@@ -959,27 +978,45 @@ class AssemblyStage(Stage):
         project = ctx.project
         config = project.config
         subtitles = config.subtitles
-        font = subtitles.fonts.get(lang)
+        font = subtitles.fonts.get(subtitles.text_language or lang)
         fonts_dir = resolve_fonts_dir(project.root, subtitles)
-        fonts = font_files(fonts_dir, font) if font and fonts_dir.is_dir() else []
+        render_width, render_height = config.render_size
+        portrait = render_width < render_height
+        # libass uses a 288-unit canvas height. Keep portrait text proportional to the short side
+        # and leave a wider gutter for overlays near the bottom of a vertical player.
+        short_side_size = min(subtitles.font_size, 14) if portrait else subtitles.font_size
+        font_size = max(
+            1, round(short_side_size * min(render_width, render_height) / render_height)
+        )
         track = SubtitleTrack(
             srt=project.out / f"{stem}.srt",
             burn_in=subtitles.burn_in,
             fonts_dir=fonts_dir if font else None,
             font=font,
-            font_size=subtitles.font_size,
+            font_size=font_size,
+            margin_v=52 if portrait else 12,
         )
-        render_width, render_height = config.render_size
+        card_font = subtitles.fonts.get(lang)
         card = config.end_card if config.end_card and config.end_card.enabled else None
         card_text = card.text_for(lang) if card else None
         end_card = (
             EndCard(
                 ass=project.build / "assembly" / f"{stem}_end_card.ass",
                 seconds=card.seconds,
-                fonts_dir=fonts_dir if font else None,
+                fonts_dir=fonts_dir if card_font else None,
             )
             if card
             else None
+        )
+        faces = {
+            face
+            for face in (font if subtitles.burn_in else None, card_font if card else None)
+            if face
+        }
+        fonts = (
+            list(dict.fromkeys(f for face in sorted(faces) for f in font_files(fonts_dir, face)))
+            if fonts_dir.is_dir()
+            else []
         )
         render = LanguageRender(
             language=lang,
@@ -996,7 +1033,7 @@ class AssemblyStage(Stage):
                 end_card.ass.parent.mkdir(parents=True, exist_ok=True)
                 script = end_card_ass(
                     card_text,
-                    font=font,
+                    font=card_font,
                     width=render_width,
                     height=render_height,
                     seconds=end_card.seconds,
@@ -1023,9 +1060,7 @@ class AssemblyStage(Stage):
                 ],
                 values={
                     # Fonts may live outside the project (the bundled ones do): hash them here.
-                    "fonts": {
-                        f.name: ctx.store.hash_path(f) for f in (fonts if subtitles.burn_in else [])
-                    },
+                    "fonts": {f.name: ctx.store.hash_path(f) for f in fonts},
                     "clips": [
                         [(c.speed, c.source_s, c.seconds) for c in s.clips] for s in segments
                     ],
@@ -1040,11 +1075,18 @@ class AssemblyStage(Stage):
                 "fps": config.fps,
                 "burn_in": subtitles.burn_in,
                 "font": font if subtitles.burn_in else None,
-                "font_size": subtitles.font_size,
+                "font_size": track.font_size,
+                "margin_v": track.margin_v,
                 "music_level": config.mix.music_level,
                 "duck_ratio": config.mix.duck_ratio,
                 **(
-                    {"end_card": {"seconds": end_card.seconds, "text": card_text}}
+                    {
+                        "end_card": {
+                            "seconds": end_card.seconds,
+                            "text": card_text,
+                            "font": card_font,
+                        }
+                    }
                     if end_card is not None
                     else {}
                 ),

@@ -178,12 +178,45 @@ def test_sidecar_srt_files_follow_the_narration_timing(make_project: MakeProject
         script = read_json(
             project / "build" / ("script.json" if lang == "en" else f"translation/{lang}.json")
         )
-        assert [text for _, _, text in cues] == [line["text"] for line in script["lines"]]
+        assert [text.replace("\n", " ") for _, _, text in cues] == [
+            line["text"] for line in script["lines"]
+        ]
         for (start, end, _), (shot_start, shot_end) in zip(cues, timeline, strict=True):
             assert start == pytest.approx(shot_start, abs=0.002)
             assert end == pytest.approx(shot_end, abs=0.002)
         probe = ffprobe(project / "out" / f"demo_{lang}.mp4")
         assert cues[-1][1] == pytest.approx(float(probe["format"]["duration"]), abs=0.2)
+
+
+@pytest.mark.needs_ffmpeg
+def test_amharic_render_uses_english_cues_timed_to_its_own_shots(make_project: MakeProject) -> None:
+    project = make_project(
+        subtitles={"text_language": "en"}, output_size={"width": 270, "height": 480}
+    )
+    assert run_cli("run", str(project), "--until", "storyboard") == 0
+    path = project / "build/script.json"
+    script = read_json(path)
+    long = "A lantern beside the window lights the room as the family waits for the storm to pass."
+    script["lines"][0]["text"] = long
+    path.write_text(json.dumps(script), encoding="utf-8")
+
+    assert run_cli("run", str(project)) == 0
+
+    srt = read_srt(project / "out/demo_am.srt")
+    (start, end), *others = narration_timeline(project, "am")
+    assert srt[0][0] == pytest.approx(start, abs=0.002)
+    assert srt[0][1] == srt[1][0] == pytest.approx((start + end) / 2, abs=0.002)
+    assert srt[1][1] == pytest.approx(end, abs=0.002)
+    assert " ".join(" ".join(cue[2].split()) for cue in srt[:2]) == long
+    for cue, (start, end) in zip(srt[2:], others, strict=True):
+        assert cue[:2] == pytest.approx((start, end), abs=0.002)
+    for _, _, text in srt:
+        lines = text.splitlines()
+        assert len(lines) <= 2
+        assert max(map(len, lines)) <= 42
+    record = read_json(project / "build/ledger.json")["artifacts"]["assembly/am"]["parameters"]
+    assert record["font"] is None  # Latin text uses the default, including on the Amharic render
+    assert record["font_size"] < 20 and record["margin_v"] > 12
 
 
 @pytest.mark.needs_ffmpeg

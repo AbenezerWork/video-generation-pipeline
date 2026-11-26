@@ -10,6 +10,7 @@ language needs is in the folder in use.
 from __future__ import annotations
 
 import struct
+import textwrap
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -28,6 +29,23 @@ class Cue(BaseModel):
 
 
 # ---------------------------------------------------------------------------------------- SRT
+
+
+def wrap_cue(cue: Cue) -> list[Cue]:
+    """Wrap to 42 columns and at most two lines, dividing the cue time if needed."""
+    lines = textwrap.wrap(" ".join(cue.text.split()), width=42, break_on_hyphens=False)
+    pages = ["\n".join(lines[i : i + 2]) for i in range(0, len(lines), 2)]
+    if not pages:
+        return []
+    span = (cue.end_s - cue.start_s) / len(pages)
+    return [
+        Cue(
+            text=text,
+            start_s=cue.start_s + i * span,
+            end_s=cue.end_s if i + 1 == len(pages) else cue.start_s + (i + 1) * span,
+        )
+        for i, text in enumerate(pages)
+    ]
 
 
 def srt_timestamp(seconds: float) -> str:
@@ -72,10 +90,17 @@ def escape_filter_value(value: str) -> str:
     return "".join("\\" + ch if ch in "\\'[],;" else ch for ch in option_level)
 
 
-def subtitles_filter(srt: Path, *, fonts_dir: Path | None, font: str | None, font_size: int) -> str:
+def subtitles_filter(
+    srt: Path,
+    *,
+    fonts_dir: Path | None,
+    font: str | None,
+    font_size: int,
+    margin_v: int,
+) -> str:
     """The ``subtitles`` filter that burns ``srt`` in. ``font`` (a family found in ``fonts_dir``)
     is forced when given; otherwise libass picks its default font."""
-    style = [f"FontSize={font_size}", "Outline=1.5", "Shadow=0", "MarginV=12"]
+    style = [f"FontSize={font_size}", "Outline=1.5", "Shadow=0", f"MarginV={margin_v}"]
     if font:
         style.insert(0, f"FontName={font}")
     options = [f"filename={escape_filter_value(str(srt))}"]

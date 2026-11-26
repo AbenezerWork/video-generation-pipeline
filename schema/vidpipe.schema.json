@@ -150,6 +150,18 @@
           "title": "Burn In",
           "type": "boolean"
         },
+        "text_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Language"
+        },
         "fonts_dir": {
           "anyOf": [
             {

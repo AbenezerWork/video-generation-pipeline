@@ -416,7 +416,7 @@ def drift_flags(project: Project) -> list[DriftFlag]:
     if project.storyboard_contract:
         return []
     flags: list[DriftFlag] = []
-    for language in project.config.languages[1:]:
+    for language in project.config.script_languages[1:]:
         if not (project.build / review_path(language)).is_file():
             continue
         review = project.read_model(review_path(language), TranslationReview)
@@ -439,7 +439,7 @@ def report_lines(project: Project) -> list[str]:
     if project.storyboard_contract:
         return []
     out: list[str] = []
-    for language in project.config.languages[1:]:
+    for language in project.config.script_languages[1:]:
         if not (project.build / review_path(language)).is_file():
             continue
         review = project.read_model(review_path(language), TranslationReview)
