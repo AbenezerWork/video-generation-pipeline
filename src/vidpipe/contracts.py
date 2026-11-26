@@ -16,13 +16,14 @@ they had to do to produce it (retries, a quality step-down) goes back in a
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, get_type_hints
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 
 class ProviderKind(StrEnum):
@@ -58,6 +59,14 @@ class GenerationError(Exception):
     """The provider could not produce the asset; the stage fails (completed artifacts are kept)."""
 
 
+class Cancelled(Exception):  # noqa: N818 (not an error: the run asked for it)
+    """The run asked the provider to drop the artifact in progress (stop now).
+
+    Not a :class:`GenerationError`: nothing failed, so nothing is retried and the stage does not
+    fail. A provider raises it after cleaning up (a ComfyUI job is taken out of the queue).
+    """
+
+
 class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -69,6 +78,9 @@ class ProjectContext(Frozen):
     root: Path
     #: ``comfyui.url`` from ``vidpipe.yaml``.
     comfyui_url: str | None = None
+    #: True once the run is asked to stop now. A provider that can drop a long job polls it while
+    #: it waits and then raises :class:`Cancelled`; one that cannot just finishes the artifact.
+    stop_now: Callable[[], bool] | None = Field(default=None, exclude=True)
 
 
 class GenerationRecord(BaseModel):
@@ -323,6 +335,33 @@ class SongResult(BaseModel):
 # ------------------------------------------------------------------------------------ providers
 
 
+def _options_schema(cls: type) -> dict[str, Any]:
+    """JSON Schema of the keyword parameters of ``cls.__init__`` (see ``declared_options``)."""
+    init = cls.__init__
+    parameters = list(inspect.signature(init).parameters.values())[1:]  # without ``self``
+    try:
+        hints = get_type_hints(init)
+    except Exception:  # an annotation that cannot be resolved here: describe it as any value
+        hints = {}
+    named = (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    fields: dict[str, Any] = {
+        p.name: (hints.get(p.name, Any), ... if p.default is inspect.Parameter.empty else p.default)
+        for p in parameters
+        if p.kind in named
+    }
+    model: type[BaseModel] = create_model(
+        f"{cls.__name__}Options",
+        __config__=ConfigDict(arbitrary_types_allowed=True),
+        **fields,
+    )
+    schema = model.model_json_schema()
+    schema.setdefault("properties", {})
+    schema["additionalProperties"] = any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters
+    )
+    return schema
+
+
 class Provider[C: Capabilities](ABC):
     """Base class for every provider. Subclasses also inherit one contract class below."""
 
@@ -341,6 +380,16 @@ class Provider[C: Capabilities](ABC):
 
     def __init__(self, **options: Any) -> None:
         self.options = options
+
+    @classmethod
+    def declared_options(cls) -> dict[str, Any]:
+        """JSON Schema of the ``options:`` this provider takes in ``vidpipe.yaml``.
+
+        Read from the keyword parameters of ``__init__`` (their annotations and defaults), so a
+        provider declares its options just by naming them there. ``additionalProperties`` is true
+        when ``__init__`` also takes ``**options``. Override to describe options differently.
+        """
+        return _options_schema(cls)
 
     def fingerprint(self) -> dict[str, Any]:
         """Identity hashed into every artifact this provider produces.

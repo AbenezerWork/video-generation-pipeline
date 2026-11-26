@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from tests.conftest import MakeProject
+from tests.conftest import MakeProject, nothing_generated
 from tests.fake_comfyui import FakeComfyUI
 from tests.test_keyframes_bible import comfy_project, ledger, read_json, run_keyframes
 from vidpipe.cli import main
@@ -51,7 +51,7 @@ def test_plan_refuses_a_keyframe_size_the_model_cannot_draw(
 
     assert complaint in capsys.readouterr().err
     assert run_keyframes(project) == 1
-    assert comfy.requests == [] and not (project / "build").exists()
+    assert comfy.requests == [] and nothing_generated(project)
 
 
 def test_plan_prices_comfyui_keyframes_in_gpu_minutes_without_contacting_comfyui(

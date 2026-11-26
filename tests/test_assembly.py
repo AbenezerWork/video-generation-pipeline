@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 import yaml
 
-from tests.conftest import MakeProject, ffprobe
+from tests.conftest import MakeProject, ffprobe, nothing_generated
 from tests.test_resume import StubAssembler
 from vidpipe import pipeline
 from vidpipe.assembly import FFMPEG_DIR_ENV, find_tool
@@ -324,7 +324,7 @@ def test_a_missing_fonts_folder_is_a_plan_error_before_any_generation(
     assert "no-such-fonts" in err and "fonts" in err
 
     assert run_cli("run", str(project)) == 1
-    assert not (project / "build").exists()
+    assert nothing_generated(project)
 
 
 def test_a_fonts_folder_without_the_needed_font_names_it(

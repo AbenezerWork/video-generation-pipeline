@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "edge-tts>=7.3.1",
+    "filelock>=4.3.1",
     "pydantic>=2.14.4",
     "pyyaml>=6.0.4",
 ]
@@ -13,11 +14,21 @@ dependencies = [
 [project.scripts]
 vidpipe = "vidpipe.cli:main"
 
+[project.optional-dependencies]
+# `vidpipe ui`: the local web console (README, "The UI"). The core install stays without it.
+ui = [
+    "ruamel-yaml>=0.19.1",
+    "starlette>=1.10.0",
+    "uvicorn>=0.54.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
+# Everything under src/vidpipe ships, including the UI's static front end
+# (src/vidpipe/ui/static: tokens, scripts, style page, woff2 fonts and their licences).
 packages = ["src/vidpipe"]
 
 # Ship the bundled fonts (and their licence) and the ComfyUI workflows inside the package:
@@ -28,10 +39,11 @@ packages = ["src/vidpipe"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not browser'"
 markers = [
     "needs_ffmpeg: needs real ffmpeg/ffprobe via VIDPIPE_FFMPEG_DIR or PATH",
     "integration: real providers (ComfyUI, CLIs, edge-tts); opt in with -m integration",
+    "browser: Playwright tests on fake providers; opt in with -m browser",
 ]
 
 [tool.ruff]
@@ -48,7 +60,9 @@ typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 
 [dependency-groups]
+# The dev environment includes the optional UI, so its tests run (they skip cleanly without it).
 dev = [
+    "vidpipe[ui]",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
     "ruff>=0.17.6",

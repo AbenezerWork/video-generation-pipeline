@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>try{const v=localStorage.getItem("vidpipe-color-scheme");if(v==="light"||v==="dark")document.querySelector('meta[name="color-scheme"]').content=v}catch{}</script>
+    <link rel="icon" href="data:," />
+    <title>Run · vidpipe</title>
+    <link rel="preload" href="/static/fonts/MonaSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/static/tokens.css" />
+    <link rel="stylesheet" href="/static/console.css" />
+    <link rel="stylesheet" href="/static/run.css" />
+    <link rel="stylesheet" href="/static/detail.css" />
+    <link rel="stylesheet" href="/static/config.css" />
+    <script type="module" src="/static/theme.js"></script>
+    <script type="module" src="/static/views.js"></script>
+    <script type="module" src="/static/run.js"></script>
+    <script type="module" src="/static/config.js"></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="wordmark">
+        <strong>vidpipe</strong>
+        <h1 id="project-name">Project</h1>
+      </div>
+      <div class="view-tabs" id="view-tabs" role="tablist" aria-label="Views" focusgroup="tablist nomemory">
+        <button type="button" class="btn btn-quiet" role="tab" id="tab-run" data-view="run" aria-controls="view-run" aria-selected="true" focusgroupstart>Run</button>
+        <button type="button" class="btn btn-quiet" role="tab" id="tab-config" data-view="config" aria-controls="view-config" aria-selected="false">Config</button>
+      </div>
+      <div class="run-summary" id="run-summary">
+        <span class="status" data-status="waiting" id="run-status">
+          <span class="status-mark" aria-hidden="true"></span><span class="status-text">Loading</span>
+        </span>
+        <span class="muted" id="run-detail"></span>
+        <span class="status" data-status="paused" id="config-pending-chip" hidden>
+          <span class="status-mark" aria-hidden="true"></span>Config pending
+        </span>
+        <span class="faint" id="connection" hidden>Reconnecting…</span>
+      </div>
+      <div class="run-controls" id="run-controls" hidden>
+        <form id="start-run">
+          <label for="run-until">Run through</label>
+          <select id="run-until" class="select" name="until">
+            <option value="">All stages</option>
+          </select>
+          <button class="btn btn-primary" id="start-button" type="submit">Start run</button>
+        </form>
+        <button class="btn" id="stop-button" type="button" hidden>Stop</button>
+        <button class="btn btn-danger" id="stop-now-button" type="button" hidden>Stop now</button>
+      </div>
+      <button type="button" class="btn btn-quiet" id="run-notifications" aria-disabled="true" aria-live="polite">
+        Enable browser notifications
+      </button>
+      <button type="button" class="btn btn-quiet theme-toggle" data-theme-toggle>
+        <span class="theme-to-light">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="currentColor" /><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3" /></g></svg>
+          Switch to light theme
+        </span>
+        <span class="theme-to-dark">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7Z" fill="currentColor" /></svg>
+          Switch to dark theme
+        </span>
+      </button>
+      <p id="run-action-error" class="run-action-error" aria-live="polite"></p>
+    </header>
+
+    <main class="views">
+      <div class="run-view view" id="view-run" role="tabpanel" aria-labelledby="tab-run">
+        <h2 class="visually-hidden" id="rail-title">Stages</h2>
+        <div
+          class="rail"
+          id="rail"
+          role="tablist"
+          aria-labelledby="rail-title"
+          aria-orientation="vertical"
+          focusgroup="tablist nomemory"
+        ></div>
+
+        <section class="stage-detail" id="stage-detail" role="tabpanel" tabindex="0">
+          <div class="stage-detail-inner">
+            <p class="label phase-label" id="detail-phase"></p>
+            <h2 id="detail-title">Stage</h2>
+            <dl class="facts">
+              <div><dt class="label">Status</dt><dd id="detail-status"></dd></div>
+              <div><dt class="label">Provider</dt><dd class="numeral" id="detail-provider"></dd></div>
+              <div><dt class="label">Progress</dt><dd class="numeral" id="detail-progress"></dd></div>
+              <div><dt class="label">Time</dt><dd class="numeral" id="detail-time"></dd></div>
+              <div><dt class="label">GPU time</dt><dd class="numeral" id="detail-gpu">–</dd></div>
+            </dl>
+            <p class="muted" id="detail-note"></p>
+            <button class="btn" id="review-gate" type="button" hidden>Review paused gate</button>
+            <section class="panel gate-review" id="gate-review" aria-labelledby="gate-title" hidden>
+              <h3 class="label" id="gate-title">Gate review</h3>
+              <p>Review this stage’s outputs before continuing.</p>
+              <div class="gate-actions">
+                <button class="btn btn-primary" id="gate-approve" type="button">Approve</button>
+                <button class="btn" id="gate-reject" type="button">Reject</button>
+              </div>
+              <p id="gate-result" role="status"></p>
+              <ul id="gate-next-steps" hidden></ul>
+            </section>
+            <div class="stage-outputs" id="detail-outputs"></div>
+            <p class="faint numeral" id="detail-ledger"></p>
+            <details class="diagnostics" id="diagnostics">
+              <summary>Logs and diagnostics</summary>
+              <div class="diagnostics-body">
+                <section class="output-section">
+                  <h3 class="label">Ledger for this stage</h3>
+                  <div id="diag-ledger"></div>
+                </section>
+                <section class="output-section">
+                  <h3 class="label">Run log</h3>
+                  <p class="faint" id="diag-log-note"></p>
+                  <pre class="well log" id="diag-log-text" tabindex="0" aria-label="Run log output" hidden></pre>
+                </section>
+                <section class="output-section">
+                  <h3 class="label">ComfyUI queue and GPU</h3>
+                  <div id="diag-comfyui"></div>
+                </section>
+              </div>
+            </details>
+          </div>
+        </section>
+      </div>
+
+      <div class="config-view view" id="view-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+        <div class="config-head">
+          <h2 id="config-title">Project config</h2>
+          <a class="preview-jump" href="#config-check">Jump to validation, change impact and save</a>
+        </div>
+        <form class="config-form" id="config-form" aria-labelledby="config-title">
+          <p class="muted" id="config-loading">Loading the project config…</p>
+        </form>
+        <aside class="config-side" aria-labelledby="yaml-title">
+          <div class="config-check panel" id="config-check" tabindex="-1">
+            <p class="status" data-status="waiting" id="config-status">
+              <span class="status-mark" aria-hidden="true"></span><span class="status-text">Checking</span>
+            </p>
+            <ul class="config-problems" id="config-problems" aria-label="Problems"></ul>
+          </div>
+          <section class="panel config-impact" aria-labelledby="config-impact-title">
+            <h3 id="config-impact-title">Next run estimate</h3>
+            <p class="muted" id="config-impact-total">Edit the config to preview what will regenerate.</p>
+            <ul id="config-impact-stages" hidden></ul>
+            <ul class="config-problems" id="config-plan-problems" aria-label="Plan problems" hidden></ul>
+            <div class="config-actions">
+              <button type="submit" class="btn btn-primary" form="config-form" id="config-save" hidden>Save changes</button>
+              <button type="button" class="btn btn-quiet" id="config-reload" hidden>Discard edits and reload</button>
+            </div>
+            <p id="config-action-message" class="muted" role="status"></p>
+          </section>
+          <section class="panel config-impact" id="config-pending" aria-labelledby="config-pending-title" hidden>
+            <h3 id="config-pending-title">Pending change</h3>
+            <p class="muted">The saved config applies to the next run. The current run keeps the config it started with.</p>
+            <button type="button" class="btn btn-quiet" id="config-restart">Stop and restart</button>
+          </section>
+          <details class="panel yaml-view" open>
+            <summary id="yaml-title">YAML preview</summary>
+            <pre class="well numeral" id="config-yaml" tabindex="0" aria-labelledby="yaml-title"></pre>
+          </details>
+        </aside>
+      </div>
+    </main>
+
+    <template id="stage-tab">
+      <button type="button" role="tab" class="rail-stage">
+        <span class="phase-stripe"></span>
+        <span class="stage-name">
+          <span class="stage-label"></span>
+          <span class="faint numeral stage-provider"></span>
+        </span>
+        <span class="stage-end">
+          <span class="numeral faint stage-time"></span>
+          <span class="ring" hidden>
+            <progress class="ring-progress" value="0" max="1" aria-hidden="true"></progress>
+            <span class="ring-content" aria-hidden="true"></span>
+          </span>
+          <span class="visually-hidden stage-progress"></span>
+          <span class="status"><span class="status-mark" aria-hidden="true"></span><span class="status-text"></span></span>
+        </span>
+      </button>
+    </template>
+
+    <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+    <div id="config-announcer" class="visually-hidden" role="status" aria-atomic="true"></div>
+  </body>
+</html>

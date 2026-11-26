@@ -10,7 +10,9 @@ The rules (spec, "Failure handling"):
 * nothing else changes the request. A workflow ComfyUI rejects, an unreachable server or a job
   cancelled in ComfyUI fail at once: a new seed would not help.
 
-Whatever ends a job early (an error, Ctrl+C) also takes it out of ComfyUI's queue.
+Whatever ends a job early (an error, Ctrl+C, a stop now) also takes it out of ComfyUI's queue. A
+stop now (``stop_now``) is not a failure: the job is cancelled, not retried, and
+:class:`~vidpipe.contracts.Cancelled` is raised.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,7 @@ from vidpipe.comfy.client import (
     ComfyJobFailed,
 )
 from vidpipe.comfy.workflow import WorkflowModel
+from vidpipe.contracts import Cancelled
 
 RETRIES = 2
 
@@ -84,11 +87,13 @@ def run_job(
     retries: int = RETRIES,
     timeout_s: float | None = None,
     poll_s: float = 0.5,
+    stop_now: Callable[[], bool] | None = None,
 ) -> JobOutcome:
     """Run ``model`` with ``values`` and input ``images``; return the output files.
 
     ``values`` are written to the mapping's fields (``seed`` and ``filename_prefix`` are set here).
-    Raises :class:`ComfyError` when no attempt produced a result.
+    Raises :class:`ComfyError` when no attempt produced a result, and
+    :class:`~vidpipe.contracts.Cancelled` (after cancelling the job) once ``stop_now()`` is true.
     """
     uploaded = [client.upload_image(path) for path in images]
     current = dict(values)
@@ -109,7 +114,10 @@ def run_job(
         try:
             prompt_id = client.submit(model.build(job, uploaded))
             finished = client.wait(
-                prompt_id, timeout_s=timeout_s or model.spec.timeout_s, poll_s=poll_s
+                prompt_id,
+                timeout_s=timeout_s or model.spec.timeout_s,
+                poll_s=poll_s,
+                stop_now=stop_now,
             )
             remote = finished.files(model.spec.outputs.node, model.spec.outputs.key)
             if not remote:
@@ -118,6 +126,9 @@ def run_job(
         except ComfyError as exc:
             if prompt_id is not None and not isinstance(exc, ComfyJobFailed):
                 client.cancel(prompt_id)
+            if stop_now is not None and stop_now():
+                # Cancelled from both sides at once: still a stop, not a failure.
+                raise Cancelled(f"job cancelled: the run was asked to stop now ({exc})") from exc
             if not exc.retryable:
                 raise
             out_of_memory = isinstance(exc, ComfyJobFailed) and exc.oom
@@ -147,7 +158,7 @@ def run_job(
                 failures += 1
                 notes.append(f"retry with new seed {attempt_seed} after {outcome}: {exc}")
             continue
-        except BaseException:  # Ctrl+C included: do not leave the job running on the GPU
+        except BaseException:  # Ctrl+C, stop now: do not leave the job running on the GPU
             if prompt_id is not None:
                 client.cancel(prompt_id)
             raise

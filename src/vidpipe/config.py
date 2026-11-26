@@ -42,7 +42,10 @@ class ProviderSelection(BaseModel):
             return {"name": value}
         if isinstance(value, list) and value:
             first, *rest = cast(list[Any], value)
-            primary: dict[str, Any] = {"name": first} if isinstance(first, str) else dict(first)
+            try:
+                primary: dict[str, Any] = {"name": first} if isinstance(first, str) else dict(first)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("A provider chain must start with a name or mapping") from exc
             return {**primary, "fallback": rest}
         return cast(Any, value)
 

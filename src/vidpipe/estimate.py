@@ -41,6 +41,21 @@ class StageEstimate(BaseModel):
     detail: str = ""
 
 
+class StageRegeneration(BaseModel):
+    stage: str
+    #: Estimated number that could regenerate, or None if earlier outputs are needed.
+    artifacts: int | None
+    gpu_minutes: float | None
+    #: True if this stage may reuse everything once its upstream outputs are known.
+    possible: bool
+
+
+class RegenerationReport(BaseModel):
+    stages: list[StageRegeneration]
+    gpu_minutes: float
+    complete: bool
+
+
 class PlanReport(BaseModel):
     stages: list[StageEstimate]
     #: Totals over the stages that could be estimated.
@@ -48,6 +63,7 @@ class PlanReport(BaseModel):
     dollars: float
     #: Whether every stage could be estimated (otherwise the totals are a lower bound).
     complete: bool
+    regeneration: RegenerationReport | None = None
     fit: FitPlan | None = None
     notes: list[str] = Field(default_factory=list[str])
 
@@ -235,6 +251,26 @@ def format_report(report: PlanReport) -> str:
     total = f"{report.gpu_minutes:.2f} gpu-min, ${report.dollars:.2f}"
     partial = "" if report.complete else " (so far; more is unknown)"
     lines.append(f"estimated total: {total}{partial}")
+    if report.regeneration is not None:
+        impact = report.regeneration
+        lines += ["", "estimated work with the current ledger:"]
+        if not impact.stages:
+            lines.append("  all artifacts can be reused")
+        for stage in impact.stages:
+            count = (
+                "unknown artifact count"
+                if stage.artifacts is None
+                else (f"up to {_plural(stage.artifacts, 'artifact')}")
+            )
+            gpu = (
+                "unknown GPU time"
+                if stage.gpu_minutes is None
+                else (f"{stage.gpu_minutes:.2f} gpu-min")
+            )
+            action = "may regenerate" if stage.possible else "regenerates"
+            lines.append(f"  {stage.stage}: {action}, {count}, {gpu}")
+        suffix = "" if impact.complete else " (known estimates only)"
+        lines.append(f"  estimated GPU time: {impact.gpu_minutes:.2f} gpu-min{suffix}")
     if report.fit is not None:
         lines += ["", *format_fit(report.fit)]
     lines += ["", *(f"note: {note}" for note in report.notes)] if report.notes else []

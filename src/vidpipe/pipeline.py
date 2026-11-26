@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -10,14 +10,18 @@ from typing import Any
 from vidpipe.artifacts import ArtifactStore
 from vidpipe.assembly import Assembler, FfmpegAssembler
 from vidpipe.chain import build_provider, describe
-from vidpipe.config import STAGE_KINDS, ProviderSelection
-from vidpipe.contracts import MusicProvider, ProjectContext, Provider
+from vidpipe.config import STAGE_KINDS, ProjectConfig, ProviderSelection
+from vidpipe.contracts import Cancelled, MusicProvider, ProjectContext, Provider
 from vidpipe.estimate import PlanReport, build_report
-from vidpipe.gates import Approver, GateError, GateKeeper
+from vidpipe.gates import Approver, GateError, GateKeeper, require_paused_gate
+from vidpipe.lock import writer_lock
 from vidpipe.models import Manifest, StageRecord, Storyboard
 from vidpipe.project import Project
+from vidpipe.regeneration import estimate_regeneration
 from vidpipe.registry import Registry, UnknownProvider, default_registry
-from vidpipe.stages import STAGE_NAMES, STAGES, StageContext, StageError
+from vidpipe.runstate import Origin, RunStatePublisher, resolve_origin
+from vidpipe.stages import STAGE_NAMES, STAGES, Stage, StageContext, StageError
+from vidpipe.stop import RunStopped, StopWatcher
 
 
 class PlanError(Exception):
@@ -54,9 +58,13 @@ class RunResult:
     manifest: Manifest
     #: The gate the run stopped at, waiting for approval; `None` when it ran to the end.
     paused_at: str | None = None
+    #: The run ended early because a stop was asked for (``vidpipe.stop``).
+    stopped: bool = False
 
 
-def _label(stage: str, selection: ProviderSelection | None) -> str | None:
+def provider_label(stage: str, selection: ProviderSelection | None) -> str | None:
+    """The provider a stage uses, as ``plan``, the manifest and the run state name it (``None``
+    for stages without a provider)."""
     kind = STAGE_KINDS.get(stage)
     return describe(kind, selection) if kind is not None and selection is not None else None
 
@@ -70,10 +78,16 @@ def _selected_stages(until: str | None) -> list[str]:
 
 
 def _build_context(
-    project: Project, registry: Registry, assembler: Assembler, problems: list[str]
+    project: Project,
+    registry: Registry,
+    assembler: Assembler,
+    problems: list[str],
+    stop_now: Callable[[], bool] | None = None,
 ) -> StageContext:
     providers: dict[str, Provider[Any]] = {}
-    about = ProjectContext(root=project.root, comfyui_url=project.config.comfyui.url)
+    about = ProjectContext(
+        root=project.root, comfyui_url=project.config.comfyui.url, stop_now=stop_now
+    )
     for stage, selection in project.config.providers.items():
         kind = STAGE_KINDS.get(stage)
         if kind is None:
@@ -96,6 +110,7 @@ def plan(
     registry: Registry | None = None,
     assembler: Assembler | None = None,
     estimate: bool = False,
+    config: ProjectConfig | None = None,
 ) -> Plan:
     """Resolve providers and check capabilities for every stage up to ``until``.
 
@@ -103,9 +118,9 @@ def plan(
     report them all. With ``estimate`` the plan also carries the fit plan (segments, speed
     factors, continuation clips) and the estimated GPU time and cost per stage, built from what is
     on disk; fit problems (a render over 90 s, narration no clip can cover) are added to
-    ``problems``.
+    ``problems``. An explicit ``config`` plans a proposed edit against the same project and ledger.
     """
-    project = Project(project_dir)
+    project = Project(project_dir, config=config)
     names = _selected_stages(until)
     problems: list[str] = []
     ctx = _build_context(
@@ -116,7 +131,7 @@ def plan(
         if stage.name not in names:
             continue
         selection = project.config.providers.get(stage.name)
-        planned.append(PlannedStage(stage.name, _label(stage.name, selection)))
+        planned.append(PlannedStage(stage.name, provider_label(stage.name, selection)))
         if stage.name in STAGE_KINDS and stage.name not in ctx.providers:
             if selection is None:
                 problems.append(f"{stage.name}: no provider configured")
@@ -133,6 +148,9 @@ def plan(
     report = None
     if estimate:
         report = build_report(project, ctx.providers, [p.name for p in planned])
+        report.regeneration = estimate_regeneration(
+            ctx, [stage for stage in STAGES if stage.name in names], report
+        )
         if report.fit is not None:
             problems += [f"fit-planning: {p}" for p in report.fit.problems]
             music = ctx.providers.get("music")
@@ -154,6 +172,8 @@ def run(
     auto: bool = False,
     approve: Sequence[str] = (),
     approver: Approver | None = None,
+    origin: Origin | str | None = None,
+    resume_gate: tuple[str, str] | None = None,
 ) -> RunResult:
     """Run the stage graph (up to ``until``). Capability problems abort before any generation.
 
@@ -161,26 +181,141 @@ def run(
     that gate is approved (``vidpipe.gates``): ``approve`` approves gates in advance, ``approver``
     is asked about the others, and ``auto`` skips every gate. A gate after the last stage the run
     was asked for holds nothing back, so it does not pause.
+
+    The run holds the project's one-writer lock throughout (``vidpipe.lock``): while another run
+    is in progress it raises ``RunInProgress`` before doing anything. Throughout, it publishes its
+    run state (``vidpipe.runstate``) in ``build/run_state.json``; ``origin`` (``cli`` or ``ui``,
+    default ``$VIDPIPE_RUN_ORIGIN``, else ``cli``) records who started it.
+
+    ``resume_gate`` identifies a paused run and its gate (run ID, stage). It approves the
+    existing outputs and resumes with that run's stage limit under the same writer lock.
     """
-    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+    who = _origin(origin)
+    project = Project(project_dir)
+    with writer_lock(project.root):
+        if resume_gate is not None:
+            run_id, stage = resume_gate
+            paused = require_paused_gate(project.root, run_id, stage)
+            GateKeeper(project, ArtifactStore(project)).approve(stage)
+            until = paused.until
+        return _run(
+            project_dir,
+            until=until,
+            registry=registry,
+            assembler=assembler,
+            auto=auto,
+            approve=approve,
+            approver=approver,
+            origin=who,
+        )
+
+
+def _origin(origin: Origin | str | None) -> Origin:
+    try:
+        return resolve_origin(origin)
+    except ValueError as exc:
+        raise PlanError([str(exc)]) from None
+
+
+def _run(
+    project_dir: Path,
+    *,
+    until: str | None,
+    registry: Registry | None,
+    assembler: Assembler | None,
+    auto: bool,
+    approve: Sequence[str],
+    approver: Approver | None,
+    origin: Origin,
+    command: str = "run",
+    shot: int | None = None,
+) -> RunResult:
+    project = Project(project_dir)
+    names = _selected_stages(until)
+    state = RunStatePublisher(
+        project,
+        origin=origin,
+        stages=[(name, provider_label(name, project.config.providers.get(name))) for name in names],
+        until=until,
+        command=command,
+        shot=shot,
+    )
+    watcher = StopWatcher(project.build, state)
+    try:
+        result = _run_stages(
+            project, state, watcher, until, registry, assembler, auto, approve, approver
+        )
+    except PlanError as exc:
+        state.fail("; ".join(exc.problems))
+        raise
+    except KeyboardInterrupt:
+        state.fail("interrupted")
+        raise
+    except Exception as exc:
+        state.fail(str(exc) or type(exc).__name__)
+        raise
+    finally:
+        watcher.close()
+    if not result.stopped:
+        state.finish(paused_at=result.paused_at)
+    return result
+
+
+def _run_stages(
+    project: Project,
+    state: RunStatePublisher,
+    watcher: StopWatcher,
+    until: str | None,
+    registry: Registry | None,
+    assembler: Assembler | None,
+    auto: bool,
+    approve: Sequence[str],
+    approver: Approver | None,
+) -> RunResult:
+    the_plan = plan(project.root, until=until, registry=registry, assembler=assembler)
     problems = [f"--approve: unknown stage {g!r}" for g in approve if g not in STAGE_NAMES]
     if not the_plan.ok or problems:
         raise PlanError([*the_plan.problems, *problems])
 
-    project = Project(project_dir)
     ctx = _build_context(
-        project, registry or default_registry(), assembler or FfmpegAssembler(), []
+        project,
+        registry or default_registry(),
+        assembler or FfmpegAssembler(),
+        [],
+        stop_now=watcher.now_requested,
     )
     keeper = GateKeeper(project, ctx.store)
     manifest = Manifest()
     paused_at: str | None = None
     wanted = set(_selected_stages(until))
     selected = [s for s in STAGES if s.name in wanted]
+    # Totals known up front (from an earlier run's files); each is worked out again as its
+    # stage begins, from what the stages before it wrote.
+    state.totals({s.name: _artifact_count(s, ctx) for s in selected})
+
+    def after_artifact() -> None:
+        state.artifact(ctx.generated, ctx.reused)
+        watcher.check()  # a stop ends the run here, between artifacts
+
+    ctx.on_artifact = after_artifact
     for index, stage_obj in enumerate(selected):
         stage = stage_obj.name
+        try:
+            watcher.check()
+        except RunStopped:
+            state.stop()
+            return RunResult(plan=the_plan, manifest=manifest, stopped=True)
         ctx.begin(stage)
+        state.begin_stage(stage, _artifact_count(stage_obj, ctx))
         try:
             outputs = stage_obj.run(ctx)
+        except (RunStopped, Cancelled) as exc:
+            if isinstance(exc, Cancelled) and not watcher.now_requested():
+                raise  # not ours to treat as a stop
+            # The artifact in progress was finished (stop) or dropped (stop now); every other
+            # artifact is in the ledger, so the next run picks up from here.
+            state.stop(ctx.generated, ctx.reused)
+            return RunResult(plan=the_plan, manifest=manifest, stopped=True)
         finally:
             # One model resident at a time: the stage's provider lets go (also after a failure).
             if used := ctx.providers.get(stage):
@@ -189,31 +324,53 @@ def run(
         manifest.stages.append(
             StageRecord(
                 stage=stage,
-                provider=_label(stage, selection),
+                provider=provider_label(stage, selection),
                 outputs=outputs,
                 generated=ctx.generated,
                 reused=ctx.reused,
             )
         )
         project.write_model("manifest.json", manifest)
-        if auto or stage not in project.config.gates or index == len(selected) - 1:
-            continue
-        if stage in approve:
+        gated = not auto and stage in project.config.gates and index < len(selected) - 1
+        if gated and stage in approve:
             keeper.approve(stage)
-        if not keeper.passes(stage, approver):
+        if gated and not keeper.passes(stage, approver):
             paused_at = stage
+        # What this stage wrote may settle the size of the stages after it (shots, clips).
+        state.totals({s.name: _artifact_count(s, ctx) for s in selected[index + 1 :]})
+        state.end_stage(stage, ctx.generated, ctx.reused, paused=paused_at is not None)
+        if paused_at is not None:
             break
     return RunResult(plan=the_plan, manifest=manifest, paused_at=paused_at)
 
 
+def _artifact_count(stage: Stage, ctx: StageContext) -> int | None:
+    try:
+        return stage.artifact_count(ctx)
+    except Exception:  # an earlier stage's output is not there yet: unknown for now
+        return None
+
+
 def approve(project_dir: Path, gates: Sequence[str]) -> None:
-    """Approve what each gated stage has produced so far (``vidpipe approve``)."""
+    """Approve what each gated stage has produced so far (``vidpipe approve``).
+
+    Refused (``RunInProgress``) while a run holds the project's one-writer lock.
+    """
     project = Project(project_dir)
-    keeper = GateKeeper(project, ArtifactStore(project))
-    for gate in gates:
-        if gate not in STAGE_NAMES:
-            raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
-        keeper.approve(gate)
+    with writer_lock(project.root):
+        keeper = GateKeeper(project, ArtifactStore(project))
+        for gate in gates:
+            if gate not in STAGE_NAMES:
+                raise GateError(f"unknown stage {gate!r} (stages: {', '.join(STAGE_NAMES)})")
+            keeper.approve(gate)
+
+
+def reject_gate(project_dir: Path, run_id: str, stage: str) -> None:
+    """Leave the specified run paused and clear any approval for its gate."""
+    with writer_lock(project_dir):
+        require_paused_gate(project_dir, run_id, stage)
+        project = Project(project_dir)
+        GateKeeper(project, ArtifactStore(project)).reject(stage)
 
 
 def redo(
@@ -226,6 +383,7 @@ def redo(
     auto: bool = False,
     approve: Sequence[str] = (),
     approver: Approver | None = None,
+    origin: Origin | str | None = None,
 ) -> RunResult:
     """Re-roll one shot (``vidpipe redo shot N``): new seed, then a normal run.
 
@@ -233,25 +391,31 @@ def redo(
     of its keyframe and video, and the new video file changes what the assemblies read. A normal
     run then regenerates exactly those; every other shot's artifacts keep their records. Gates
     still apply: the new keyframe is shown at the keyframes gate again before it is animated.
+    The redo holds the one-writer lock from the re-roll to the end of its run.
     """
     project = Project(project_dir)
-    if not (project.build / "storyboard.json").is_file():
-        raise PlanError(["nothing to redo: run the storyboard stage first"])
-    storyboard = project.read_model("storyboard.json", Storyboard)
-    if shot not in {s.id for s in storyboard.shots}:
-        known = ", ".join(str(s.id) for s in storyboard.shots)
-        raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
-    the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
-    if not the_plan.ok:
-        raise PlanError(the_plan.problems)
+    who = _origin(origin)
+    with writer_lock(project.root):
+        if not (project.build / "storyboard.json").is_file():
+            raise PlanError(["nothing to redo: run the storyboard stage first"])
+        storyboard = project.read_model("storyboard.json", Storyboard)
+        if shot not in {s.id for s in storyboard.shots}:
+            known = ", ".join(str(s.id) for s in storyboard.shots)
+            raise PlanError([f"shot {shot} is not in the storyboard (shots: {known})"])
+        the_plan = plan(project_dir, until=until, registry=registry, assembler=assembler)
+        if not the_plan.ok:
+            raise PlanError(the_plan.problems)
 
-    ArtifactStore(project).reroll_shot(shot)
-    return run(
-        project_dir,
-        until=until,
-        registry=registry,
-        assembler=assembler,
-        auto=auto,
-        approve=approve,
-        approver=approver,
-    )
+        ArtifactStore(project).reroll_shot(shot)
+        return _run(
+            project_dir,
+            until=until,
+            registry=registry,
+            assembler=assembler,
+            auto=auto,
+            approve=approve,
+            approver=approver,
+            origin=who,
+            command="redo",
+            shot=shot,
+        )

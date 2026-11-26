@@ -25,10 +25,12 @@ from pydantic import BaseModel, Field
 
 from vidpipe.artifacts import ArtifactStore, digest
 from vidpipe.project import Project
+from vidpipe.runstate import RunState, RunStatus, read_run_state
 
 #: ``vidpipe run`` exit code when the run stopped at a gate (0 = finished, 1 = error).
 EXIT_PAUSED = 3
 APPROVALS_FILENAME = "approvals.json"
+STALE_GATE_MESSAGE = "The run is no longer paused at this gate. Review the current run."
 
 #: Asked at a gate that is not approved: ``(gate, output paths relative to the project) -> yes?``
 Approver = Callable[[str, Sequence[str]], bool]
@@ -41,6 +43,19 @@ class Approvals(BaseModel):
 
 class GateError(Exception):
     pass
+
+
+def require_paused_gate(project_dir: Path, run_id: str, stage: str) -> RunState:
+    """Check the decision's target while holding the project's writer lock."""
+    state = read_run_state(project_dir)
+    if (
+        state is None
+        or state.run_id != run_id
+        or state.status != RunStatus.PAUSED
+        or state.paused_at != stage
+    ):
+        raise GateError(STALE_GATE_MESSAGE)
+    return state
 
 
 class GateKeeper:
@@ -84,6 +99,14 @@ class GateKeeper:
             raise GateError(f"nothing to approve: stage {gate!r} has not produced anything yet")
         approvals = self._load()
         approvals.gates[gate] = now
+        self._save(approvals)
+
+    def reject(self, gate: str) -> None:
+        approvals = self._load()
+        if approvals.gates.pop(gate, None) is not None:
+            self._save(approvals)
+
+    def _save(self, approvals: Approvals) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(approvals.model_dump_json(indent=2), encoding="utf-8")

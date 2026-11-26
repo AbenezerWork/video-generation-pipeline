@@ -12,6 +12,8 @@ import yaml
 from tests.cli_text_fixtures import fake_clis as fake_clis
 from tests.fake_comfyui import FakeComfyUI
 from vidpipe.assembly import FFMPEG_DIR_ENV, find_tool
+from vidpipe.lock import LOCK_FILENAME
+from vidpipe.runstate import RUN_STATE_FILENAME
 
 SAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample"
 
@@ -60,6 +62,15 @@ def make_project(tmp_path: Path) -> MakeProject:
         return root
 
     return make
+
+
+def nothing_generated(project: Path) -> bool:
+    """No artifact was written: ``build/`` holds at most the one-writer lock and the run state."""
+    build = project / "build"
+    return not build.exists() or {p.name for p in build.iterdir()} <= {
+        LOCK_FILENAME,
+        RUN_STATE_FILENAME,
+    }
 
 
 def ffprobe(path: Path) -> dict[str, Any]:

@@ -29,7 +29,7 @@ Options (``options:`` in ``vidpipe.yaml``, all optional):
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -84,6 +84,7 @@ class ComfyProvider[C: Capabilities](Provider[C]):
         self._reference = workflow or self.default_workflow
         self._model: WorkflowModel | None = None
         self._submitted = False
+        self._stop_now: Callable[[], bool] | None = None
         path = locate_mapping(self._reference)
         # A project-relative mapping may only be found once the pipeline attaches the project.
         if path.is_file() or path.is_absolute():
@@ -91,6 +92,7 @@ class ComfyProvider[C: Capabilities](Provider[C]):
 
     def attach(self, context: ProjectContext) -> None:
         self.client = ComfyClient(self._url or context.comfyui_url or DEFAULT_URL)
+        self._stop_now = context.stop_now
         self._load(locate_mapping(self._reference, context.root))
 
     def _load(self, path: Path) -> None:
@@ -159,6 +161,7 @@ class ComfyProvider[C: Capabilities](Provider[C]):
             retries=self.retries,
             timeout_s=self.timeout_s,
             poll_s=self.poll_s,
+            stop_now=self._stop_now,
         )
 
     def save_output(self, outcome: JobOutcome, requested: Path) -> Path:

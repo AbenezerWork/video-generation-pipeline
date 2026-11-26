@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from vidpipe.estimate import format_report
 from vidpipe.gates import EXIT_PAUSED, Approver, GateError
 from vidpipe.project import Project, ProjectError
 from vidpipe.stages import STAGE_NAMES, StageError
+from vidpipe.stop import EXIT_STOPPED, request_stop
 from vidpipe.translate import report_lines
 
 
@@ -36,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run the stage graph on a project directory")
     run.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     _add_run_options(run)
+    run.add_argument("--resume-gate", nargs=2, metavar=("RUN_ID", "STAGE"), help=argparse.SUPPRESS)
     plan = sub.add_parser("plan", help="show the plan and check capabilities; generates nothing")
     plan.add_argument("project", type=Path, help="project directory (brief.md + vidpipe.yaml)")
     plan.add_argument("--until", choices=STAGE_NAMES, help="stop after this stage (inclusive)")
@@ -56,7 +59,40 @@ def _parser() -> argparse.ArgumentParser:
     approve = sub.add_parser("approve", help="approve what a gated stage produced, so runs resume")
     approve.add_argument("project", type=Path, help="project directory")
     approve.add_argument("gates", nargs="+", metavar="GATE", help="stage the gate follows")
+    stop = sub.add_parser(
+        "stop", help="ask the run in progress to stop after the artifact it is working on"
+    )
+    stop.add_argument("project", type=Path, help="project directory")
+    stop.add_argument(
+        "--now",
+        action="store_true",
+        help="stop now: cancel the ComfyUI job in progress and discard that one artifact",
+    )
+    ui = sub.add_parser("ui", help="watch a project in the browser (needs the 'ui' extra)")
+    ui.add_argument("project", type=Path, help="project directory")
+    ui.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="address to listen on (default: 127.0.0.1, this machine only); any other address "
+        "opens the UI to the network and requires the token printed at startup",
+    )
+    ui.add_argument("--port", type=int, default=8765, help="port to listen on (default: 8765)")
     return parser
+
+
+def _serve_ui(project: Path, host: str, port: int) -> int:
+    try:
+        from vidpipe.ui.server import serve
+    except ImportError as exc:
+        print(
+            f"error: vidpipe ui needs the optional 'ui' extra ({exc.name} is missing): "
+            "pip install 'vidpipe[ui]', or uv sync --extra ui",
+            file=sys.stderr,
+        )
+        return 1
+    with contextlib.suppress(KeyboardInterrupt):
+        serve(project, host=host, port=port)
+    return 0
 
 
 def _utf8_output() -> None:
@@ -99,6 +135,9 @@ def _report(result: pipeline.RunResult, project: Path) -> int:
     if any(record.stage == "translation" for record in result.manifest.stages):
         for warning in _drift_warnings(project):
             print(warning, file=sys.stderr)
+    if result.stopped:
+        print(f"\nstopped as asked; finished work is kept. Resume with: vidpipe run {project}")
+        return EXIT_STOPPED
     if result.paused_at is None:
         return 0
     gate = result.paused_at
@@ -113,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     _utf8_output()
     args = _parser().parse_args(argv)
     try:
+        if args.command == "ui":
+            return _serve_ui(args.project, args.host, args.port)
         if args.command == "doctor":
             from vidpipe.doctor import check_environment
 
@@ -148,6 +189,15 @@ def main(argv: list[str] | None = None) -> int:
             for problem in the_plan.problems:
                 print(f"error: {problem}", file=sys.stderr)
             return 0 if the_plan.ok else 1
+        if args.command == "stop":
+            request = request_stop(args.project, now=args.now)
+            how = (
+                "cancels the ComfyUI job in progress and stops"
+                if request.now
+                else "stops after the artifact in progress"
+            )
+            print(f"stop requested: run {request.run_id} {how}")
+            return 0
         if args.command == "approve":
             pipeline.approve(args.project, args.gates)
             print("approved", ", ".join(args.gates))
@@ -163,12 +213,14 @@ def main(argv: list[str] | None = None) -> int:
                 approver=approver,
             )
         else:
+            resume_gate = (args.resume_gate[0], args.resume_gate[1]) if args.resume_gate else None
             result = pipeline.run(
                 args.project,
                 until=args.until,
                 auto=args.auto,
                 approve=args.approve,
                 approver=approver,
+                resume_gate=resume_gate,
             )
         return _report(result, args.project)
     except pipeline.PlanError as exc:

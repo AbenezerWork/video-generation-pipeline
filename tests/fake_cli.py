@@ -5,7 +5,9 @@ Run as ``python fake_cli.py <flavor> <the real CLI's argv...>`` from a tiny wrap
 one per invocation, and every invocation (argv, cwd, what was in the cwd, stdin) is logged there so
 tests can check how the adapter ran the CLI. Canned replies are wrapped in the output envelope each
 real CLI uses; ``raw`` and ``fail`` replies are emitted verbatim to simulate malformed output,
-rate limits and crashes.
+rate limits and crashes. A ``hang`` reply writes ``hanging`` there and then blocks (until a
+``release`` file appears there, or at most a minute), to keep a run in progress; then it fails,
+or answers its ``then`` text.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -52,6 +55,14 @@ def main() -> int:
 
     cast(Any, sys.stdout).reconfigure(encoding="utf-8")
     cast(Any, sys.stderr).reconfigure(encoding="utf-8")
+    if reply["kind"] == "hang":
+        (state_file.parent / "hanging").write_text(str(os.getpid()), encoding="utf-8")
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not (state_file.parent / "release").exists():
+            time.sleep(0.1)
+        if reply.get("then") is None:
+            return 1
+        reply = {"kind": "text", "text": reply["then"]}
     if reply["kind"] == "text":
         if flavor == "codex":
             # `codex exec ... --output-last-message <file>` writes the final message there.

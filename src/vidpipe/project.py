@@ -19,9 +19,9 @@ class ProjectError(Exception):
 
 
 class Project:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, config: ProjectConfig | None = None) -> None:
         self.root = root.resolve()
-        self.config = self._load_config()
+        self.config = config if config is not None else self._load_config()
 
     # ------------------------------------------------------------------ source files
 

@@ -34,13 +34,165 @@ skips finished work and resumes a run that was killed (the ledger is saved after
   `ArtifactStore.forget(key_prefix)` drops records so the next run regenerates them (re-roll).
 - `vidpipe run` prints `skipped` or `ran (n generated)` per stage.
 
+## One run at a time
+
+A project has at most one run in progress. `vidpipe run`, `redo` and `approve` hold an OS file lock
+on `build/run.lock` (`vidpipe.lock`, through `filelock`) for their whole duration. A second one on
+the same project exits with code 1 and `a run is in progress (started from the CLI at 2026-11-26
+14:03, process 1234)` instead of writing; who and since when come from the run state below. The OS
+releases the lock when the process ends, however it ends, so a killed or crashed run never blocks
+the next one; the file left in `build/` means nothing on its own. In the library a refused command
+raises `vidpipe.lock.RunInProgress` (a `ProjectError`; its `.holder` is that description).
+
+Projects on network drives (SMB/NFS shares, mapped drives) are unsupported: their file locks are not
+reliable, so two runs could both get in. Keep projects on a local disk.
+
+## Run state
+
+While a run (`vidpipe run`, `vidpipe redo`) is in progress it publishes its run state in
+`build/run_state.json` (`vidpipe.runstate`), so anything outside the run (the lock refusal above,
+the UI) can see which stage is running and how far through it is. The file is replaced atomically
+(written to a temporary file, then renamed over it), so a reader never sees half a record. It is
+rewritten when the run starts, when a stage begins, after each artifact (at most every 0.25 s, so
+reused artifacts do not hammer the disk) and when a stage or the run ends. It stays behind after the
+run as the record of how the last run ended. `manifest.json` is unchanged.
+
+```json
+{
+  "schema_version": 1,
+  "run_id": "20261126T140312-3fa9c1",
+  "command": "run",
+  "shot": null,
+  "origin": "cli",
+  "pid": 1234,
+  "started_at": "2026-11-26T14:03:12+03:00",
+  "updated_at": "2026-11-26T14:20:41+03:00",
+  "finished_at": null,
+  "seq": 42,
+  "status": "running",
+  "until": null,
+  "current_stage": "video",
+  "paused_at": null,
+  "config_hash": "9b1c...e4",
+  "stages": [
+    {"stage": "brief", "provider": null, "status": "reused", "done": 1, "total": 1,
+     "generated": 0, "reused": 1, "started_at": "...", "finished_at": "..."},
+    {"stage": "video", "provider": "fake-i2v", "status": "running", "done": 4, "total": 11,
+     "generated": 3, "reused": 1, "started_at": "...", "finished_at": null}
+  ],
+  "error": null
+}
+```
+
+- `origin`: `cli`, or `ui` when the environment variable `VIDPIPE_RUN_ORIGIN=ui` is set (the UI
+  sets it on the runs it starts; any other value is refused). `command` is `run` or `redo` (then
+  `shot` is the re-rolled shot). Times are ISO 8601 local time with the UTC offset.
+- `status` (the run): `running`, `stopping` (a stop was asked for), `paused` (at the gate in
+  `paused_at`), `failed`, `finished`, `stopped`. `current_stage` is the stage running now, `null`
+  before the first stage and after the run ends.
+- `stages`: the stages this run covers (up to `until`), in run order. A stage's `status` is
+  `waiting`, `running`, `done` (generated something), `reused` (every artifact came from an earlier
+  run), `paused` (finished, and its gate holds the run), `failed` or `stopped`. `done` counts the
+  artifacts finished so far (`generated + reused`) out of `total`. `total` is worked out from what
+  is on disk before the stage starts (shots from the storyboard, clips from the fit plan), so it is
+  known up front on a resumed run and is filled in for later stages as earlier ones finish; it is
+  `null` while it cannot be known yet.
+- `error`: `{"stage", "message"}` when the run failed; `stage` is `null` for a run refused at plan
+  time (nothing generated).
+- `config_hash`: `vidpipe.runstate.config_hash(project_dir)` of the project config the run started
+  with. It hashes the validated config, so comments do not count. A different hash for the config on
+  disk means a pending change ([ADR 0002](docs/adr/0002-config-changes-apply-next-run.md)).
+- `seq` goes up by one on every write: a reader polling the file can tell a new record from one it
+  has seen.
+
+Read it with `vidpipe.runstate.read_run_state(project_dir)`, which retries the brief access denial
+a rename can cause on Windows. A record still saying `running` or `stopping` whose process is gone
+(killed, crashed) comes back as `failed` with an error saying so, and the stage it was in as `failed`;
+the file is left as it is.
+
+## The UI
+
+`vidpipe ui <project>` serves a web console for one project (the optional `ui` extra:
+`pip install 'vidpipe[ui]'` or `uv sync --extra ui`; the dev environment has it). The Run view
+shows the ten stages as a rail with each stage's status, provider, time and, while it runs, a
+progress ring, following the run state live.
+
+The Config view lets you edit the project config, preview the YAML and estimate what the next run
+will regenerate. **Save changes** writes the preview while keeping comments and key order.
+Each stage offers the providers that implement its contract, with readiness and suggested fixes
+from `vidpipe doctor`. The CLI checks cover executable discovery. Text stages also let you
+edit their fallback order. Validation runs as you type.
+
+A save during a run is marked pending. The active run keeps the config it started with. Select
+**Stop and restart** to finish the current artifact and launch a run with the saved config,
+reusing finished work where its inputs still match. Keep the page open until that run starts.
+
+```
+uv run vidpipe ui examples/sample                   # http://127.0.0.1:8765/, this machine only
+uv run vidpipe ui examples/sample --host 0.0.0.0    # open to the network: prints a link with a token
+```
+
+![The Run view during a run on fake providers](docs/assets/ui-run-view.jpg)
+
+- **Run controls.** Choose **All stages** or a stage to run through, then select **Start run**.
+  **Stop** lets the artifact in progress finish. While the run is stopping, **Stop now** cancels
+  the current ComfyUI job. **Resume** starts a new run with the previous stage limit selected
+  and reuses finished work. The same stop controls apply to a run started from the CLI.
+- **Leaving the UI.** Closing the tab leaves the run going. Ctrl+C in the UI server's terminal
+  prompts when a run is in progress. Press Enter to leave it running or enter `s` to request a
+  graceful stop. A server with redirected input leaves the run going. Reopening the UI picks up
+  the project's current run state.
+- **Run log.** Expand **Logs and diagnostics** to see the recent output of the current UI-started run.
+  Full logs are saved under `build/logs/ui-run-<run-id>.log`. For CLI-started runs, output
+  is in the terminal that started them.
+- **Access.** By default the UI listens on 127.0.0.1 and accepts only loopback host names (so a web
+  page cannot reach it by rebinding a domain to 127.0.0.1). With any other `--host` it requires a
+  random token printed at startup as a link, `http://<address>:8765/?token=<token>`: opening it
+  swaps the token for an `HttpOnly`, `SameSite=Lax` cookie that the page and its event stream carry;
+  scripts can send `Authorization: Bearer <token>`. Anything else gets 401. Use `--port` to move it.
+- **HTTP API.** `GET /api/project` (the stages with provider, phase and gate, the project config's
+  languages and gates, and the run state), `GET /api/run` (the run state above, or `null`),
+  `GET /api/logs` (the log path, recent lines and truncation status), and `GET /api/events`, one
+  SSE stream whose `run` events carry the run state on connect and whenever it changes.
+  Actions are `POST /api/run/start` (optional JSON `until`), `POST /api/run/stop` and
+  `POST /api/run/stop-now` (optional JSON `run_id` to target the run shown on screen).
+- **Front end.** No-build HTML, CSS and JS in `src/vidpipe/ui/static/`, styled only with the design
+  system there (`style.html` shows every token and component). The rail is operable by keyboard
+  (arrow keys, Home, End) and becomes a horizontal strip on narrow screens; a polite live region
+  announces only stage start, finish, pause at a gate and failure.
+
+## Stop and stop now
+
+```
+uv run vidpipe stop examples/sample          # end the run after the artifact in progress
+uv run vidpipe stop examples/sample --now    # cancel the ComfyUI job in progress and end the run
+```
+
+A **stop** lets the artifact in progress finish (and be recorded), then ends the run: nothing
+finished is lost. **Stop now** also cancels the ComfyUI job in progress (taken out of ComfyUI's
+queue, or interrupted if running; only that job) and discards that one artifact; it is not a failure,
+so the job is not retried. A provider with nothing to cancel (a text CLI, fakes, Edge TTS) finishes
+its artifact, as for a stop. `--now` after a plain stop turns it into a stop now.
+
+Either way the run state shows `stopping` as soon as the run has seen the request, then `stopped`
+(the stage in progress `stopped`, with the artifacts it finished in `done`), and `vidpipe run` exits
+with code **4**. Resuming is an ordinary `vidpipe run`: everything finished before the stop is
+reused.
+
+`vidpipe stop` does not take the project lock (the run holds it). It writes a request,
+`build/stop_request.json`, naming the run's `run_id`; the run looks for it every 0.1 s, acts on it
+between artifacts (and while it waits for a ComfyUI job, for stop now) and removes it when it ends.
+Only the run writes the run state. With no run in progress `vidpipe stop` exits with code 1. In the
+library: `vidpipe.stop.request_stop(project_dir, now=False)` (raises `vidpipe.stop.NoRunInProgress`,
+a `ProjectError`), and `pipeline.run(...).stopped` is true for a stopped run.
+
 ## Gates, --auto and redo
 
 The run pauses for approval after `script`, `storyboard` and `keyframes`. Change the set in
 `vidpipe.yaml` (`gates: [storyboard]`, or `gates: []` for none; any stage name is valid).
 
 - A pause is a normal outcome, not an error: `vidpipe run` prints the stages that ran and how to
-  continue, and exits with code **3** (`0` = finished, `1` = error). In the library,
+  continue, and exits with code **3** (`0` = finished, `1` = error, `4` = [stopped](#stop-and-stop-now)). In the library,
   `pipeline.run(...).paused_at` is the gate name.
 - Approve with `vidpipe approve <project> <gate>` (no input needed: scripts and tests use this) and run
   again; or `vidpipe run --approve <gate>` (repeatable) to approve in advance; or answer the y/N
@@ -82,7 +234,9 @@ GPU minutes (local providers) or dollars (hosted) per stage and overall. It call
 generation method and writes nothing. It needs a storyboard to know the shots
 (`vidpipe run PROJECT --until storyboard`); narration durations are the real ones when narration
 was generated for the current text, otherwise estimated from the script at the TTS provider's
-declared `seconds_per_char` (marked `estimated`). Estimates are for a run from scratch.
+declared `seconds_per_char` (marked `estimated`). The stage totals are for a run from scratch.
+The regeneration estimate uses the current ledger and matches the Config view. It marks downstream
+stages as possible regeneration when their inputs depend on work that has yet to run.
 
 Providers declare what their work costs as a `cost = CostModel(...)` class attribute: GPU minutes
 (`gpu_minutes`, for providers with `uses_gpu = True`) or `dollars` (hosted), per `CALL` or per
@@ -381,9 +535,10 @@ music, a `SubtitleTrack` and the `MixSettings`.
 
 ## Development
 
-- `uv run pytest` runs the fast suite on fake providers. Two seams only: the pipeline run through
-  the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`) and the per-contract provider conformance suite
-  (`tests/conformance/`). ComfyUI providers are tested against an in-process fake server
+- `uv run pytest` runs the fast suite on fake providers. Three seams: the pipeline run through
+  the CLI/library (`tests/test_pipeline.py`, `tests/test_resume.py`), the per-contract provider conformance suite
+  (`tests/conformance/`), and the UI's HTTP API (`tests/test_ui_run_view.py`, a real server on a free
+  port watching CLI runs; skipped without the `ui` extra). ComfyUI providers are tested against an in-process fake server
   (`tests/fake_comfyui.py`, fixture `comfy`); `uv run pytest -m integration -k comfy` runs them on a
   real ComfyUI at 127.0.0.1:8188 with the models above. With the ACE-Step checkpoint installed,
   `uv run pytest -m integration -k 'comfyui_music or comfyui-music'` runs just the music tests,

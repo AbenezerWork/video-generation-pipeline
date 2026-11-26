@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -107,6 +107,9 @@ class StageContext:
     #: Artifacts generated / reused so far by the stage being run.
     generated: int = 0
     reused: int = 0
+    #: Called after each artifact the stage finishes (generated or reused): the runner publishes
+    #: progress here, between artifacts.
+    on_artifact: Callable[[], None] | None = None
     store: ArtifactStore = field(init=False)
 
     def __post_init__(self) -> None:
@@ -123,6 +126,7 @@ class StageContext:
         make: Callable[[], Made],
         parameters: Mapping[str, Any] | None = None,
         seed: int | None = None,
+        expected_outputs: Sequence[Path] = (),
     ) -> Produced:
         """Return artifact ``key``, calling ``make`` only if its declared inputs changed."""
         selection = self.project.config.providers.get(self.stage)
@@ -135,11 +139,14 @@ class StageContext:
             make=make,
             parameters=parameters,
             seed=seed,
+            expected_outputs=expected_outputs,
         )
         if produced.reused:
             self.reused += 1
         else:
             self.generated += 1
+        if self.on_artifact is not None:
+            self.on_artifact()
         return produced
 
     def shot_seed(self, shot_id: int) -> int:
@@ -169,6 +176,13 @@ class Stage(ABC):
     def problems(self, ctx: StageContext) -> list[str]:  # noqa: ARG002
         """Plan-time check (capabilities etc.) made before anything is generated."""
         return []
+
+    def artifact_count(self, ctx: StageContext) -> int:  # noqa: ARG002
+        """How many artifacts :meth:`run` will produce, worked out from what is on disk.
+
+        Raises (a missing earlier artifact, say) when that cannot be known yet.
+        """
+        return 1
 
     @abstractmethod
     def run(self, ctx: StageContext) -> list[str]:
@@ -303,6 +317,13 @@ class TranslationStage(Stage):
             if lang not in caps.target_languages
         ]
         return found
+
+    def artifact_count(self, ctx: StageContext) -> int:
+        targets = self._targets(ctx)
+        if not targets:
+            return 0
+        reviewed = isinstance(ctx.provider("translation", TranslationProvider), TextTranslator)
+        return len(targets) * (2 if reviewed else 1)
 
     def run(self, ctx: StageContext) -> list[str]:
         script = ctx.script(ctx.project.config.primary_language)
@@ -473,6 +494,10 @@ class NarrationStage(Stage):
             if lang not in supported
         ]
 
+    def artifact_count(self, ctx: StageContext) -> int:
+        shots = ctx.project.read_model("storyboard.json", Storyboard).shots
+        return len(ctx.languages) * len(shots)
+
     def run(self, ctx: StageContext) -> list[str]:
         storyboard = ctx.project.read_model("storyboard.json", Storyboard)
         provider = ctx.provider("narration", TTSProvider)
@@ -593,6 +618,9 @@ class KeyframesStage(Stage):
             briefs.append((shot, brief))
         return briefs
 
+    def artifact_count(self, ctx: StageContext) -> int:
+        return len(ctx.project.read_model("storyboard.json", Storyboard).shots)
+
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("keyframes", KeyframerProvider)
         config = ctx.project.config
@@ -649,6 +677,14 @@ class VideoStage(Stage):
     """Animate each visual set from its keyframe, then from each preceding clip's last frame."""
 
     name = "video"
+
+    def artifact_count(self, ctx: StageContext) -> int:
+        plan = {s.shot_id: s for s in ctx.project.read_model("fit_plan.json", FitPlan).shots}
+        return sum(
+            len(visual_set.clips)
+            for shot in ctx.project.read_model("storyboard.json", Storyboard).shots
+            for visual_set in plan[shot.id].visual_sets.values()
+        )
 
     def run(self, ctx: StageContext) -> list[str]:
         provider = ctx.provider("video", ImageToVideoProvider)
@@ -781,6 +817,9 @@ class AssemblyStage(Stage):
             *ctx.assembler.problems(),
             *font_problems(config.subtitles, ctx.languages, ctx.project.root),
         ]
+
+    def artifact_count(self, ctx: StageContext) -> int:
+        return len(ctx.languages)
 
     def run(self, ctx: StageContext) -> list[str]:
         project = ctx.project
@@ -942,6 +981,7 @@ class AssemblyStage(Stage):
                 ),
             },
             make=make,
+            expected_outputs=[render.output, track.srt],
         )
         return [p.relative_to(project.root).as_posix() for p in made.paths]
 
