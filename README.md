@@ -569,9 +569,9 @@ within the 90 s limit (fit-planning refuses longer plans, and assembly checks ag
   attack 20 ms, release 400 ms), so the music drops while someone speaks and swells back in the gaps.
   FFmpeg measures the final mix and applies two-pass loudness normalization at `mix.loudness_lufs`
   (default -14 LUFS) with a -1 dBTP true-peak target.
-- **Subtitles.** One cue per fit-plan segment (`segments[].text/start_s/end_s`, offset to the shot's
-  place in the render). The SRT is written whether or not it is burned in; `subtitles.burn_in: false`
-  keeps only the sidecar. Burning uses ffmpeg's `subtitles` filter (libass) with the fonts folder given
+- **Subtitles.** Captions in the narration language use the fit plan's timed segments.
+  `subtitles.burn_in: false` keeps only the sidecar on the full render. Burning uses FFmpeg's
+  `subtitles` filter (libass) with the fonts folder given
   as `fontsdir`; the filter text escapes Windows drive colons and any `' [ ] , ;` in paths
   (`vidpipe.subtitles.escape_filter_value`).
 
@@ -582,7 +582,7 @@ subtitles:
   fonts_dir: fonts                   # relative to the project dir (or absolute). Default: ./fonts if
                                      # it exists, else the fonts bundled with vidpipe (assets/fonts)
   fonts: {am: Noto Sans Ethiopic}    # font family per language; others use the system default font
-  font_size: 20                      # libass units: the video's height is 288, so it scales with it
+  font_size: 20                      # units of 1/288 of the frame's shorter side
 mix:
   loudness_lufs: -14     # final stereo mix, two-pass loudnorm at -1 dBTP
   music_level: 0.4

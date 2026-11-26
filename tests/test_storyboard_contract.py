@@ -28,6 +28,8 @@ def test_storyboard_is_validated_even_before_the_brief_stage(
     assert "invalid storyboard contract" in capsys.readouterr().err
     assert not (project / "build/brief.json").exists()
     assert not (project / "runs.jsonl").exists()
+    state = read_json(project / "build/run_state.json")
+    assert state["status"] == "failed"
 
 
 @pytest.mark.needs_ffmpeg
@@ -69,6 +71,8 @@ def test_exported_storyboard_controls_text_and_regenerates_only_the_edited_shots
     edited = calls()[len(before) :]
     assert edited[0] == "keyframes/shot_02"
     assert edited[1:] and all(key.startswith("video/shot_02") for key in edited[1:])
+    stages = read_json(project / "build/manifest.json")["stages"]
+    assert next(stage for stage in stages if stage["stage"] == "fit-planning")["generated"] == 0
 
     (project / "build/script.json").write_text("{}", encoding="utf-8")
     before = calls()

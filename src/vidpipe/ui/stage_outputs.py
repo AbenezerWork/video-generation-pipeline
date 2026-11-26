@@ -163,7 +163,9 @@ def _script_json(script: Script) -> dict[str, Any]:
     }
 
 
-def _translations(build: Path, languages: list[str]) -> list[dict[str, Any]]:
+def _translations(
+    build: Path, languages: list[str], *, from_contract: bool
+) -> list[dict[str, Any]]:
     """Per target language: each line beside its source, with the back-translation check."""
     source = _read(build, "script.json", Script)
     if source is None:
@@ -173,7 +175,7 @@ def _translations(build: Path, languages: list[str]) -> list[dict[str, Any]]:
     for lang in languages[1:]:
         if (translated := scripts.get(lang)) is None:
             continue
-        review = _read(build, review_path(lang), TranslationReview)
+        review = None if from_contract else _read(build, review_path(lang), TranslationReview)
         checks = {c.id: c for c in review.lines} if review else {}
         texts = {line.id: line.text for line in translated.lines}
         lines: list[dict[str, Any]] = []
@@ -217,6 +219,7 @@ def _storyboard(build: Path) -> dict[str, Any] | None:
                 "line_id": shot.line_id,
                 "line": lines.get(shot.line_id, ""),
                 "visual": shot.visual,
+                "reason": shot.reason,
                 "motion_type": shot.motion_type.value,
                 "character": shot.character,
                 "location": shot.location,
@@ -306,7 +309,10 @@ def stage_outputs(project_dir: Path, stage: str) -> dict[str, Any]:
         source = _read(build, "script.json", Script)
         detail["script"] = _script_json(source) if source else None
     elif stage == "translation":
-        detail["translations"] = _translations(build, languages)
+        script_languages = project.config.script_languages if project else []
+        detail["translations"] = _translations(
+            build, script_languages, from_contract=(root / "storyboard.json").is_file()
+        )
     elif stage == "storyboard":
         detail["storyboard"] = _storyboard(build)
     elif stage == "narration":

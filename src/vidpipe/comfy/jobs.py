@@ -120,6 +120,7 @@ def run_job(
                 parameters={
                     **{key: value for key, value in current.items() if key != "prompt"},
                     "timeout_s": timeout_s or model.spec.timeout_s,
+                    "image_count": len(uploaded),
                 },
                 seed=attempt_seed,
             ) as call:
@@ -132,7 +133,9 @@ def run_job(
                         stop_now=stop_now,
                     )
                     call.gpu_seconds = finished.gpu_seconds
-                    call.output_seconds = float(current.get("seconds", 0.0))
+                    duration = current.get("seconds")
+                    if isinstance(duration, (int, float)):
+                        call.output_seconds = float(duration)
                     remote = finished.files(model.spec.outputs.node, model.spec.outputs.key)
                     if not remote:
                         raise ComfyBadOutput("the job finished without saving an output")

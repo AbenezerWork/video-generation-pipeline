@@ -253,7 +253,7 @@ def _run(
 ) -> RunResult:
     project = Project(project_dir)
     names = _selected_stages(until)
-    contract = project.storyboard_contract
+    has_contract = (project.root / "storyboard.json").is_file()
     state = RunStatePublisher(
         project,
         origin=origin,
@@ -261,7 +261,7 @@ def _run(
             (
                 name,
                 None
-                if contract is not None and name in CONTRACT_STAGES
+                if has_contract and name in CONTRACT_STAGES
                 else provider_label(name, project.config.providers.get(name)),
             )
             for name in names

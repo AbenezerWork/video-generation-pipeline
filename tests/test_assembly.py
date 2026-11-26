@@ -524,6 +524,7 @@ def test_an_ffmpeg_without_libass_is_a_plan_error(
     err = capsys.readouterr().err
     assert "subtitles" in err and "libass" in err
     assert "sidechaincompress" in err
+    assert "loudnorm" in err
 
 
 # ----------------------------------------------------------- re-rendering (no ffmpeg needed)
