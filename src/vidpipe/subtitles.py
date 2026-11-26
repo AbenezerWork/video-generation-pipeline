@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from vidpipe.config import SubtitleConfig
+from vidpipe.config import ProjectConfig, SubtitleConfig
 
 FONT_SUFFIXES = {".ttf", ".otf", ".ttc"}
 
@@ -107,7 +107,7 @@ def subtitles_filter(
     fonts_dir: Path | None,
     font: str | None,
     font_size: int,
-    margin_v: int,
+    margin_v: int = 12,
 ) -> str:
     """The ``subtitles`` filter that burns ``srt`` in. ``font`` (a family found in ``fonts_dir``)
     is forced when given; otherwise libass picks its default font."""
@@ -260,6 +260,16 @@ def resolve_fonts_dir(project_root: Path, config: SubtitleConfig) -> Path:
     if own.is_dir():
         return own
     return bundled_fonts_dir() or own
+
+
+def font_languages(config: ProjectConfig, *, radio: bool = False) -> list[str]:
+    languages: set[str] = set()
+    if radio or config.subtitles.burn_in:
+        language = config.subtitles.text_language
+        languages.update([language] if language else config.languages)
+    if not radio and config.end_card_seconds:
+        languages.update(config.languages)
+    return sorted(languages)
 
 
 def font_problems(

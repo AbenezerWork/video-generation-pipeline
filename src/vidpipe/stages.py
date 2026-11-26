@@ -86,6 +86,7 @@ from vidpipe.subtitles import (
     Cue,
     end_card_ass,
     font_files,
+    font_languages,
     font_problems,
     resolve_fonts_dir,
     subtitle_layout,
@@ -936,24 +937,12 @@ class AssemblyStage(Stage):
 
     def problems(self, ctx: StageContext, *, radio: bool = False) -> list[str]:
         config = ctx.project.config
-        subtitles = config.subtitles
-        languages: set[str] = set()
-        if radio or subtitles.burn_in:
-            languages.update(
-                [subtitles.text_language] if subtitles.text_language else ctx.languages
-            )
-        if not radio and config.end_card_seconds:
-            languages.update(ctx.languages)
         return [
             *ctx.assembler.problems(),
-            *(
-                font_problems(
-                    subtitles.model_copy(update={"burn_in": True}),
-                    sorted(languages),
-                    ctx.project.root,
-                )
-                if languages
-                else []
+            *font_problems(
+                config.subtitles.model_copy(update={"burn_in": True}),
+                font_languages(config, radio=radio),
+                ctx.project.root,
             ),
         ]
 

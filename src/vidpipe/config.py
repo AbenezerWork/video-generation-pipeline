@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, NotRequired, cast
+from typing import Annotated, Any, NotRequired, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import TypedDict
@@ -29,7 +29,9 @@ class ProviderMapping(TypedDict):
     fallback: NotRequired[list[ProviderInput]]
 
 
-type ProviderInput = str | ProviderMapping | list[str | ProviderMapping]
+type ProviderInput = (
+    str | ProviderMapping | Annotated[list[str | ProviderMapping], Field(min_length=1)]
+)
 
 
 class ProviderSelection(BaseModel):

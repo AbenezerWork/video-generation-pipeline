@@ -14,11 +14,12 @@ from vidpipe.comfy.provider import ComfyProvider
 from vidpipe.comfy.workflow import WorkflowModel
 from vidpipe.config import CONFIG_FILENAME, STAGE_KINDS, ProjectConfig, ProviderSelection
 from vidpipe.contracts import ProjectContext, Provider, ProviderKind
+from vidpipe.models import CONTRACT_STAGES
 from vidpipe.project import Project
 from vidpipe.providers.cli_text import CliTextProvider
 from vidpipe.providers.edge import EdgeTTS
 from vidpipe.registry import UnknownProvider, default_registry
-from vidpipe.subtitles import font_problems, resolve_fonts_dir
+from vidpipe.subtitles import font_languages, font_problems, resolve_fonts_dir
 from vidpipe.text import FallbackTextProvider
 from vidpipe.translate import TextTranslator
 
@@ -39,13 +40,14 @@ def _media_checks(root: Path, config: ProjectConfig) -> list[Check]:
         checks.append(
             Check(
                 "FFmpeg",
-                f"{find_tool('ffmpeg')} (libass, sidechaincompress); "
+                f"{find_tool('ffmpeg')} (libass, sidechaincompress, loudnorm); "
                 f"ffprobe at {find_tool('ffprobe')}",
             )
         )
-    fonts_configured = set(config.languages).intersection(config.subtitles.fonts)
-    if config.subtitles.burn_in and fonts_configured:
-        problems = font_problems(config.subtitles, config.languages, root)
+    languages = font_languages(config)
+    if set(languages).intersection(config.subtitles.fonts):
+        subtitles = config.subtitles.model_copy(update={"burn_in": True})
+        problems = font_problems(subtitles, languages, root)
         checks.extend(Check("fonts", problem, False) for problem in problems)
         if not problems:
             checks.append(Check("fonts", str(resolve_fonts_dir(root, config.subtitles))))
@@ -204,8 +206,11 @@ def _comfy_checks(url: str, workflows: list[WorkflowModel]) -> list[Check]:
 def check_environment(project_dir: Path | None = None) -> list[Check]:
     """Check a project's dependencies, or the default setup from outside a project."""
     root = Path.cwd() if project_dir is None else project_dir.resolve()
+    from_contract = False
     if project_dir is not None or (root / CONFIG_FILENAME).is_file():
-        config = Project(root).config
+        project = Project(root)
+        config = project.config
+        from_contract = project.storyboard_contract is not None
     else:
         config = ProjectConfig.model_validate(
             {
@@ -220,7 +225,9 @@ def check_environment(project_dir: Path | None = None) -> list[Check]:
     reported_clis: set[tuple[str, str]] = set()
     for stage, selection in config.providers.items():
         kind = STAGE_KINDS.get(stage)
-        if kind is None or (stage == "translation" and len(config.languages) == 1):
+        if kind is None or (from_contract and stage in CONTRACT_STAGES):
+            continue
+        if stage == "translation" and len(config.script_languages) == 1:
             continue
         try:
             provider = build_provider(registry, kind, selection)
