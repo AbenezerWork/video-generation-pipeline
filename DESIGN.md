@@ -19,6 +19,14 @@ render come from `subtitles.text_language: en`, and the mix is normalised to
 -14 LUFS by `mix.loudness_lufs`; both need a re-assembly of the delivered files.
 <!-- verify after merge: re-render, then update this paragraph and the table -->
 
+**Before re-running the film's existing projects with the new code,** run
+`vidpipe export-storyboard <project>`. The storyboard prompt now also asks for a shot
+reason, so without a `storyboard.json` a run would write a new storyboard over the
+hand-edited one and redraw every shot. Check `vidpipe plan` before running.
+<!-- verify after merge: confirm with `vidpipe plan` that keyframes and clips are
+reused -->
+
+
 ## 1. Audience and intent
 
 > **DRAFT. The owner must confirm or rewrite this.** It was written on 26 November
