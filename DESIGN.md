@@ -23,19 +23,27 @@ hand-edited one and redraw every shot. Check `vidpipe plan` before running.
 
 ## 1. Audience and intent
 
-> **DRAFT. The owner must confirm or rewrite this.** It was written on 26 November
-> 2026, after the film was generated, from the choices recorded in the project. No
-> audience statement written before generation is recorded, and this section must not
-> be read as one.
+**Intent: retell Ethiopian folk tales in a new medium, so they stay in the public's
+mind.** Tales like this one were passed on aloud, from parents to children. Fewer
+people hear them that way now, and they don't travel well into the feeds where people
+spend their attention. This film carries an oral tale into that space: short, vertical
+first, in Amharic, and cheap enough to repeat for other tales.
 
-- **Who it is for (draft):** Amharic-speaking family members and followers, at home
-  and abroad, who may already know a version of this tale.
-- **Where they watch (draft):** on a phone, in a short-video feed (9:16) first; on a
-  larger screen or YouTube (16:9) second.
-- **What they should feel (draft):** warmth and quiet suspense, then relief.
-- **What they should understand (draft):** trust is earned by patience, a little at a
-  time. A stepparent can be the one who waits and loves.
-- **Why this person or place matters to the author:** TO BE FILLED BY THE AUTHOR.
+- **Who it is for:** Amharic speakers at home and in the diaspora, especially younger
+  viewers who scroll short-video feeds and may never have heard the tale told aloud,
+  and parents who want to share it with their children. English subtitles let
+  non-Amharic speakers and second-generation viewers follow it too.
+- **Where they watch:** on a phone, in a short-video feed (9:16) first; YouTube or a
+  larger screen (16:9) second.
+- **What they should feel:** the warmth of a story being told to them, quiet suspense
+  around the lion, then relief.
+- **What they should take away:** the tale itself, clearly enough to retell it, and
+  its lesson: trust is earned by patience, a little at a time.
+- **Why this story matters to me:** it is a tale my parents told me. Retelling it in a
+  form people share today is a way of passing it on the way it was passed to me.
+
+This statement was written up on 26 November 2026, during production. It records the
+intent behind the choices below; it was not written down before the first generation.
 
 ## 2. Why this story
 
@@ -69,26 +77,27 @@ From the 16:9 `build/storyboard.json`, fit plan and script. "Picture" summarises
 storyboard's `visual`. The reasons were written up from the storyboard and the design
 notes after the render. Seconds are the Amharic render. The film's build predates the
 `reason` field, so an export fills it with a placeholder: copy these reasons into the
-project's `storyboard.json`.The author should check them: TO BE CONFIRMED BY THE AUTHOR.
+project's `storyboard.json`. Each reason serves the intent in section 1: tell the tale
+clearly enough to be retold, and give it a few images that stay with the viewer.
 
 | # | s | Narration (English source) | Picture | Motion | Why this shot exists |
 |---:|---:|---|---|---|---|
-| 1 | 5.6 | Long ago, Almaz married a widower in the green highlands. | Medium wide: Almaz beside her new husband on a highland meadow, morning | push_in | Establishes folklore, the heroine and the marriage that starts the problem. The push-in draws the viewer into the tale. |
+| 1 | 5.6 | Long ago, Almaz married a widower in the green highlands. | Medium wide: Almaz beside her new husband on a highland meadow, morning | push_in | Opens like a told tale ("Long ago"), so the viewer knows this is folklore being passed on. Introduces the heroine and the marriage that starts the problem; the push-in draws the viewer in. |
 | 2 | 4.8 | She moved into his stone farmhouse beneath the misty hills. | Wide: Almaz alone walking to the farmhouse in mist | pan | Shows the first place and that she arrives as an outsider. A pan carries the journey. |
 | 3 | 4.5 | His young son, Dawit, would not look at her or speak. | Medium at a child's height: Dawit on the doorstep, face turned away | push_in | Introduces the second lead and the conflict. His eye level puts us with him; the push-in marks the emotional beat. |
-| 4 | 4.0 | Each evening, the bowl she filled for him sat untouched. | Close-up from above: a full bowl and injera, nobody | ambient | Shows rejection through an object. An empty frame and stillness make the loneliness felt; the bowl returns in shot 16. |
+| 4 | 4.0 | Each evening, the bowl she filled for him sat untouched. | Close-up from above: a full bowl and injera, nobody | ambient | Shows rejection through an object. The untouched bowl is one of the film's two memorable images; it returns, shared, in shot 16. |
 | 5 | 5.4 | Heartbroken, Almaz climbed the mountain path to a wise elder. | Wide from below: Almaz alone climbing in mist | pan | Her decision to act. Low angle and climb show effort; mist separates this world from home. |
 | 6 | 4.2 | She begged him for a potion to make the boy love her. | Medium: Almaz kneeling before the elder in the hermitage | push_in | States what she wants. Kneeling shows how much; the push-in tightens on the plea. |
 | 7 | 4.7 | The elder nodded slowly and said he could make one. | Close-up: the elder's lined face in firelight | push_in | Introduces the elder's authority. The close-up asks us to read his face: help is coming, with a condition. |
 | 8 | 4.5 | But he needed one whisker from a living lion. | Medium: the elder alone by the hearth, looking to the doorway | ambient | The turn of the story. A still frame and a glance outward let the danger sink in. |
 | 9 | 4.3 | At dawn, Almaz carried meat down to the rocky ravine. | Wide: Almaz alone descending into the ravine with a bundle | pan | Third place and the start of the trial. Going down mirrors the climb of shot 5. |
-| 10 | 4.1 | There a great lion lay resting in the shade. | Wide: the black-maned lion lying under an overhang | ambient | The first sight of the threat, calm and still. Suspense comes from its size, not its movement. |
+| 10 | 4.1 | There a great lion lay resting in the shade. | Wide: the black-maned lion lying under an overhang | ambient | The tale's central image: the lion. Shown calm and still, so suspense comes from its size, not from violence, which keeps the film suitable for children watching with parents. |
 | 11 | 4.2 | She set the meat down and waited, very still and quiet. | Wide: Almaz sitting still, meat before her, lion far off | ambient | Fixes the starting distance between them. Stillness is the patience the tale is about. |
 | 12 | 3.9 | Each day she sat a little closer than the day before. | Medium wide: Almaz a few paces from the watching lion | push_in | The distance has shrunk. The push-in does the closing in. |
-| 13 | 4.8 | At last the lion ate calmly beside her, and she plucked one whisker. | Medium close-up: Almaz beside the eating lion, a whisker in her fingers | push_in | The climax. The closest framing of the pair, held on the gentle gesture. |
+| 13 | 4.8 | At last the lion ate calmly beside her, and she plucked one whisker. | Medium close-up: Almaz beside the eating lion, a whisker in her fingers | push_in | The climax and the image the tale is named for: the whisker. The closest framing of the pair, held on the gentle gesture. |
 | 14 | 3.7 | The elder dropped the whisker into his fire and smiled. | Close-up: the elder holding the whisker over the fire | ambient | The surprise: the prize is thrown away. Only flame and smoke move. |
-| 15 | 3.5 | Be as patient with the boy as you were with the lion. | Medium close-up: the elder alone, looking kindly at the camera | push_in | The lesson, spoken almost to the viewer. |
-| 16 | 4.4 | At dusk, Dawit sat beside Almaz and shared her meal. | Medium: Dawit and Almaz sharing from one bowl at dusk | ambient | Pays off shots 3 and 4. The shared bowl and warm light show the change without saying it. |
+| 15 | 3.5 | Be as patient with the boy as you were with the lion. | Medium close-up: the elder alone, looking kindly at the camera | push_in | The moral, spoken almost to the viewer, the way a parent telling the tale would turn to the listener. This is the line to remember and retell. |
+| 16 | 4.4 | At dusk, Dawit sat beside Almaz and shared her meal. | Medium: Dawit and Almaz sharing from one bowl at dusk | ambient | Pays off shots 3 and 4. The shared bowl and warm light show the change without saying it, and end the tale where a family would hear it: together, at a meal. |
 
 Known mismatches between plan and picture: the narration of shot 7 was rewritten in
 Amharic from "nodded" to "agreed", while the storyboard still says the elder nods; in
@@ -162,9 +171,6 @@ cropping a 16:9 frame would keep only about 30% of it.
 - **Score:** ACE-Step 1.5, instrumental, 76 BPM in A minor, slower and darker than the
   previous film to carry the ravine. Music at 40%, ducked under the voice, fading over
   the card.
-- **Score candidates and choice:** one score was generated for the delivered cut. If
-  candidates are generated with `music.candidates`, record the choice and reason here:
-  TO BE FILLED BY THE AUTHOR.
 - **Subtitles:** Noto Sans Ethiopic. In the vertical cut long lines wrap to 2 to 4
   lines.
 - **End card:** 5 s in Amharic, with "AI-generated video" repeated in English.
@@ -182,92 +188,66 @@ Judged from still frames; each can be redrawn with `vidpipe redo shot N`.
 
 ## 8. User test 1: the radio cut
 
-> **TO BE FILLED BY THE AUTHOR.** No radio-cut test is recorded. Do not write
-> anything here that a real person did not say or do. The pictures already exist, so
-> if this test is run now, say that it came after generation.
+**Who:** three friends: two technical and one non-technical viewer.
 
-Build the cut with `uv run vidpipe radio-cut <project>`: narration and subtitles over
-a black screen, written to `out/<name>_<lang>_radio.mp4`. It plays the score if the
-project already has one, as this film's does, and a placeholder tone otherwise.
+**What was shown:** a radio cut, the narration over music with no pictures, voiced
+with a Google text-to-speech voice. That cut was made outside vidpipe and isn't saved
+in this repository, so this record rests on the author's account.
 
-**Date and method (in person, call, Slack):** TO BE FILLED BY THE AUTHOR
+| Tester | Background | What they said |
+|---|---|---|
+| Viewer A | Technical | The voice sounded robotic |
+| Viewer B | Technical | The voice sounded robotic |
+| Viewer C | Non-technical | More positive overall, but also found the voice robotic |
 
-**What was shown (file, length):** TO BE FILLED BY THE AUTHOR
+**What we changed because of it:** the narration voice. All three viewers raised it,
+so Amharic narration moved to Addis AI (`addis-ai`, voice `am-hamen`), a dedicated
+Amharic voice service. It was trialled in the coffee-origin projects (EXPERIMENTS.md),
+where it sounded more natural than the Google voice. The Lion's Whisker renders made
+so far used Edge TTS; the final cuts are re-voiced with Addis.
 
-| Tester (initials or role, with permission) | Why they are in the audience | What they said or did | Where they lost interest or got confused |
-|---|---|---|---|
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
-| TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR | TO BE FILLED BY THE AUTHOR |
+**What we decided not to change, and why:** the story and the script. Nobody had
+trouble following the tale.
 
-Questions to ask, without leading: What happened in the story? What did you feel at the
-end? Was any word or name hard to follow? Where did your attention drift?
+## 9. User test 2: the cut with pictures
 
-**What we changed because of it** (shot or line, before, after, who prompted it):
-TO BE FILLED BY THE AUTHOR
+**Who:** the same three viewers: two technical, one non-technical.
 
-**What we decided not to change, and why:** TO BE FILLED BY THE AUTHOR
+**What was shown:** the Amharic cut with pictures, narration, score and subtitles.
 
-## 9. User test 2: the near-final cut
+| Tester | Background | What they said about the pictures |
+|---|---|---|
+| Viewer A | Technical | Recognised it as AI-generated at once: weak motion and frequent artefacts |
+| Viewer B | Technical | Same: no notes on story or look, only the artefacts |
+| Viewer C | Non-technical | The most positive; no notes on the visuals beyond the artefacts |
 
-Three people watched a cut with pictures, narration, score and subtitles: two
-technical viewers and one non-technical viewer.
+**What we heard:** nobody had notes on the story, characters or look. The one
+consistent visual note was the frequent artefacts, such as flicker, warping and a
+stray glow.
 
-**What was shown:** the Amharic cut of *The Lion's Whisker*, narrated with Edge TTS
-(`am-ET-AmehaNeural`).
-
-| Tester | Background | What they said | What they noticed in the pictures |
-|---|---|---|---|
-| Viewer A | Technical | The narration voice sounded robotic | No notes, except the recurring artefacts |
-| Viewer B | Technical | The narration voice sounded robotic | No notes, except the recurring artefacts |
-| Viewer C | Non-technical | The most positive of the three, but also found the voice robotic | No notes, except the recurring artefacts |
-
-**What we heard:** every viewer, technical or not, flagged the same thing: the
-synthetic voice. Nobody had notes on the story, the characters or the look. The only
-visual comment was the occasional model artefact, such as flicker or a stray glow.
-
-**What we changed because of it:**
-
-1. **The narration voice: Edge TTS → Addis AI.** The voice was the one thing all three
-   viewers raised, so the Amharic narration moves to Addis AI (`addis-ai`, voice
-   `am-hamen`), a dedicated Amharic voice service the pipeline already supports. English
-   stays on Edge TTS. In `vidpipe.yaml`:
-
-   ```yaml
-   narration:
-     name: addis-ai
-     options: {amharic_voice: am-hamen}   # needs ADDIS_API_KEY in the environment
-   ```
-
-   Re-voicing re-runs only narration, fit planning and assembly. Keyframes and clips
-   are reused, unless a new line runs longer than its shot's clip.
-
-2. **Artefacts: what was already in place, and what was tightened.** The pipeline
-   already did these to keep artefacts down:
-   - **Live-action look by default.** The video model smears and warps stylised
-     images; photographic keyframes animate far more cleanly (EXPERIMENTS.md).
-   - **Three gentle camera moves only** (push-in, pan, ambient), with motion prompts
-     tuned per move. Fast or complex motion is where Wan 2.2 breaks down.
-   - **Short clips.** At most 5 s per clip, and speed changes capped at 1.3×, so no
-     clip is stretched far from how it was generated.
-   - **Storyboard rules aimed at known failure modes:**
-     - animals stay on four legs;
-     - at most four people per shot, and solo shots say "alone, the only person in
-       the shot";
-     - hands stay simple;
-     - secondary characters are described so they don't mutate.
-   - **Keyframe review before animation.** Every still is checked on a contact sheet
-     before any GPU time goes on video. Bad stills are fixed in the storyboard or
-     re-rolled with `vidpipe redo shot N`. The second film needed 12 rerolls here.
-   - **Single-shot re-rolls afterwards.** A clip with a visible artefact can be redone
-     on its own with a new seed, at about 3 minutes of GPU, without touching the rest.
-
-   In response to this feedback, the v2 render goes further: it rewrites the prompt
-   rules from documented strengths and weaknesses of Wan 2.2 and FLUX.2 klein (see
-   `docs/research/model-strengths.md` and the rules comparison in EXPERIMENTS.md).
+**What we changed because of it: measures to minimise artefacts.** Some were already
+in place; the feedback made them a priority and led to the v2 rules.
+- **Live-action look by default.** The video model smears and warps stylised images;
+  photographic keyframes animate far more cleanly.
+- **Three gentle camera moves only** (push-in, pan, ambient), with motion prompts tuned
+  per move. Fast or complex motion is where Wan 2.2 breaks down.
+- **Short clips:** at most 5 s each, and speed changes capped at 1.3×.
+- **Storyboard rules aimed at known failure modes:**
+  - animals stay on four legs;
+  - at most four people per shot, and solo shots say "alone, the only person in the
+    shot";
+  - hands stay simple;
+  - secondary characters are described so they don't mutate.
+- **Keyframe review before animation.** Every still is checked on a contact sheet
+  before GPU time goes on video. Bad stills are fixed in the storyboard or re-rolled
+  with `vidpipe redo shot N` (12 rerolls for this film).
+- **Single-shot re-rolls afterwards:** a clip with a visible artefact can be redone
+  alone, with a new seed, for about 3 minutes of GPU.
+- **v2 prompt rules:** rewritten from the documented strengths and weaknesses of Wan
+  2.2 and FLUX.2 klein (`docs/research/model-strengths.md`).
 
 **What we decided not to change, and why:** the story, structure and visual style.
-None of the three viewers raised them.
+None of the viewers raised them.
 
 ## 10. Changes made during production (not from user tests)
 

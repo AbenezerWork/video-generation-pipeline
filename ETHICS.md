@@ -30,7 +30,7 @@ A generated face can still resemble someone by chance. The frames were reviewed 
 recognisable person was seen. Anyone who believes a character closely resembles them
 can ask for the shot to be redrawn.
 
-Owner's confirmation of this record (name, date): TO BE FILLED BY THE AUTHOR
+Owner's confirmation of this record: Abenezer Workineh, 26 November 2026.
 
 ## 2. The story and its culture
 
@@ -103,9 +103,9 @@ This repository has no licence file of its own. Choosing one is the owner's deci
 | Layer | What | Status |
 |---|---|---|
 | In the picture | a 5 s end card: Amharic text saying the video is AI-generated and any resemblance is coincidental, with "AI-generated video" in English | in both delivered cuts |
-| On the platform | switch on the AI or "altered content" label when posting, on every platform used | **to do when posting**: TO BE FILLED BY THE AUTHOR (platform, date) |
-| In the post text | say it was made with AI | TO BE FILLED BY THE AUTHOR |
-| In the file | MP4 metadata: the film's title, and a comment and description reading `AI-generated with vidpipe; see ETHICS.md` | written by assembly in new renders <!-- verify after merge --> **Not present** in the delivered files checked on 26 November: re-run assembly and check with `ffprobe -show_format` |
+| On the platform | switch on the AI or "altered content" label when posting, on every platform used | not posted yet |
+| In the text of the video | the end card states in Amharic and English that the film is AI-generated, so the disclosure travels with the file wherever it is shared, whatever the post says | in both delivered cuts |
+| In the file | MP4 metadata: the film's title, and a comment and description reading `AI-generated with vidpipe; see ETHICS.md` | written by assembly in new renders **Not present** in the delivered files checked on 26 November: re-run assembly and check with `ffprobe -show_format` |
 
 We remove no watermark or provenance mark. The pipeline adds none of its own, and we
 have not checked whether the local models' outputs carry any.
@@ -122,11 +122,11 @@ have not checked whether the local models' outputs carry any.
 
 - Only the folk tale was sent. No family details or personal data went into any prompt.
 - Anthropic's consumer terms allow training on content unless you opt out in account
-  settings, and OpenAI's have a similar opt-out. Owner's settings: TO BE FILLED BY THE
-  AUTHOR.
+  settings, and OpenAI's have a similar opt-out. Owner's settings: model
+  training is switched off in both the Anthropic and the OpenAI account.
 - Keys are read from the environment (`ADDIS_API_KEY`). `.env` files are ignored by git,
   and the call log leaves out options that look like secrets.
-  <!-- verify after merge -->
+ 
 - vidpipe never stores or handles CLI credentials. The UI listens on this machine only
   unless asked otherwise, and then requires a token.
 
